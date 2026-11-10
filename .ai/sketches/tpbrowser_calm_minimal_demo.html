@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Demo Giao Diện Tinh Tế & Thư Giãn — TPbrowser</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #f1f5f9;
+    color: #1e293b;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 12px 16px;
+    line-height: 1.45;
+  }
+
+  /* Thanh chọn phương án Demo trên cùng */
+  .demo-switcher {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  }
+  .switcher-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .sw-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  }
+  .sw-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+  .sw-btn:active {
+    transform: scale(0.96);
+  }
+  .sw-btn.active {
+    background: #2c3e35;
+    color: #ffffff;
+    border-color: #2c3e35;
+  }
+  .sw-toggle-group {
+    display: flex;
+    gap: 6px;
+  }
+  .sw-action-btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+    padding: 5px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .sw-action-btn:hover {
+    border-color: #64748b;
+    color: #0f172a;
+  }
+
+  /* ================= BIẾN MÀU CHO 4 CHẾ ĐỘ (3 PHƯƠNG ÁN THƯ GIÃN + 1 HIỆN TẠI) ================= */
+  #preview_stage {
+    --bg-main: #FAF8F5;
+    --bg-side: #F3EFEA;
+    --bg-card: #FFFFFF;
+    --bg-subtle: #EFECE6;
+    --text-primary: #2C302E;
+    --text-secondary: #6E7571;
+    --text-muted: #949B96;
+    --accent: #4A7C59;
+    --accent-soft: #E8F0EB;
+    --accent-text: #2F573B;
+    --border-col: rgba(44, 48, 46, 0.08);
+    --radius-outer: 14px;
+    --radius-inner: 9px;
+    --radius-pill: 999px;
+    --shadow-card: 0 8px 30px rgba(44, 48, 46, 0.05);
+    --shadow-input: 0 2px 12px rgba(44, 48, 46, 0.04);
+    --border-width: 1px;
+  }
+
+  /* Phương án B: Airy Cloud & Mist (Trắng Sương Sớm & Xanh Lam Dịu) */
+  #preview_stage[data-theme="airy-cloud"] {
+    --bg-main: #F8FAFC;
+    --bg-side: #F1F5F9;
+    --bg-card: #FFFFFF;
+    --bg-subtle: #E2E8F0;
+    --text-primary: #1E293B;
+    --text-secondary: #64748B;
+    --text-muted: #94A3B8;
+    --accent: #3B82F6;
+    --accent-soft: #EFF6FF;
+    --accent-text: #1D4ED8;
+    --border-col: rgba(15, 23, 42, 0.07);
+    --radius-outer: 16px;
+    --radius-inner: 10px;
+    --radius-pill: 999px;
+    --shadow-card: 0 10px 32px rgba(15, 23, 42, 0.04);
+    --shadow-input: 0 2px 10px rgba(15, 23, 42, 0.03);
+    --border-width: 1px;
+  }
+
+  /* Phương án C: Zen Sand & Muji (Cát Thiền & Nâu Gỗ Ấm - Giảm ánh sáng xanh) */
+  #preview_stage[data-theme="zen-sand"] {
+    --bg-main: #F5F2EB;
+    --bg-side: #EBE6DC;
+    --bg-card: #FAF8F3;
+    --bg-subtle: #E2DDD2;
+    --text-primary: #2D2A26;
+    --text-secondary: #6B655E;
+    --text-muted: #968F85;
+    --accent: #52796F;
+    --accent-soft: #E3ECE9;
+    --accent-text: #354F52;
+    --border-col: rgba(45, 42, 38, 0.09);
+    --radius-outer: 12px;
+    --radius-inner: 8px;
+    --radius-pill: 999px;
+    --shadow-card: 0 6px 24px rgba(45, 42, 38, 0.05);
+    --shadow-input: 0 2px 8px rgba(45, 42, 38, 0.04);
+    --border-width: 1px;
+  }
+
+  /* Phương án D: Obsidian & Gold (Giao diện Tối: Đen Huyền & Vàng Gold Sang Trọng, Dịu Mắt) */
+  #preview_stage[data-theme="obsidian-gold"] {
+    --bg-main: #0E0F12;
+    --bg-side: #13151A;
+    --bg-card: #181B22;
+    --bg-subtle: #222630;
+    --text-primary: #F3EFE6;
+    --text-secondary: #A8A296;
+    --text-muted: #6E6A61;
+    --accent: #D4AF37;
+    --accent-soft: rgba(212, 175, 55, 0.14);
+    --accent-text: #E5C158;
+    --border-col: rgba(212, 175, 55, 0.18);
+    --radius-outer: 14px;
+    --radius-inner: 9px;
+    --radius-pill: 999px;
+    --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.45);
+    --shadow-input: 0 2px 12px rgba(0, 0, 0, 0.35);
+    --border-width: 1px;
+  }
+
+  /* So sánh: Bản Hiện Tại (Viền đen 2px cứng Brutalist) */
+  #preview_stage[data-theme="current-harsh"] {
+    --bg-main: #FFFFFF;
+    --bg-side: #F8FAFC;
+    --bg-card: #FFFFFF;
+    --bg-subtle: #E2E8F0;
+    --text-primary: #0F172A;
+    --text-secondary: #334155;
+    --text-muted: #64748B;
+    --accent: #0F172A;
+    --accent-soft: #ECFDF5;
+    --accent-text: #065F46;
+    --border-col: #0F172A;
+    --radius-outer: 0px;
+    --radius-inner: 0px;
+    --radius-pill: 0px;
+    --shadow-card: 6px 6px 0px #0F172A;
+    --shadow-input: 4px 4px 0px #0F172A;
+    --border-width: 2px;
+  }
+
+  /* Khung mô phỏng cửa sổ TPbrowser */
+  .browser-frame {
+    background: var(--bg-main);
+    color: var(--text-primary);
+    border: 1px solid #cbd5e1;
+    border-radius: 14px;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 210px 1fr 310px;
+    height: 445px;
+    box-shadow: 0 12px 36px rgba(15, 23, 42, 0.08);
+    position: relative;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .browser-frame.ai-minimized {
+    grid-template-columns: 210px 1fr;
+  }
+  .browser-frame.ai-minimized .ai-dock {
+    display: none;
+  }
+  .browser-frame.ai-minimized .floating-bubble {
+    display: flex;
+  }
+
+  /* Cột trái: Thanh Tab Dọc Tinh Tế */
+  .left-sidebar {
+    background: var(--bg-side);
+    border-right: 1px solid var(--border-col);
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .side-top {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+  }
+  .brand-mark {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-soft {
+    width: 26px;
+    height: 26px;
+    background: var(--accent);
+    color: #ffffff;
+    border-radius: var(--radius-inner);
+    font-weight: 700;
+    font-size: 11.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .brand-name {
+    font-weight: 700;
+    font-size: 13.5px;
+    letter-spacing: -0.2px;
+  }
+  .ghost-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .ghost-icon-btn:hover {
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+  }
+
+  .soft-url-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    border-radius: var(--radius-inner);
+    padding: 7px 10px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .ublock-dot {
+    font-size: 10px;
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    padding: 2px 6px;
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+  }
+
+  .tab-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .tab-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-inner);
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .tab-pill:hover {
+    background: rgba(0, 0, 0, 0.03);
+    color: var(--text-primary);
+  }
+  .tab-pill.active {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--border-col);
+  }
+  .tab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+  }
+  .tab-pill.active .tab-dot {
+    background: var(--accent);
+  }
+  .new-tab-quiet {
+    margin-top: 4px;
+    padding: 7px 10px;
+    border-radius: var(--radius-inner);
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+  }
+  .new-tab-quiet:hover {
+    background: rgba(0, 0, 0, 0.03);
+    color: var(--text-primary);
+  }
+
+  .side-bottom {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-col);
+  }
+  .user-Row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-inner);
+    background: rgba(255, 255, 255, 0.55);
+  }
+  .avatar-soft {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 700;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Khu vực Giữa: Trang Bắt Đầu Tinh Tế & Thư Giãn */
+  .center-canvas {
+    background: var(--bg-main);
+    padding: 26px 34px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+  }
+  .zen-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-secondary);
+    font-size: 11.5px;
+  }
+  .zen-status-pills {
+    display: flex;
+    gap: 8px;
+  }
+  .zen-Tag {
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .zen-center-card {
+    max-width: 560px;
+    width: 100%;
+    background: var(--bg-card);
+    border: var(--border-width) solid var(--border-col);
+    border-radius: var(--radius-outer);
+    box-shadow: var(--shadow-card);
+    padding: 26px 30px;
+    text-align: center;
+  }
+  .zen-clock {
+    font-size: 38px;
+    font-weight: 300;
+    letter-spacing: -1.5px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 4px;
+  }
+  .zen-greeting {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+  }
+
+  .zen-omnibox {
+    display: flex;
+    align-items: center;
+    background: var(--bg-main);
+    border: var(--border-width) solid var(--border-col);
+    border-radius: var(--radius-inner);
+    box-shadow: var(--shadow-input);
+    padding: 5px 6px 5px 14px;
+    margin-bottom: 20px;
+  }
+  .zen-omnibox input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: var(--text-primary);
+    outline: none;
+  }
+  .zen-omnibox button {
+    background: var(--accent);
+    color: #ffffff;
+    border: none;
+    border-radius: calc(var(--radius-inner) - 2px);
+    padding: 7px 14px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .zen-bookmarks {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    text-align: left;
+  }
+  .zen-bm {
+    background: var(--bg-main);
+    border: 1px solid var(--border-col);
+    border-radius: var(--radius-inner);
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .zen-bm:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  }
+  .zen-bm b {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+  .zen-bm span {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .zen-footer {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* Cột Phải: Ngăn AI Cowork Tinh Tế (Bớt nút rối mắt) */
+  .ai-dock {
+    background: var(--bg-card);
+    border-left: 1px solid var(--border-col);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .ai-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-col);
+  }
+  .ai-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+    font-size: 12.5px;
+  }
+  .ai-calm-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .ai-quiet-pills {
+    display: flex;
+    gap: 5px;
+  }
+  .quiet-pill {
+    background: var(--bg-main);
+    border: 1px solid var(--border-col);
+    color: var(--text-secondary);
+    padding: 4px 7px;
+    border-radius: var(--radius-pill);
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .quiet-pill:hover {
+    color: var(--text-primary);
+  }
+
+  .ai-body {
+    flex: 1;
+    padding: 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ai-soft-bubble {
+    background: var(--bg-main);
+    border: 1px solid var(--border-col);
+    border-radius: var(--radius-inner);
+    padding: 11px 13px;
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+  .ai-soft-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .soft-chip {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border: none;
+    padding: 5px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .ai-input-wrap {
+    background: var(--bg-main);
+    border: 1px solid var(--border-col);
+    border-radius: var(--radius-inner);
+    padding: 6px 6px 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ai-input-wrap input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: var(--text-primary);
+    outline: none;
+  }
+  .ai-input-wrap button {
+    background: var(--accent);
+    color: #ffffff;
+    border: none;
+    border-radius: calc(var(--radius-inner) - 2px);
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Bong bóng nổi mềm mại khi thu gọn */
+  .floating-bubble {
+    position: absolute;
+    bottom: 18px;
+    right: 22px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-col);
+    border-radius: var(--radius-pill);
+    padding: 8px 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Bảng giải thích 3 điểm thay đổi bên dưới */
+  .summary-row {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .sum-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+  }
+  .sum-card b {
+    display: block;
+    color: #0f172a;
+    margin-bottom: 3px;
+    font-size: 12px;
+  }
+  .sum-card p {
+    color: #475569;
+  }
+</style>
+</head>
+<body>
+  <div class="demo-switcher">
+    <div class="switcher-left">
+      <span style="font-size:12px; font-weight:700; color:#0f172a; margin-right:4px;">CHỌN THỬ PHONG CÁCH:</span>
+      <button class="sw-btn active" onclick="setTheme('obsidian-gold', this)">1. Đen & Vàng Gold (Tối Sang Trọng)</button>
+      <button class="sw-btn" onclick="setTheme('warm-paper', this)">2. Giấy Ấm & Xanh Trà</button>
+      <button class="sw-btn" onclick="setTheme('airy-cloud', this)">3. Sương Sớm & Xanh Lam</button>
+      <button class="sw-btn" onclick="setTheme('zen-sand', this)">4. Cát Thiền Muji</button>
+      <button class="sw-btn" onclick="setTheme('current-harsh', this)">So sánh: Bản Cũ</button>
+    </div>
+    <div class="sw-toggle-group">
+      <button class="sw-action-btn" onclick="toggleAiBubble()">⇄ Thử Thu gọn AI thành Bong bóng</button>
+    </div>
+  </div>
+
+  <div id="preview_stage" data-theme="obsidian-gold">
+    <div class="browser-frame" id="browser_frame">
+      <!-- CỘT TRÁI: TAB DỌC TỐI GIẢN -->
+      <div class="left-sidebar">
+        <div class="side-top">
+          <div class="brand-row">
+            <div class="brand-mark">
+              <div class="logo-soft">TP</div>
+              <span class="brand-name">TPbrowser</span>
+            </div>
+            <button class="ghost-icon-btn" title="Đổi chiều Tab Dọc/Ngang">⇄ Ngang</button>
+          </div>
+
+          <div class="soft-url-box">
+            <span>Tìm kiếm hoặc nhập URL...</span>
+            <span class="ublock-dot">uBlock</span>
+          </div>
+
+          <div class="tab-list">
+            <div class="tab-pill active">
+              <div class="tab-dot"></div>
+              <span>Không gian bắt đầu</span>
+            </div>
+            <div class="tab-pill">
+              <div class="tab-dot"></div>
+              <span>animevietsub.best</span>
+            </div>
+            <div class="tab-pill">
+              <div class="tab-dot"></div>
+              <span>Google Sheets</span>
+            </div>
+            <div class="new-tab-quiet">
+              <span>+ Mở trang mới</span>
+              <span style="opacity:0.6;">Alt+N</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-bottom">
+          <div class="user-Row">
+            <div class="avatar-soft">P</div>
+            <div style="font-size:11.5px;">
+              <div style="font-weight:600;">Bùi Thiên Phú</div>
+              <div style="font-size:10px; color:var(--text-muted);">Đã đồng bộ Google</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KHU VỰC GIỮA: TRANG BẮT ĐẦU THƯ GIÃN -->
+      <div class="center-canvas">
+        <div class="zen-header">
+          <span>Không gian duyệt web tĩnh lặng</span>
+          <div class="zen-status-pills">
+            <span class="zen-Tag">Chặn quảng cáo: Đang bật</span>
+            <span class="zen-Tag">Khung: 1 Tab</span>
+          </div>
+        </div>
+
+        <div class="zen-center-card">
+          <div class="zen-clock">21:15</div>
+          <div class="zen-greeting">Chào buổi tối, anh Phú — Chúc anh có khoảng thời gian thư giãn</div>
+
+          <div class="zen-omnibox">
+            <input type="text" value="Tìm kiếm nhẹ nhàng hoặc nhắn @ai làm việc hộ..." readonly />
+            <button>Đi tới</button>
+          </div>
+
+          <div class="zen-bookmarks">
+            <div class="zen-bm">
+              <b>Google Sheets</b>
+              <span>Bảng tính</span>
+            </div>
+            <div class="zen-bm">
+              <b>YouTube</b>
+              <span>Không quảng cáo</span>
+            </div>
+            <div class="zen-bm">
+              <b>Zalo Web</b>
+              <span>Trò chuyện</span>
+            </div>
+            <div class="zen-bm">
+              <b>Messenger</b>
+              <span>Gọi thoại/video</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="zen-footer">
+          <span>Alt+T: Đổi Tab Dọc/Ngang • Alt+A: Thu gọn AI</span>
+          <span>Profile: Cá nhân</span>
+        </div>
+
+        <div class="floating-bubble" onclick="toggleAiBubble()">
+          <div class="ai-calm-dot"></div>
+          <span>Trợ lý AI đang trực • Bấm để mở</span>
+        </div>
+      </div>
+
+      <!-- CỘT PHẢI: AI COWORK NHẸ NHÀNG -->
+      <div class="ai-dock">
+        <div>
+          <div class="ai-top">
+            <div class="ai-badge">
+              <div class="ai-calm-dot"></div>
+              <span>Trợ lý AI</span>
+            </div>
+            <div class="ai-quiet-pills">
+              <button class="quiet-pill">Làm mẫu</button>
+              <button class="quiet-pill">Skills (3)</button>
+              <button class="quiet-pill">Key</button>
+              <button class="quiet-pill" onclick="toggleAiBubble()">Thu gọn</button>
+            </div>
+          </div>
+
+          <div class="ai-body">
+            <div class="ai-soft-bubble">
+              Chào anh Phú, kết nối <b>gemini-3.8-flash</b> đã sẵn sàng. Khi anh cần tóm tắt trang hay tự động thao tác, cứ nhắn bên dưới — cửa sổ này sẽ tự thu thành viên thuốc nhỏ để nhường chỗ cho trang web.
+            </div>
+            <div class="ai-soft-chips">
+              <button class="soft-chip">Tóm tắt trang</button>
+              <button class="soft-chip">Tổng hợp các Tab</button>
+              <button class="soft-chip">Ghi mẫu thao tác</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-input-wrap">
+          <input type="text" value="Nhắn việc cho AI..." readonly />
+          <button>Gửi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="summary-row">
+    <div class="sum-card">
+      <b>1. Bỏ toàn bộ viền đen 2px & bóng cứng (Brutalist)</b>
+      <p>Thay bằng bo góc đồng tâm êm ái (<code>14px / 9px</code>), viền mảnh mờ <code>1px rgba(0,0,0,0.08)</code> và bóng đổ sương mờ tự nhiên.</p>
+    </div>
+    <div class="sum-card">
+      <b>2. Bảng màu dịu mắt (Giảm mỏi mắt ban đêm & ban ngày)</b>
+      <p>Không dùng trắng chói <code>#FFFFFF</code> trên diện rộng và bỏ lưới chấm bi; dùng nền Giấy Ấm (<code>#FAF8F5</code>) hoặc Cát Thiền (<code>#F5F2EB</code>) cùng chữ than chì mềm.</p>
+    </div>
+    <div class="sum-card">
+      <b>3. Giản lược chữ hoa & nút thừa (Tạo khoảng thở)</b>
+      <p>Gom gọn các nút công cụ phụ thành các viên thuốc nhỏ (Pill), chữ thường nhẹ nhàng, đồng hồ <code>font-weight: 300</code> thanh thoát.</p>
+    </div>
+  </div>
+
+  <script>
+    function setTheme(themeName, btnEl) {
+      document.getElementById("preview_stage").setAttribute("data-theme", themeName);
+      var btns = document.querySelectorAll(".sw-btn");
+      for (var i = 0; i < btns.length; i++) btns[i].classList.remove("active");
+      if (btnEl) btnEl.classList.add("active");
+    }
+    function toggleAiBubble() {
+      document.getElementById("browser_frame").classList.toggle("ai-minimized");
+    }
+  </script>
+</body>
+</html>

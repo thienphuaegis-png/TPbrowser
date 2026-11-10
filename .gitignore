@@ -1,0 +1,13 @@
+target/
+user_data/
+extensions/
+config.json
+session.json
+TPbrowser.exe
+WebView2Loader.dll
+.ai/cache/
+.codegraph/
+.ua/
+.archify/
+*.bak*
+.pytest_cache/

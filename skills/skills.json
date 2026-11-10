@@ -1,0 +1,24 @@
+[
+  {
+    "name": "Kiểm tra & Tóm tắt nhanh trang",
+    "domain": "*",
+    "notes": "Đọc tiêu đề, các mục chính và số liệu quan trọng trên trang đang mở, trình bày ngắn gọn gạch đầu dòng.",
+    "steps": []
+  },
+  {
+    "name": "Chia đôi màn hình so sánh 2 Tab",
+    "domain": "*",
+    "notes": "Chuyển sang chế độ chia khung Xoắn ốc BSP để đối chiếu 2 trang web cạnh nhau.",
+    "steps": [
+      {
+        "type": "split_view"
+      }
+    ]
+  },
+  {
+    "name": "Chặn Quảng Cáo 3 Lớp (Web/Phim/YouTube)",
+    "domain": "*",
+    "notes": "Tự động ẩn toàn bộ banner/popup cá cược (0px chống Anti-Adblock), chặn tab nhảy popunder và tự tua nhanh 16x + bấm Skip quảng cáo YouTube.",
+    "steps": []
+  }
+]

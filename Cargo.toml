@@ -1,0 +1,16 @@
+[package]
+name = "TPbrowser"
+version = "0.1.0"
+edition = "2021"
+description = "TPbrowser — Trình duyệt cá nhân Rust (Tab Ngang/Dọc, Trang Trắng Decor, Quản lý Google Account & AI Cowork Bong Bóng Tự Thu Gọn)"
+
+[dependencies]
+tao = "0.37.2"
+wry = "0.57.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

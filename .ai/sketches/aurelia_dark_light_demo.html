@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="vi" data-mode="dark">
+<head>
+<meta charset="UTF-8" />
+<title>AURELIA — Demo Giao Diện Tối & Sáng (Nguyên Bản Từ 2 Ảnh)</title>
+<style>
+  /* ================= BIẾN MÀU TỐI (NGUYÊN BẢN ẢNH) & SÁNG (NGỌC CẨM THẠCH ẤM) ================= */
+  :root, html[data-mode="dark"] {
+    --bg-base: #0a0a0c;
+    --bg-header: rgba(10, 10, 12, 0.86);
+    --gold-bright: #e5c372;
+    --gold-main: #cba358;
+    --gold-muted: #9e7f43;
+    --gold-line: rgba(203, 163, 88, 0.42);
+    --gold-line-strong: rgba(229, 195, 114, 0.78);
+    --text-sub: #d7ccb8;
+    --btn-bg: rgba(12, 12, 14, 0.58);
+    --btn-hover: rgba(203, 163, 88, 0.16);
+    --orb-bg: radial-gradient(circle at 30% 30%, #25211a, #0d0c0a 75%);
+    --orb-shadow: 0 6px 22px rgba(0, 0, 0, 0.7), 0 0 12px rgba(212, 175, 55, 0.22);
+    --title-shadow: 0 4px 24px rgba(0, 0, 0, 0.65);
+  }
+
+  html[data-mode="light"] {
+    --bg-base: #f7f4ee;
+    --bg-header: rgba(247, 244, 238, 0.88);
+    --gold-bright: #8c6520;
+    --gold-main: #9e762c;
+    --gold-muted: #b08d49;
+    --gold-line: rgba(158, 118, 44, 0.34);
+    --gold-line-strong: rgba(140, 101, 32, 0.72);
+    --text-sub: #5c5243;
+    --btn-bg: rgba(255, 253, 249, 0.72);
+    --btn-hover: rgba(158, 118, 44, 0.12);
+    --orb-bg: radial-gradient(circle at 30% 30%, #ffffff, #efe8da 80%);
+    --orb-shadow: 0 8px 22px rgba(120, 92, 35, 0.16), 0 0 10px rgba(180, 140, 60, 0.18);
+    --title-shadow: 0 2px 14px rgba(255, 255, 255, 0.7);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body {
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg-base);
+    color: var(--gold-main);
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.35s ease, color 0.35s ease;
+  }
+
+  /* Thanh chuyển Tối / Sáng nổi nhẹ ở góc dưới bên trái (không che menu COLLECTIONS / THE BRAND trên đầu) */
+  .demo-floating-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 90px;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(18, 18, 22, 0.85);
+    border: 1px solid rgba(212, 175, 55, 0.48);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+  .dm-btn {
+    border: none;
+    background: transparent;
+    color: #d6c7a9;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+  }
+  .dm-btn:hover {
+    color: #ffffff;
+  }
+  .dm-btn.active {
+    background: linear-gradient(135deg, #e5c372, #b88a38);
+    color: #0e0d0a;
+    font-weight: 700;
+  }
+
+  /* ================= KHUNG CHÍNH NGUYÊN BẢN AURELIA ================= */
+  .aurelia-stage {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* LỚP NỀN ĐÁ CẨM THẠCH + DẢI LỤA VÀNG 3D (SVG NGHỆ THUẬT) */
+  .art-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .art-bg svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  html[data-mode="dark"] .svg-light { display: none; }
+  html[data-mode="light"] .svg-dark { display: none; }
+
+  /* 1. HEADER BAR */
+  .top-header {
+    position: relative;
+    z-index: 10;
+    height: 68px;
+    width: 100%;
+    border-bottom: 1px solid var(--gold-line);
+    background: var(--bg-header);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 36px 0 22px;
+  }
+  .logo-monogram {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .nav-center {
+    display: flex;
+    align-items: center;
+    gap: 44px;
+  }
+  .nav-center a {
+    text-decoration: none;
+    color: var(--gold-main);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 2.6px;
+    text-transform: uppercase;
+    transition: color 0.2s ease;
+    cursor: pointer;
+  }
+  .nav-center a:hover {
+    color: var(--gold-bright);
+  }
+  .header-icons {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    color: var(--gold-main);
+  }
+  .header-icons svg {
+    width: 17px;
+    height: 17px;
+    stroke: var(--gold-main);
+    cursor: pointer;
+    transition: stroke 0.2s ease;
+  }
+  .header-icons svg:hover {
+    stroke: var(--gold-bright);
+  }
+
+  /* 2. BODY AREA (LEFT VERTICAL BAR + SPLIT HERO) */
+  .main-body {
+    position: relative;
+    z-index: 10;
+    flex: 1;
+    display: flex;
+    width: 100%;
+  }
+
+  /* Cột dọc bên trái */
+  .left-rail {
+    width: 66px;
+    border-right: 1px solid var(--gold-line);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 0 22px 0;
+    position: relative;
+  }
+  /* Chữ xoay dọc 90 độ (Ảnh 2) */
+  .rail-vertical-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+    margin-top: 6px;
+  }
+  .rail-v-item {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 9px;
+    letter-spacing: 2.2px;
+    color: var(--gold-main);
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+  }
+  .rail-v-item:hover {
+    opacity: 1;
+    color: var(--gold-bright);
+  }
+
+  /* Ký hiệu hình học tối giản ở giữa cột trái (Ảnh 1) */
+  .rail-geo-markers {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    margin: auto 0;
+  }
+  .aurelia-stage.variant-img1 .rail-vertical-menu { display: none; }
+  .aurelia-stage.variant-img1 .rail-geo-markers { display: flex; }
+
+  .rail-socials {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .rail-socials svg {
+    width: 14px;
+    height: 14px;
+    fill: var(--gold-main);
+    opacity: 0.8;
+    cursor: pointer;
+  }
+  .rail-socials svg:hover {
+    opacity: 1;
+    fill: var(--gold-bright);
+  }
+
+  /* 3. SPLIT HERO SECTION */
+  .hero-split {
+    flex: 1;
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+  }
+
+  /* Trục chia đôi chính giữa: Đoạn kẻ trên + Hình thoi giữa + 3 chấm dưới */
+  .center-axis {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0 24px 0;
+    pointer-events: none;
+  }
+  .axis-top-line {
+    width: 1px;
+    height: 76px;
+    background: var(--gold-line);
+  }
+  .axis-diamond {
+    width: 9px;
+    height: 9px;
+    background: var(--gold-bright);
+    transform: rotate(45deg);
+    box-shadow: 0 0 10px rgba(229, 195, 114, 0.5);
+  }
+  .axis-bottom-dots {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+  .axis-bottom-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--gold-main);
+    opacity: 0.65;
+  }
+  .axis-bottom-dots span:first-child {
+    opacity: 1;
+    background: var(--gold-bright);
+  }
+
+  /* Nội dung Nửa Trái & Nửa Phải */
+  .hero-col {
+    padding: 0 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .hero-col.right-col {
+    padding-left: 78px;
+  }
+
+  .serif-heading-spaced {
+    font-family: "Cormorant Garamond", "Playfair Display", "Times New Roman", Georgia, serif;
+    font-size: 46px;
+    font-weight: 400;
+    letter-spacing: 14px;
+    color: var(--gold-bright);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    text-shadow: var(--title-shadow);
+    white-space: nowrap;
+  }
+  .serif-heading-stacked {
+    font-family: "Cormorant Garamond", "Playfair Display", "Times New Roman", Georgia, serif;
+    font-size: 46px;
+    font-weight: 400;
+    line-height: 1.14;
+    letter-spacing: 3px;
+    color: var(--gold-bright);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    text-shadow: var(--title-shadow);
+  }
+  .hero-subtitle {
+    font-size: 13.5px;
+    font-weight: 400;
+    color: var(--text-sub);
+    letter-spacing: 0.5px;
+    margin-bottom: 28px;
+  }
+  .luxury-cta {
+    background: var(--btn-bg);
+    border: 1px solid var(--gold-line-strong);
+    color: var(--gold-bright);
+    padding: 12px 28px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  }
+  .luxury-cta:hover {
+    background: var(--btn-hover);
+    box-shadow: 0 0 18px rgba(203, 163, 88, 0.22);
+  }
+  .luxury-cta:active {
+    transform: scale(0.97);
+  }
+
+  /* 4. CỤM 3 BONG BÓNG NỔI GÓC DƯỚI PHẢI (AI ROBOT, MESSENGER, ZALO - ẢNH 2) */
+  .floating-orbs {
+    position: absolute;
+    right: 54px;
+    bottom: 28px;
+    z-index: 25;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+  }
+  .aurelia-stage.variant-img1 .floating-orbs {
+    display: none;
+  }
+  .gold-orb {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: var(--orb-bg);
+    border: 1.5px solid var(--gold-bright);
+    box-shadow: var(--orb-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    position: relative;
+  }
+  .gold-orb:hover {
+    transform: translateY(-2px) scale(1.04);
+  }
+  .gold-orb svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* 3 icon nhỏ sát mép phải dưới cùng (X, YouTube, Audio/Grid) */
+  .right-edge-mini {
+    position: absolute;
+    right: 18px;
+    bottom: 26px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+  }
+  .right-edge-mini svg {
+    width: 13px;
+    height: 13px;
+    fill: var(--gold-main);
+    opacity: 0.75;
+    cursor: pointer;
+  }
+  .right-edge-mini svg:hover {
+    opacity: 1;
+    fill: var(--gold-bright);
+  }
+</style>
+</head>
+<body>
+  <!-- Thanh chuyển đổi nhanh Tối / Sáng & 2 Phiên bản Ảnh -->
+  <div class="demo-floating-bar">
+    <button class="dm-btn active" id="btn_dark" onclick="setMode('dark')">🌙 Giao diện Tối (Đen & Vàng Gold)</button>
+    <button class="dm-btn" id="btn_light" onclick="setMode('light')">☀️ Giao diện Sáng (Ngọc Trắng & Gold)</button>
+    <button class="dm-btn" id="btn_var" onclick="toggleImgVariant()">⇄ Đổi Ảnh 2 (Có Bong bóng) / Ảnh 1</button>
+  </div>
+
+  <div class="aurelia-stage" id="aurelia_stage">
+    <!-- LỚP NỀN ĐÁ CẨM THẠCH & LỤA VÀNG 3D -->
+    <div class="art-bg">
+      <!-- SVG NỀN TỐI (ĐEN CẨM THẠCH + LỤA VÀNG KIM) -->
+      <svg class="svg-dark" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <radialGradient id="dk_bg" cx="35%" cy="45%" r="75%">
+            <stop offset="0%" stop-color="#17181c" />
+            <stop offset="55%" stop-color="#0d0e11" />
+            <stop offset="100%" stop-color="#070709" />
+          </radialGradient>
+          <linearGradient id="dk_gold_rib1" x1="100%" y1="0%" x2="25%" y2="100%">
+            <stop offset="0%" stop-color="#473314" />
+            <stop offset="28%" stop-color="#d4af5a" />
+            <stop offset="48%" stop-color="#f3dca2" />
+            <stop offset="68%" stop-color="#9e742b" />
+            <stop offset="100%" stop-color="#120f0a" />
+          </linearGradient>
+          <linearGradient id="dk_gold_rib2" x1="90%" y1="10%" x2="35%" y2="95%">
+            <stop offset="0%" stop-color="#17130d" />
+            <stop offset="40%" stop-color="#8b6523" />
+            <stop offset="65%" stop-color="#e2be6e" />
+            <stop offset="100%" stop-color="#0b0a08" />
+          </linearGradient>
+          <linearGradient id="dk_dark_wave" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1b1c20" />
+            <stop offset="50%" stop-color="#0c0d10" />
+            <stop offset="100%" stop-color="#060608" />
+          </linearGradient>
+        </defs>
+        <rect width="1600" height="900" fill="url(#dk_bg)" />
+        <!-- Vân đá cẩm thạch mảnh bên trái -->
+        <g stroke="rgba(255,255,255,0.04)" stroke-width="1.2" fill="none">
+          <path d="M 80,0 C 190,180 140,340 290,510 C 380,620 260,780 340,900" />
+          <path d="M 0,220 C 160,260 270,190 430,310 C 550,400 490,620 640,760" />
+          <path d="M 240,0 C 310,140 460,210 520,390" stroke="rgba(212,175,85,0.06)" />
+        </g>
+        <!-- Dải lụa 3D Vàng Gold uốn lượn từ góc phải trên xuống giữa dưới -->
+        <path d="M 1600,0 L 1180,0 C 1020,210 1190,460 920,690 C 760,820 560,860 440,900 L 1600,900 Z" fill="url(#dk_dark_wave)" />
+        <path d="M 1600,-40 C 1340,80 1280,360 1040,560 C 830,730 620,790 430,900 L 790,900 C 980,770 1180,580 1390,340 C 1490,220 1560,90 1600,-40 Z" fill="url(#dk_gold_rib1)" opacity="0.92" />
+        <path d="M 1600,240 C 1420,390 1290,610 1030,740 C 860,825 710,865 550,900 L 940,900 C 1160,810 1380,640 1600,430 Z" fill="url(#dk_gold_rib2)" opacity="0.88" />
+        <path d="M 1600,490 C 1440,640 1260,790 980,900 L 1600,900 Z" fill="url(#dk_dark_wave)" opacity="0.95" />
+      </svg>
+
+      <!-- SVG NỀN SÁNG (NGỌC TRẮNG CARRARA + LỤA VÀNG CHAMPAGNE) -->
+      <svg class="svg-light" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <radialGradient id="lt_bg" cx="35%" cy="45%" r="75%">
+            <stop offset="0%" stop-color="#fdfbf7" />
+            <stop offset="60%" stop-color="#f5f0e6" />
+            <stop offset="100%" stop-color="#ebe3d5" />
+          </radialGradient>
+          <linearGradient id="lt_gold_rib1" x1="100%" y1="0%" x2="25%" y2="100%">
+            <stop offset="0%" stop-color="#d8be86" />
+            <stop offset="35%" stop-color="#f3e3be" />
+            <stop offset="55%" stop-color="#fff8e8" />
+            <stop offset="80%" stop-color="#c9a55c" />
+            <stop offset="100%" stop-color="#e8decb" />
+          </linearGradient>
+          <linearGradient id="lt_gold_rib2" x1="90%" y1="10%" x2="35%" y2="95%">
+            <stop offset="0%" stop-color="#efe7d6" />
+            <stop offset="45%" stop-color="#d2b06a" />
+            <stop offset="70%" stop-color="#f7ebd0" />
+            <stop offset="100%" stop-color="#e5dac5" />
+          </linearGradient>
+          <linearGradient id="lt_pearl_wave" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#faf6ee" />
+            <stop offset="50%" stop-color="#efe8da" />
+            <stop offset="100%" stop-color="#e2d8c5" />
+          </linearGradient>
+        </defs>
+        <rect width="1600" height="900" fill="url(#lt_bg)" />
+        <!-- Vân đá cẩm thạch trắng ngà nhẹ nhàng -->
+        <g stroke="rgba(158,118,44,0.08)" stroke-width="1.2" fill="none">
+          <path d="M 80,0 C 190,180 140,340 290,510 C 380,620 260,780 340,900" />
+          <path d="M 0,220 C 160,260 270,190 430,310 C 550,400 490,620 640,760" />
+          <path d="M 240,0 C 310,140 460,210 520,390" />
+        </g>
+        <!-- Dải lụa 3D Champagne & Ngọc trai -->
+        <path d="M 1600,0 L 1180,0 C 1020,210 1190,460 920,690 C 760,820 560,860 440,900 L 1600,900 Z" fill="url(#lt_pearl_wave)" />
+        <path d="M 1600,-40 C 1340,80 1280,360 1040,560 C 830,730 620,790 430,900 L 790,900 C 980,770 1180,580 1390,340 C 1490,220 1560,90 1600,-40 Z" fill="url(#lt_gold_rib1)" />
+        <path d="M 1600,240 C 1420,390 1290,610 1030,740 C 860,825 710,865 550,900 L 940,900 C 1160,810 1380,640 1600,430 Z" fill="url(#lt_gold_rib2)" opacity="0.9" />
+        <path d="M 1600,490 C 1440,640 1260,790 980,900 L 1600,900 Z" fill="url(#lt_pearl_wave)" opacity="0.92" />
+      </svg>
+    </div>
+
+    <!-- 1. THANH HEADER TRÊN CÙNG -->
+    <header class="top-header">
+      <div class="logo-monogram" title="AURELIA">
+        <svg viewBox="0 0 40 40" width="34" height="34" fill="none">
+          <path d="M20 4 L33 35 H28.5 L24.5 25.5 H14.5 C11.5 31 9.5 34.5 7 35 C10.5 29.5 14.5 18 20 4 Z" fill="var(--gold-bright)" />
+          <path d="M16 22 H23 L19.5 12.5 L16 22 Z" fill="var(--bg-base)" />
+        </svg>
+      </div>
+
+      <nav class="nav-center">
+        <a>COLLECTIONS</a>
+        <a>THE BRAND</a>
+        <a>JOURNAL</a>
+        <a>CONTACT</a>
+      </nav>
+
+      <div class="header-icons">
+        <!-- Search icon -->
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="16.5" y1="16.5" x2="21" y2="21" />
+        </svg>
+        <!-- Shopping bag icon -->
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6">
+          <path d="M6 7h12l1 13H5L6 7z" />
+          <path d="M9 7V5a3 3 0 0 1 6 0v2" />
+        </svg>
+      </div>
+    </header>
+
+    <!-- 2. PHẦN THÂN (CỘT DỌC TRÁI + HERO CHIA ĐÔI) -->
+    <div class="main-body">
+      <!-- Cột dọc bên trái -->
+      <aside class="left-rail">
+        <!-- Menu chữ dọc (Ảnh 2) -->
+        <div class="rail-vertical-menu">
+          <span class="rail-v-item">CONTACT</span>
+          <span class="rail-v-item">GALLERY</span>
+          <span class="rail-v-item">JOURNAL</span>
+          <span class="rail-v-item">THE BRAND</span>
+          <span class="rail-v-item">COLLECTIONS</span>
+          <span class="rail-v-item">HOME</span>
+        </div>
+
+        <!-- Ký hiệu hình học giữa cột (Ảnh 1) -->
+        <div class="rail-geo-markers">
+          <span style="width:6px; height:6px; border-radius:50%; background:var(--gold-bright);"></span>
+          <span style="width:7px; height:7px; background:var(--gold-main); transform:rotate(45deg);"></span>
+          <span style="width:4px; height:4px; border-radius:50%; background:var(--gold-muted);"></span>
+        </div>
+
+        <!-- 3 icon mạng xã hội dưới đáy cột trái -->
+        <div class="rail-socials">
+          <!-- Facebook -->
+          <svg viewBox="0 0 24 24"><path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.326-.043-1.557-.14-2.857-.14C11.928 2 10 3.657 10 6.7v2.8H7v4h3V22h4v-8.5z"/></svg>
+          <!-- Instagram -->
+          <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0 3.675a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zm0 10.162a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          <!-- Node / Share -->
+          <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
+        </div>
+      </aside>
+
+      <!-- Vùng Hero Chia Đôi -->
+      <main class="hero-split">
+        <!-- Trục trang trí chính giữa -->
+        <div class="center-axis">
+          <div class="axis-top-line"></div>
+          <div class="axis-diamond"></div>
+          <div class="axis-bottom-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+
+        <!-- Khối Nội Dung Bên Trái -->
+        <section class="hero-col left-col">
+          <h1 class="serif-heading-spaced">AURELIA</h1>
+          <p class="hero-subtitle">An exquisite experience of timeless design</p>
+          <button class="luxury-cta">EXPLORE NOW</button>
+        </section>
+
+        <!-- Khối Nội Dung Bên Phải -->
+        <section class="hero-col right-col">
+          <h2 class="serif-heading-stacked">THE ART OF<br/>MINIMALISM</h2>
+          <p class="hero-subtitle">Nơi sự tối giản gặp gỡ vẻ đẹp vĩnh cửu</p>
+          <button class="luxury-cta">KHÁM PHÁ NGAY</button>
+        </section>
+      </main>
+
+      <!-- 3 Bong Bóng Nổi Góc Dưới Phải (AI Robot, Messenger, Zalo - Nguyên bản Ảnh 2) -->
+      <div class="floating-orbs">
+        <!-- 1. AI Robot Orb -->
+        <div class="gold-orb" title="Trợ lý AI">
+          <svg viewBox="0 0 36 36" fill="none">
+            <line x1="18" y1="5" x2="18" y2="9" stroke="var(--gold-bright)" stroke-width="1.8" />
+            <circle cx="18" cy="4" r="2" fill="var(--gold-bright)" />
+            <rect x="8" y="9" width="20" height="16" rx="5" stroke="var(--gold-bright)" stroke-width="1.8" />
+            <rect x="12" y="14" width="4" height="3.5" rx="1" fill="var(--gold-bright)" />
+            <rect x="20" y="14" width="4" height="3.5" rx="1" fill="var(--gold-bright)" />
+            <path d="M14 21 H22" stroke="var(--gold-bright)" stroke-width="1.6" stroke-linecap="round" />
+            <path d="M11 28 C13 26 23 26 25 28" stroke="var(--gold-bright)" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+        </div>
+
+        <!-- 2. Facebook Messenger Orb -->
+        <div class="gold-orb" title="Facebook Messenger">
+          <svg viewBox="0 0 36 36" fill="none">
+            <path d="M18 6C11.1 6 5.5 11.1 5.5 17.4c0 3.6 1.8 6.8 4.6 8.9V31l4.4-2.4c1.1.3 2.3.5 3.5.5 6.9 0 12.5-5.1 12.5-11.4S24.9 6 18 6z" fill="var(--gold-bright)" />
+            <path d="M10.8 20.6l5.1-5.4 2.6 2.7 4.8-2.7-5.1 5.4-2.5-2.7-4.9 2.7z" fill="var(--bg-base)" />
+          </svg>
+        </div>
+
+        <!-- 3. Zalo Orb -->
+        <div class="gold-orb" title="Zalo">
+          <svg viewBox="0 0 36 36" fill="none">
+            <path d="M18 6C11.1 6 5.5 11.1 5.5 17.4c0 3.6 1.8 6.8 4.6 8.9V31l4.4-2.4c1.1.3 2.3.5 3.5.5 6.9 0 12.5-5.1 12.5-11.4S24.9 6 18 6z" fill="var(--gold-bright)" />
+            <text x="18" y="20.5" text-anchor="middle" fill="var(--bg-base)" font-family="Segoe UI, sans-serif" font-weight="800" font-size="9.5">zalo</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 3 Icon nhỏ sát mép phải dưới cùng -->
+      <div class="right-edge-mini">
+        <!-- X / Twitter -->
+        <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        <!-- YouTube -->
+        <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+        <!-- Audio Equalizer bars -->
+        <svg viewBox="0 0 24 24"><path d="M4 9h2v11H4zm5-5h2v16H9zm5 8h2v8h-2zm5-4h2v12h-2z"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function setMode(m) {
+      document.documentElement.setAttribute("data-mode", m);
+      document.getElementById("btn_dark").classList.toggle("active", m === "dark");
+      document.getElementById("btn_light").classList.toggle("active", m === "light");
+    }
+    function toggleImgVariant() {
+      var st = document.getElementById("aurelia_stage");
+      st.classList.toggle("variant-img1");
+    }
+    if (window.location.search.indexOf("mode=light") !== -1) {
+      setMode("light");
+    }
+  </script>
+</body>
+</html>

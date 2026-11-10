@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-11-10T16:39:28.463Z",
+  "specification": {
+    "path": "D:\\Projects_Hermes\\TPbrowser\\.ai\\cache\\arch_candidate.json",
+    "sha256": "fd383459fcf32223f20b951a915baee5bc20d87fa08755737ef871901685b414",
+    "bytes": 2172
+  },
+  "artifact": {
+    "path": "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.html"
+  },
+  "stages": {
+    "validate": {
+      "status": "not-run",
+      "execution": "embedded-in-deliver"
+    },
+    "deliver": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": 132,
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Users\\thien\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "architecture",
+        "D:\\Projects_Hermes\\TPbrowser\\.ai\\cache\\arch_candidate.json",
+        "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "deliver",
+        "receiptId": "f4e97412-0733-4b3e-85c1-7d492ce48839",
+        "stage": "prepare",
+        "type": "architecture",
+        "input": "D:\\Projects_Hermes\\TPbrowser\\.ai\\cache\\arch_candidate.json",
+        "output": "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.html",
+        "error": "meta.output must be a portable POSIX-relative path.",
+        "diagnostics": [
+          {
+            "severity": "error",
+            "subject": {
+              "path": "/meta/output"
+            },
+            "evidence": {
+              "reason": "type"
+            },
+            "supportedFixes": [
+              "set meta.output to a portable relative .html path such as reports/diagram.html"
+            ],
+            "code": "output/meta-path-syntax",
+            "message": "meta.output must be a portable POSIX-relative path."
+          }
+        ]
+      }
+    }
+  },
+  "browserCheck": {
+    "requested": true,
+    "ran": false
+  },
+  "diagnostics": [
+    {
+      "severity": "error",
+      "subject": {
+        "path": "/meta/output"
+      },
+      "evidence": {
+        "reason": "type"
+      },
+      "supportedFixes": [
+        "set meta.output to a portable relative .html path such as reports/diagram.html"
+      ],
+      "code": "output/meta-path-syntax",
+      "message": "meta.output must be a portable POSIX-relative path."
+    }
+  ],
+  "evidence": {
+    "receipt": "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.finalize.json",
+    "summaryReceipt": "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "deliver",
+  "finishedAt": "2026-11-10T16:39:28.786Z",
+  "durationMs": 322,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-10T12:18:22.151Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

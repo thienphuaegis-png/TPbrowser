@@ -1,0 +1,76 @@
+{
+  "project": "TPbrowser",
+  "version": "0.1.0",
+  "git_commit": "9874a28",
+  "updated_at": "2026-11-10 23:39:30",
+  "codegraph_ast": {
+    "files": 5,
+    "nodes": 130,
+    "edges": 440
+  },
+  "codegraph_commands": {
+    "callers": "codegraph callers <symbol>",
+    "callees": "codegraph callees <symbol>",
+    "impact": "codegraph impact <symbol>"
+  },
+  "architecture_layers": [
+    {
+      "layer": "1. Rust Native Shell & Multi-WebView Orchestrator",
+      "files": [
+        "src/main.rs",
+        "src/layout.rs"
+      ],
+      "responsibility": "Win32 window management (tao), 3-region WebView2 layout (tab_shell, content tabs, ai_shell), MV3 uBlock Origin Lite extension loader, popunder blocker, and JSON IPC router."
+    },
+    {
+      "layer": "2. AURELIA Minimalist & Calm UI Surfaces",
+      "files": [
+        "src/newtab.html",
+        "src/tab_shell.html",
+        "src/ai_panel.html"
+      ],
+      "responsibility": "AURELIA Dark (Obsidian Marble & Gold) & Light (Carrara Marble & Champagne Gold) start page with 3 floating orbs (AI, Messenger, Zalo), Hover-Reveal tab bar, and AI Cowork panel."
+    },
+    {
+      "layer": "3. Content Agent, Skill Recorder & 3-Layer Ad Shield",
+      "files": [
+        "src/content_agent.js",
+        "skills/skills.json",
+        "extensions/uBOLite.chromium/manifest.json"
+      ],
+      "responsibility": "DOM context extraction, 3-tier element locator, live user interaction recorder (__tpRecordingSkill), anti-adblock 0px CSS shield, and YouTube 16x auto-skipper."
+    }
+  ],
+  "guided_tour": [
+    {
+      "step": 1,
+      "file": "src/layout.rs",
+      "symbol": "compute_shell_layout",
+      "note": "Computes exact rectangles for Vertical/Horizontal tabs, BSP split views, and Right AI Dock vs Bubble mode."
+    },
+    {
+      "step": 2,
+      "file": "src/main.rs",
+      "symbol": "TpBrowserApp::handle_cmd",
+      "note": "Central IPC command dispatcher linking tab_shell, newtab, ai_panel, and content tabs."
+    },
+    {
+      "step": 3,
+      "file": "src/newtab.html",
+      "symbol": "__tpSyncNewTab",
+      "note": "AURELIA Dark & Light luxury minimalist start page with 3D gold silk SVG and floating AI/Messenger/Zalo orbs."
+    },
+    {
+      "step": 4,
+      "file": "src/ai_panel.html",
+      "symbol": "triggerCoworkTask",
+      "note": "Executes AI Cowork tasks with domain-scoped skills and auto-minimizes into floating bubble."
+    },
+    {
+      "step": 5,
+      "file": "src/content_agent.js",
+      "symbol": "runActiveAdCleanerAndSkipper",
+      "note": "3-layer ad shield for movie streaming sites and YouTube video ads."
+    }
+  ]
+}

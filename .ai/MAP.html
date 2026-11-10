@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>TPbrowser — Interactive Project Map (.ai/MAP.html)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0e0f12;
+    color: #f3efe6;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    padding: 24px 32px;
+    line-height: 1.5;
+  }
+  .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.28);
+    margin-bottom: 20px;
+  }
+  h1 {
+    font-size: 20px;
+    color: #e5c372;
+    letter-spacing: 1px;
+  }
+  .btn {
+    background: #181b22;
+    border: 1px solid rgba(212, 175, 55, 0.45);
+    color: #e5c372;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn:hover { background: rgba(212, 175, 55, 0.16); }
+  .grid {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 20px;
+  }
+  .card {
+    background: #16181d;
+    border: 1px solid rgba(212, 175, 55, 0.22);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .card h2 {
+    font-size: 14px;
+    color: #e5c372;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  pre.tree {
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    color: #d6c7a9;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .filters {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .f-btn {
+    background: #0e0f12;
+    border: 1px solid rgba(212, 175, 55, 0.25);
+    color: #a8a296;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .f-btn.active {
+    background: #d4af37;
+    color: #0e0f12;
+    font-weight: 700;
+  }
+  .task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(212, 175, 55, 0.14);
+    border-radius: 9px;
+    margin-bottom: 8px;
+    background: #0e0f12;
+  }
+  .task-cat {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(212, 175, 55, 0.16);
+    color: #e5c372;
+  }
+  .task-title { font-size: 13px; font-weight: 600; color: #f3efe6; }
+  .task-note { font-size: 11.5px; color: #a8a296; margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div class="top-bar">
+    <div>
+      <h1>TPbrowser — Bản Đồ Kiến Trúc & Tiến Độ Dự Án</h1>
+      <div style="font-size:12px; color:#a8a296;">Version: <span id="ver_lbl"></span> • Thư mục: D:\Projects_Hermes\TPbrowser</div>
+    </div>
+    <button class="btn" onclick="exportMarkdown()">⬇ Export sang Markdown (.md)</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Cây Thư Mục Cốt Lõi</h2>
+      <pre class="tree">TPbrowser/
+├── AGENTS.md & CLAUDE.md
+├── Cargo.toml
+├── CAP_NHAT_CHECKPOINT.bat
+├── CHAY_TPBROWSER.bat
+├── src/
+│   ├── main.rs          (Win32 + WebView2 + IPC)
+│   ├── layout.rs        (Bố cục Tab Dọc/Ngang + BSP)
+│   ├── newtab.html      (AURELIA Tối & Sáng + 3 Orbs)
+│   ├── tab_shell.html   (Thanh Tab Hover-Reveal)
+│   ├── ai_panel.html    (Trợ lý AI + Tự học Skill)
+│   └── content_agent.js (Bong bóng + Adblock 3 lớp)
+├── skills/
+│   └── skills.json      (Sổ tay Skill theo domain)
+├── extensions/
+│   └── uBOLite.chromium (uBlock Origin Lite + ABPVN)
+├── scripts/
+│   └── generate_checkpoint.py
+├── tests/
+│   └── test_checkpoint_integrity.py
+└── .ai/
+    ├── STATE.md & MAP.html
+    └── checkpoints/
+        ├── PROJECT_STATE.json
+        └── diagrams/tpbrowser_architecture.html</pre>
+    </div>
+
+    <div class="card">
+      <h2>Danh Sách Hạng Mục (Checklist Tương Tác)</h2>
+      <div class="filters">
+        <button class="f-btn active" data-cat="ALL" onclick="filterTasks('ALL', this)">Tất cả</button>
+        <button class="f-btn" data-cat="UI" onclick="filterTasks('UI', this)">UI / AURELIA</button>
+        <button class="f-btn" data-cat="AI" onclick="filterTasks('AI', this)">AI Cowork & Skill</button>
+        <button class="f-btn" data-cat="ADBLOCK" onclick="filterTasks('ADBLOCK', this)">Chặn Quảng Cáo</button>
+        <button class="f-btn" data-cat="CORE" onclick="filterTasks('CORE', this)">Nhân Rust & Tab</button>
+      </div>
+      <div id="task_list"></div>
+    </div>
+  </div>
+
+  <script>
+    const ROADMAP_VERSION = "v0.2-2026-11-10-aurelia-ui";
+    const DEFAULT_TASKS = [
+      { id: "t1", cat: "UI", title: "Giao diện AURELIA (Giao diện Tối Đen Vàng Gold & Sáng Ngọc Trắng)", done: true, note: "Dựng nguyên bản 2 ảnh mẫu AURELIA với dải lụa 3D SVG, trục kim cương và 3 bong bóng Vàng Gold (AI, Messenger, Zalo) trong src/newtab.html." },
+      { id: "t2", cat: "UI", title: "Thanh Tab & Ngăn Trợ lý AI tối giản thoáng mắt (Hover Reveal)", done: true, note: "Đồng bộ bảng màu Đen + Vàng Gold (obsidian-gold) & Sáng, ẩn gọn nút điều hướng phụ và nút đóng tab × khi chưa rê chuột." },
+      { id: "t3", cat: "ADBLOCK", title: "Tích hợp Extension uBlock Origin Lite (MV3) + Bộ lọc tiếng Việt ABPVN", done: true, note: "Nạp trực tiếp vào WebView2 qua with_browser_extensions_enabled(true), bật sẵn vie-1 (ABPVN List) và annoyances." },
+      { id: "t4", cat: "ADBLOCK", title: "Bộ lọc Quảng cáo 3 Lớp Nội Tại (Web Phim & YouTube Auto-Skip 16x)", done: true, note: "Chặn window.open popunder cá cược, ép CSS 0px chống Anti-Adblock trên animevietsub.best và tự tua 16x + bấm Skip quảng cáo YouTube." },
+      { id: "t5", cat: "AI", title: "Hệ thống Tự học Skill kép (Dạy bằng lời + Nút Làm mẫu Record 1 lần)", done: true, note: "Lưu skills/skills.json theo tên miền, tự thu gọn sang bong bóng khi ghi mẫu click/input." },
+      { id: "t6", cat: "AI", title: "Chuẩn hóa Endpoint OpenAI/9Router (/v1) & Nút Test Key trực tiếp", done: true, note: "Tự nối /v1 cho cổng 127.0.0.1:8045 và kiểm tra kết nối sống với model gemini-3.8-flash." },
+      { id: "t7", cat: "CORE", title: "Tách công cụ cào đơn cũ sang shopee-scraper & Xây dựng nhân TPbrowser", done: true, note: "Đổi tên zen-rust-bsp -> shopee-scraper; xây dựng TPbrowser hỗ trợ Tab Dọc/Ngang, Chia khung BSP và Quản lý bằng Google Account." },
+      { id: "t8", cat: "UI", title: "Thêm phím tắt mở nhanh khay COLLECTIONS (Bookmarks) trên mọi trang", done: false, note: "Dự kiến gắn phím tắt Alt+B để bật nhanh khay Collections." }
+    ];
+
+    document.getElementById("ver_lbl").textContent = ROADMAP_VERSION;
+    let currentFilter = "ALL";
+    let tasks = JSON.parse(localStorage.getItem("tp_tasks_" + ROADMAP_VERSION) || "null") || DEFAULT_TASKS;
+
+    function saveTasks() {
+      localStorage.setItem("tp_tasks_" + ROADMAP_VERSION, JSON.stringify(tasks));
+    }
+
+    function filterTasks(cat, btn) {
+      currentFilter = cat;
+      document.querySelectorAll(".f-btn").forEach(b => b.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      renderTasks();
+    }
+
+    function toggleTask(idx) {
+      tasks[idx].done = !tasks[idx].done;
+      saveTasks();
+      renderTasks();
+    }
+
+    function renderTasks() {
+      const box = document.getElementById("task_list");
+      box.innerHTML = tasks
+        .map((t, i) => ({ t, i }))
+        .filter(x => currentFilter === "ALL" || x.t.cat === currentFilter)
+        .map(({ t, i }) => `
+          <div class="task-item">
+            <input type="checkbox" ${t.done ? "checked" : ""} onchange="toggleTask(${i})" style="margin-top:4px; cursor:pointer;" />
+            <div>
+              <div><span class="task-cat">${t.cat}</span> <span class="task-title">${t.title}</span></div>
+              <div class="task-note">${t.note}</div>
+            </div>
+          </div>
+        `).join("");
+    }
+    renderTasks();
+
+    function exportMarkdown() {
+      const lines = ["# TPbrowser Roadmap (" + ROADMAP_VERSION + ")", ""];
+      tasks.forEach(t => {
+        lines.push(`- [${t.done ? "x" : " "}] **[${t.cat}] ${t.title}** — ${t.note}`);
+      });
+      const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "TPBROWSER_MAP.md";
+      a.click();
+    }
+  </script>
+</body>
+</html>

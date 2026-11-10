@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="obsidian-gold">
+<head>
+<meta charset="UTF-8" />
+<title>TPbrowser AI Cowork Panel</title>
+<style>
+
+  :root, html[data-theme="obsidian-gold"] {
+    color-scheme: dark;
+    --bg-main: #0E0F12;
+    --bg-side: #13151A;
+    --bg-card: #181B22;
+    --bg-subtle: #222630;
+    --text-primary: #F3EFE6;
+    --text-secondary: #A8A296;
+    --text-muted: #6E6A61;
+    --accent: #D4AF37;
+    --accent-fg: #0E0F12;
+    --accent-soft: rgba(212, 175, 55, 0.14);
+    --accent-text: #E5C158;
+    --border-col: rgba(212, 175, 55, 0.18);
+    --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.45);
+    --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.3);
+  }
+  html[data-theme="warm-paper"] {
+    color-scheme: light;
+    --bg-main: #FAF8F5;
+    --bg-side: #F3EFEA;
+    --bg-card: #FFFFFF;
+    --bg-subtle: #EAE4DC;
+    --text-primary: #2C302E;
+    --text-secondary: #6E7571;
+    --text-muted: #949B96;
+    --accent: #4A7C59;
+    --accent-fg: #FFFFFF;
+    --accent-soft: #E8F0EB;
+    --accent-text: #2F573B;
+    --border-col: rgba(44, 48, 46, 0.08);
+    --shadow-card: 0 10px 32px rgba(44, 48, 46, 0.05);
+    --shadow-soft: 0 2px 10px rgba(44, 48, 46, 0.04);
+  }
+  html[data-theme="airy-cloud"] {
+    color-scheme: light;
+    --bg-main: #F8FAFC;
+    --bg-side: #F1F5F9;
+    --bg-card: #FFFFFF;
+    --bg-subtle: #E2E8F0;
+    --text-primary: #1E293B;
+    --text-secondary: #64748B;
+    --text-muted: #94A3B8;
+    --accent: #3B82F6;
+    --accent-fg: #FFFFFF;
+    --accent-soft: #EFF6FF;
+    --accent-text: #1D4ED8;
+    --border-col: rgba(15, 23, 42, 0.07);
+    --shadow-card: 0 10px 32px rgba(15, 23, 42, 0.04);
+    --shadow-soft: 0 2px 10px rgba(15, 23, 42, 0.03);
+  }
+  html[data-theme="zen-sand"] {
+    color-scheme: light;
+    --bg-main: #F5F2EB;
+    --bg-side: #EBE6DC;
+    --bg-card: #FAF8F3;
+    --bg-subtle: #E2DDD2;
+    --text-primary: #2D2A26;
+    --text-secondary: #6B655E;
+    --text-muted: #968F85;
+    --accent: #52796F;
+    --accent-fg: #FFFFFF;
+    --accent-soft: #E3ECE9;
+    --accent-text: #354F52;
+    --border-col: rgba(45, 42, 38, 0.09);
+    --shadow-card: 0 8px 28px rgba(45, 42, 38, 0.05);
+    --shadow-soft: 0 2px 8px rgba(45, 42, 38, 0.04);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-side);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-size: 12px;
+    border-left: 1px solid var(--border-col);
+    display: flex;
+    flex-direction: column;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .ai-header {
+    padding: 12px 12px 10px 12px;
+    background: var(--bg-side);
+    border-bottom: 1px solid var(--border-col);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+  .ai-title-box {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+  }
+  .ai-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .ai-dot.working {
+    background: #f59e0b;
+  }
+  .ai-title {
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--accent-text);
+    letter-spacing: -0.2px;
+    white-space: nowrap;
+  }
+  .hdr-btns {
+    display: flex;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+  .hdr-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    color: var(--text-secondary);
+    padding: 3px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+  .hdr-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+  }
+  .hdr-btn.bubble-btn {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .hdr-btn.rec-btn.active {
+    background: #ef4444;
+    color: #ffffff;
+    border-color: #ef4444;
+  }
+
+  #skills_drawer, #settings_drawer {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-col);
+    padding: 12px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  #skills_drawer.open, #settings_drawer.open { display: flex; }
+
+  .skill-card {
+    background: var(--bg-main);
+    border: 1px solid var(--border-col);
+    border-radius: 9px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .skill-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .skill-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text-primary);
+  }
+  .skill-domain {
+    font-size: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    border-radius: 999px;
+    padding: 1px 6px;
+    color: var(--text-secondary);
+  }
+  .skill-notes {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .skill-steps-badge {
+    font-size: 10px;
+    color: var(--accent-text);
+  }
+
+  .st-row label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+  }
+  .st-row select, .st-row input[type="text"], .st-row input[type="password"] {
+    width: 100%;
+    border: 1px solid var(--border-col);
+    background: var(--bg-main);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 6px 9px;
+    font-size: 11.5px;
+    outline: none;
+  }
+  .chk-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding-top: 2px;
+  }
+  .st-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 4px;
+  }
+  .key-status {
+    font-size: 11px;
+    color: var(--accent-text);
+  }
+
+  /* Context & Quick Actions (Hover Reveal cho các chip phụ để thoáng mắt) */
+  .context-bar {
+    padding: 8px 12px;
+    background: var(--bg-side);
+    border-bottom: 1px solid var(--border-col);
+  }
+  .ctx-line {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ctx-line b {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .quick-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 7px;
+  }
+  .q-chip {
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+  .q-chip:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+  }
+
+  /* Chat Stream */
+  #chat_stream {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--bg-side);
+  }
+  .msg {
+    padding: 10px 12px;
+    border: 1px solid var(--border-col);
+    border-radius: 12px;
+    line-height: 1.5;
+    font-size: 12px;
+    word-break: break-word;
+  }
+  .msg.user {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+    align-self: flex-end;
+    max-width: 90%;
+    font-weight: 500;
+  }
+  .msg.ai {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    align-self: flex-start;
+    max-width: 95%;
+  }
+  .msg.sys, .msg.skill-learned {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--border-col);
+    font-size: 11.5px;
+  }
+
+  /* Footer Input */
+  .ai-footer {
+    padding: 10px 12px;
+    background: var(--bg-side);
+    border-top: 1px solid var(--border-col);
+  }
+  .auto-min-bar { margin-bottom: 6px; }
+  .prompt-form {
+    display: flex;
+    gap: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    border-radius: 11px;
+    padding: 4px 5px 4px 11px;
+    align-items: center;
+  }
+  .prompt-form:focus-within {
+    border-color: var(--accent);
+  }
+  .prompt-form input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 5px 0;
+    outline: none;
+  }
+  .prompt-form input::placeholder {
+    color: var(--text-muted);
+  }
+  .prompt-form button {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none;
+    border-radius: 8px;
+    padding: 6px 13px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="ai-header">
+    <div class="ai-title-box">
+      <div class="ai-dot" id="ai_status_dot"></div>
+      <span class="ai-title">Trợ lý AI</span>
+    </div>
+    <div class="hdr-btns">
+      <button class="hdr-btn rec-btn" id="btn_record_skill" onclick="toggleSkillRecording()" title="Bấm để tự thao tác mẫu 1 lần trên trang web cho AI học thành Skill">Làm mẫu</button>
+      <button class="hdr-btn skill-btn" id="btn_skills_drawer" onclick="toggleSkillsDrawer()" title="Danh sách các Skill AI đã học">Skills (0)</button>
+      <button class="hdr-btn" onclick="toggleSettingsDrawer()" title="Tự thêm API Key của người dùng">Key</button>
+      <button class="hdr-btn bubble-btn" onclick="sendRust({cmd:'set_ai_mode', mode:'bubble'})" title="Thu nhỏ thành Bong bóng chat nổi (vẫn hoạt động ngầm)">Thu gọn</button>
+    </div>
+  </div>
+
+  <!-- NGĂN QUẢN LÝ & LƯU SKILL (DẠY BẰNG LỜI + LÀM MẪU RECORD) -->
+  <div id="skills_drawer">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <b style="font-size:12px;">📚 SỔ TAY KỸ NĂNG (SKILLS ĐÃ HỌC)</b>
+      <button class="hdr-btn" onclick="openNewSkillForm()">+ Dạy Skill mới</button>
+    </div>
+
+    <div id="skill_editor_box" style="display:none; background:var(--bg-main); border:1px solid var(--border-col); border-radius:10px; padding:10px; flex-direction:column; gap:6px;">
+      <div style="font-weight:800; font-size:11.5px; color:#b91c1c;" id="skill_editor_title">Lưu Kỹ Năng Mới</div>
+      <div class="st-row">
+        <label>Tên kỹ năng (Gợi nhớ để gọi nhanh)</label>
+        <input id="sk_name_inp" type="text" placeholder="Ví dụ: Lọc đơn Hôm nay trên Shopee" />
+      </div>
+      <div class="st-row">
+        <label>Tên miền áp dụng (để * nếu dùng cho mọi trang)</label>
+        <input id="sk_domain_inp" type="text" placeholder="banhang.shopee.vn" />
+      </div>
+      <div class="st-row">
+        <label>Lời dặn / Quy tắc của anh Phú (Dạy bằng lời)</label>
+        <input id="sk_notes_inp" type="text" placeholder="Ví dụ: Luôn bấm tab Đang diễn ra trước khi đọc bảng..." />
+      </div>
+      <div class="st-row">
+        <label>Các bước thao tác mẫu đã ghi nhận (JSON Steps)</label>
+        <input id="sk_steps_inp" type="text" value="[]" />
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:6px;">
+        <button type="button" class="hdr-btn" onclick="closeSkillEditor()">Hủy</button>
+        <button type="button" class="hdr-btn" style="background:#0f172a; color:#fff;" onclick="saveSkillFromEditor()">💾 Lưu Thành Skill</button>
+      </div>
+    </div>
+
+    <div id="skills_list_box" style="display:flex; flex-direction:column; gap:6px;"></div>
+  </div>
+
+  <!-- NGĂN CÀI ĐẶT API KEY DO NGƯỜI DÙNG TỰ THÊM (BYOK) -->
+  <div id="settings_drawer">
+    <div class="st-row">
+      <label>Nhà cung cấp AI (Provider)</label>
+      <select id="cfg_provider" onchange="onProviderChange()">
+        <option value="gemini">Google Gemini API (Nhập Gemini Key)</option>
+        <option value="openai">OpenAI / 9Router Tương Thích (Base URL + Key)</option>
+      </select>
+    </div>
+    <div class="st-row" id="base_url_row" style="display:none;">
+      <label>Endpoint Base URL (OpenAI / 9Router)</label>
+      <input id="cfg_base_url" type="text" placeholder="http://127.0.0.1:20128/v1" value="http://127.0.0.1:20128/v1" />
+    </div>
+    <div class="st-row">
+      <label>API Key (Người dùng tự thêm)</label>
+      <div style="display:flex; gap:4px;">
+        <input id="cfg_api_key" type="password" placeholder="Dán API Key của anh vào đây..." />
+        <button type="button" class="hdr-btn" onclick="toggleShowKey()">Hiện</button>
+      </div>
+    </div>
+    <div class="st-row">
+      <label>Model</label>
+      <input id="cfg_model" type="text" value="gemini-2.5-flash" placeholder="gemini-2.5-flash" />
+    </div>
+    <label class="chk-row">
+      <input id="cfg_auto_min" type="checkbox" checked />
+      <span>Tự thu gọn cửa sổ chat thành Bong bóng khi đang làm việc</span>
+    </label>
+    <div class="st-actions">
+      <span class="key-status" id="cfg_status_lbl">Chưa lưu Key</span>
+      <div style="display:flex; gap:5px;">
+        <button type="button" class="hdr-btn" style="border-color:#10b981; color:#047857;" onclick="testAiKeyNow()">⚡ Test Key</button>
+        <button type="button" class="hdr-btn" onclick="toggleSettingsDrawer()">Đóng</button>
+        <button type="button" class="hdr-btn" style="background:#0f172a; color:#fff;" onclick="saveAiConfig()">Lưu Cài Đặt</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="context-bar">
+    <div class="ctx-line" id="ctx_active_page">Đang nhìn: <b>Không gian bắt đầu</b></div>
+    <div class="quick-chips">
+      <button class="q-chip" onclick="triggerCoworkTask('Tóm tắt ngắn gọn nội dung trang đang mở')">📄 Tóm tắt trang này</button>
+      <button class="q-chip" onclick="triggerCoworkTask('Đọc và tổng hợp tất cả các Tab đang mở')">📑 Tổng hợp mọi Tab</button>
+      <button class="q-chip" onclick="toggleSkillRecording()">Làm mẫu 1 lần (Record)</button>
+      <button class="q-chip" onclick="toggleSkillsDrawer(true)">📚 Xem & Chạy Skill</button>
+    </div>
+  </div>
+
+  <div id="chat_stream">
+    <div class="msg ai">
+      <b>Chào anh Phú!</b> AI trên <b>TPbrowser</b> hỗ trợ học Skill theo cả 2 cách anh chọn:<br/>
+      1. <b>Dạy bằng lời trong lúc chat:</b> Anh nhắn <i>"Nhớ quy tắc cho trang này: ... và lưu thành skill nhé"</i> — AI sẽ tự lưu vào <b>Skills</b>.<br/>
+      2. <b>Làm mẫu 1 lần (Làm mẫu):</b> Anh bấm nút <b>Làm mẫu</b>, cửa sổ chat tự thu gọn thành bong bóng để anh tự tay click/gõ trên trang web 1 lần, bấm <b>⏹ Lưu Skill</b> là lần sau AI làm y hệt!
+    </div>
+  </div>
+
+  <div class="ai-footer">
+    <div class="auto-min-bar">
+      <label class="chk-row" style="font-size:11px;">
+        <input id="quick_auto_min" type="checkbox" checked onchange="syncAutoMinCheckbox(this.checked)" />
+        <span>Giao việc xong tự thu gọn thành Bong bóng</span>
+      </label>
+    </div>
+    <form class="prompt-form" onsubmit="handlePromptSubmit(event)">
+      <input id="ai_prompt_inp" type="text" placeholder="Nhắn việc cho AI..." autocomplete="off" />
+      <button type="submit">GỬI</button>
+    </form>
+  </div>
+
+  <script>
+    var aiConfig = {
+      provider: "openai",
+      api_key: "",
+      model: "gemini-3.8-flash",
+      base_url: "http://127.0.0.1:8045/v1",
+      auto_minimize_on_task: true
+    };
+    var learnedSkills = [];
+    var isRecording = false;
+    var recordedSteps = [];
+    var currentActiveUrl = "";
+    var pendingPrompt = "";
+    var isWorking = false;
+
+    function extractDomain(url) {
+      if (!url || url === "tp://newtab") return "*";
+      return String(url)
+        .replace(/^https?:\/\//i, "")
+        .replace(/^www\./i, "")
+        .split("/")[0]
+        .toLowerCase();
+    }
+
+    function sendRust(payload) {
+      try {
+        if (window.ipc && typeof window.ipc.postMessage === "function") {
+          window.ipc.postMessage(JSON.stringify(payload));
+        }
+      } catch (_) {}
+    }
+
+    function escapeHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function appendMessage(role, htmlText) {
+      var stream = document.getElementById("chat_stream");
+      var div = document.createElement("div");
+      div.className = "msg " + role;
+      div.innerHTML = htmlText;
+      stream.appendChild(div);
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    function toggleSettingsDrawer(forceOpen) {
+      var dr = document.getElementById("settings_drawer");
+      var sk = document.getElementById("skills_drawer");
+      if (sk) sk.classList.remove("open");
+      if (forceOpen === true) {
+        dr.classList.add("open");
+      } else if (forceOpen === false) {
+        dr.classList.remove("open");
+      } else {
+        dr.classList.toggle("open");
+      }
+    }
+
+    function toggleSkillsDrawer(forceOpen) {
+      var sk = document.getElementById("skills_drawer");
+      var dr = document.getElementById("settings_drawer");
+      if (dr) dr.classList.remove("open");
+      if (forceOpen === true) sk.classList.add("open");
+      else if (forceOpen === false) sk.classList.remove("open");
+      else sk.classList.toggle("open");
+      renderSkillsList();
+    }
+
+    function renderSkillsList() {
+      var btn = document.getElementById("btn_skills_drawer");
+      if (btn) btn.textContent = "Skills (" + learnedSkills.length + ")";
+      var box = document.getElementById("skills_list_box");
+      if (!box) return;
+      if (learnedSkills.length === 0) {
+        box.innerHTML = '<div style="font-size:11px;color:#64748b;padding:6px 0;">Chưa có Skill nào. Anh có thể dạy bằng lời trong khung chat hoặc bấm <b>Làm mẫu</b>!</div>';
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < learnedSkills.length; i++) {
+        var s = learnedSkills[i];
+        var stepsCount = Array.isArray(s.steps) ? s.steps.length : 0;
+        html +=
+          '<div class="skill-card">' +
+            '<div class="skill-card-top">' +
+              '<span class="skill-name">' + escapeHtml(s.name || "Skill #" + (i + 1)) + '</span>' +
+              '<span class="skill-domain">' + escapeHtml(s.domain || "*") + '</span>' +
+            '</div>' +
+            (s.notes ? '<div class="skill-notes">' + escapeHtml(s.notes) + '</div>' : '') +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px;">' +
+              '<span class="skill-steps-badge">' + stepsCount + ' bước tự động</span>' +
+              '<div style="display:flex; gap:4px;">' +
+                '<button class="hdr-btn" style="background:#ecfdf5;border-color:#10b981;color:#065f46;" onclick="runSavedSkill(' + i + ')">▶ Chạy Skill</button>' +
+                '<button class="hdr-btn" onclick="deleteSavedSkill(' + i + ')">Xóa</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+      }
+      box.innerHTML = html;
+    }
+
+    window.toggleSkillRecording = function () {
+      if (isRecording) {
+        window.__tpStopSkillRecordingFromRust();
+      } else {
+        window.__tpStartSkillRecordingFromRust();
+      }
+    };
+
+    window.__tpStartSkillRecordingFromRust = function () {
+      isRecording = true;
+      recordedSteps = [];
+      var btn = document.getElementById("btn_record_skill");
+      btn.classList.add("active");
+      btn.textContent = "⏹ Lưu Mẫu (0)";
+
+      sendRust({ cmd: "set_ai_mode", mode: "bubble" });
+      sendRust({
+        cmd: "sync_bubble_status",
+        working: false,
+        recording: true,
+        status_text: "🔴 Đang ghi mẫu (0 bước) — Hãy thao tác trên trang",
+        last_reply: "Đang ghi mẫu thao tác của anh Phú..."
+      });
+    };
+
+    window.__tpAddRecordedStep = function (stepObj) {
+      if (!isRecording || !stepObj) return;
+      recordedSteps.push(stepObj);
+      var n = recordedSteps.length;
+      document.getElementById("btn_record_skill").textContent = "⏹ Lưu Mẫu (" + n + ")";
+      var desc = (stepObj.type || "step").toUpperCase() + " '" + (stepObj.label || stepObj.selector || "") + "'";
+      sendRust({
+        cmd: "sync_bubble_status",
+        working: false,
+        recording: true,
+        status_text: "🔴 Đã ghi " + n + " bước: " + desc.slice(0, 32),
+        last_reply: "Các bước đã ghi: " + n
+      });
+    };
+
+    window.__tpStopSkillRecordingFromRust = function () {
+      isRecording = false;
+      var btn = document.getElementById("btn_record_skill");
+      btn.classList.remove("active");
+      btn.textContent = "Làm mẫu";
+
+      sendRust({ cmd: "set_ai_mode", mode: "dock" });
+      sendRust({
+        cmd: "sync_bubble_status",
+        working: false,
+        recording: false,
+        status_text: "✅ Đã dừng ghi mẫu (" + recordedSteps.length + " bước)",
+        last_reply: "Mở ngăn phải để lưu Skill."
+      });
+
+      toggleSkillsDrawer(true);
+      document.getElementById("skill_editor_box").style.display = "flex";
+      document.getElementById("skill_editor_title").textContent =
+        "🔴 Lưu Mẫu Thao Tác Vừa Làm (" + recordedSteps.length + " bước)";
+      document.getElementById("sk_name_inp").value =
+        "Thao tác mẫu trên " + extractDomain(currentActiveUrl);
+      document.getElementById("sk_domain_inp").value = extractDomain(currentActiveUrl);
+      document.getElementById("sk_notes_inp").value =
+        "Thực hiện tuần tự " + recordedSteps.length + " bước thao tác mẫu của anh Phú.";
+      document.getElementById("sk_steps_inp").value = JSON.stringify(recordedSteps);
+    };
+
+    function openNewSkillForm() {
+      document.getElementById("skill_editor_box").style.display = "flex";
+      document.getElementById("skill_editor_title").textContent = "+ Dạy Skill Mới Cho AI";
+      document.getElementById("sk_name_inp").value = "";
+      document.getElementById("sk_domain_inp").value = extractDomain(currentActiveUrl);
+      document.getElementById("sk_notes_inp").value = "";
+      document.getElementById("sk_steps_inp").value = "[]";
+    }
+
+    function closeSkillEditor() {
+      document.getElementById("skill_editor_box").style.display = "none";
+    }
+
+    function saveSkillFromEditor() {
+      var name = document.getElementById("sk_name_inp").value.trim();
+      var domain = document.getElementById("sk_domain_inp").value.trim() || "*";
+      var notes = document.getElementById("sk_notes_inp").value.trim();
+      var stepsRaw = document.getElementById("sk_steps_inp").value.trim() || "[]";
+      if (!name) return;
+      var steps = [];
+      try { steps = JSON.parse(stepsRaw); } catch (_) {}
+      upsertSkill({
+        name: name,
+        domain: domain,
+        notes: notes,
+        steps: Array.isArray(steps) ? steps : []
+      });
+      closeSkillEditor();
+    }
+
+    function upsertSkill(newSkill) {
+      if (!newSkill || !newSkill.name) return;
+      var idx = learnedSkills.findIndex(function (s) {
+        return (s.name || "").toLowerCase() === newSkill.name.toLowerCase();
+      });
+      if (idx >= 0) {
+        learnedSkills[idx] = Object.assign({}, learnedSkills[idx], newSkill);
+      } else {
+        learnedSkills.push(newSkill);
+      }
+      renderSkillsList();
+      sendRust({
+        cmd: "save_skills_json",
+        skills_json: JSON.stringify(learnedSkills)
+      });
+      appendMessage(
+        "skill-learned",
+        "📚 <b>Đã học & lưu Skill:</b> <code>" +
+          escapeHtml(newSkill.name) +
+          "</code> (Tên miền: <b>" +
+          escapeHtml(newSkill.domain || "*") +
+          "</b> • " +
+          (Array.isArray(newSkill.steps) ? newSkill.steps.length : 0) +
+          " bước)."
+      );
+    }
+
+    function deleteSavedSkill(idx) {
+      learnedSkills.splice(idx, 1);
+      renderSkillsList();
+      sendRust({
+        cmd: "save_skills_json",
+        skills_json: JSON.stringify(learnedSkills)
+      });
+    }
+
+    window.runSavedSkill = async function (idx) {
+      var sk = learnedSkills[idx];
+      if (!sk) return;
+      if (Array.isArray(sk.steps) && sk.steps.length > 0) {
+        if (aiConfig.auto_minimize_on_task) {
+          sendRust({ cmd: "set_ai_mode", mode: "bubble" });
+        }
+        appendMessage("user", "▶ Chạy Skill: " + escapeHtml(sk.name));
+        for (var i = 0; i < sk.steps.length; i++) {
+          var st = sk.steps[i];
+          updateBubbleAndStatus(
+            true,
+            "🟢 Đang chạy Skill '" + sk.name + "' (" + (i + 1) + "/" + sk.steps.length + ")",
+            "Thực thi: " + (st.label || st.type)
+          );
+          sendRust({
+            cmd: "execute_dom_action",
+            action_json: JSON.stringify(st)
+          });
+          await new Promise(function (r) { setTimeout(r, 550); });
+        }
+        appendMessage("ai", "✅ Đã chạy xong Skill <b>" + escapeHtml(sk.name) + "</b> (" + sk.steps.length + " bước).");
+        updateBubbleAndStatus(false, "✅ Hoàn tất Skill: " + sk.name, "Đã chạy xong " + sk.steps.length + " bước.");
+      } else {
+        triggerCoworkTask("Áp dụng Skill '" + sk.name + "' (" + (sk.notes || "") + ") trên trang hiện tại");
+      }
+    };
+
+    function onProviderChange() {
+      var p = document.getElementById("cfg_provider").value;
+      document.getElementById("base_url_row").style.display = p === "openai" ? "block" : "none";
+      if (p === "gemini" && !document.getElementById("cfg_model").value.includes("gemini")) {
+        document.getElementById("cfg_model").value = "gemini-2.5-flash";
+      }
+    }
+
+    function toggleShowKey() {
+      var inp = document.getElementById("cfg_api_key");
+      inp.type = inp.type === "password" ? "text" : "password";
+    }
+
+    function syncAutoMinCheckbox(val) {
+      aiConfig.auto_minimize_on_task = !!val;
+      document.getElementById("cfg_auto_min").checked = !!val;
+      document.getElementById("quick_auto_min").checked = !!val;
+      saveAiConfig(true);
+    }
+
+    function normalizeOpenAiBase(raw) {
+      var u = String(raw || "http://127.0.0.1:20128/v1").trim().replace(/\/+$/, "");
+      if (u.endsWith("/chat/completions")) {
+        u = u.slice(0, -"/chat/completions".length);
+      }
+      if (!/\/v\d+$/i.test(u)) {
+        u = u + "/v1";
+      }
+      return u;
+    }
+
+    function parseLlmJsonOrText(rawContent) {
+      var s = String(rawContent || "").trim();
+      if (!s) return { reply: "AI không trả về nội dung.", actions: [] };
+      var stripped = s.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
+      try {
+        var obj = JSON.parse(stripped);
+        if (obj && typeof obj === "object") return obj;
+      } catch (_) {}
+      var firstBrace = stripped.indexOf("{");
+      var lastBrace = stripped.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        try {
+          var subObj = JSON.parse(stripped.slice(firstBrace, lastBrace + 1));
+          if (subObj && typeof subObj === "object") return subObj;
+        } catch (_) {}
+      }
+      return { reply: stripped, actions: [] };
+    }
+
+    async function testAiKeyNow() {
+      var provider = document.getElementById("cfg_provider").value;
+      var apiKey = document.getElementById("cfg_api_key").value.trim();
+      var model = document.getElementById("cfg_model").value.trim() || "gemini-2.5-flash";
+      var baseUrl = normalizeOpenAiBase(document.getElementById("cfg_base_url").value);
+      var lbl = document.getElementById("cfg_status_lbl");
+
+      lbl.style.color = "#d97706";
+      lbl.textContent = "⏳ Đang kiểm tra kết nối Key...";
+      var t0 = Date.now();
+
+      try {
+        if (provider === "gemini") {
+          if (!apiKey) throw new Error("Chưa nhập Gemini API Key");
+          var ep =
+            "https://generativelanguage.googleapis.com/v1beta/models/" +
+            encodeURIComponent(model) +
+            ":generateContent?key=" +
+            encodeURIComponent(apiKey);
+          var r = await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "ping" }] }] })
+          });
+          if (!r.ok) throw new Error("HTTP " + r.status);
+        } else {
+          var headers = { "Content-Type": "application/json" };
+          if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+          var r2 = await fetch(baseUrl + "/chat/completions", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+              model: model,
+              messages: [{ role: "user", content: "Trả lời ngắn: OK" }],
+              max_tokens: 16
+            })
+          });
+          if (!r2.ok) throw new Error("HTTP " + r2.status);
+        }
+        var dt = Date.now() - t0;
+        lbl.style.color = "#059669";
+        lbl.textContent = "🟢 Key ĂN 100% (" + model + " • " + dt + "ms)";
+        appendMessage(
+          "system",
+          "🟢 <b>Kiểm tra Key thành công!</b> Endpoint: <code>" +
+            escapeHtml(provider === "openai" ? baseUrl : "Google Gemini") +
+            "</code> • Model: <b>" +
+            escapeHtml(model) +
+            "</b> • Độ trễ: <b>" +
+            dt +
+            "ms</b>."
+        );
+      } catch (e) {
+        lbl.style.color = "#dc2626";
+        lbl.textContent = "🔴 Lỗi: " + (e.message || String(e));
+        appendMessage("system", "🔴 <b>Key chưa kết nối được:</b> " + escapeHtml(e.message || String(e)));
+      }
+    }
+
+    function saveAiConfig(silent) {
+      aiConfig.provider = document.getElementById("cfg_provider").value;
+      aiConfig.api_key = document.getElementById("cfg_api_key").value.trim();
+      aiConfig.model = document.getElementById("cfg_model").value.trim() || "gemini-2.5-flash";
+      aiConfig.base_url = normalizeOpenAiBase(document.getElementById("cfg_base_url").value);
+      document.getElementById("cfg_base_url").value = aiConfig.base_url;
+      aiConfig.auto_minimize_on_task = document.getElementById("cfg_auto_min").checked;
+      document.getElementById("quick_auto_min").checked = aiConfig.auto_minimize_on_task;
+
+      var masked = aiConfig.api_key
+        ? "Đã lưu Key (" + aiConfig.api_key.slice(0, 4) + "..." + aiConfig.api_key.slice(-3) + ")"
+        : "Chưa nhập API Key (Đang dùng Cowork nội bộ)";
+      document.getElementById("cfg_status_lbl").textContent = masked;
+
+      sendRust({
+        cmd: "save_ai_config",
+        provider: aiConfig.provider,
+        api_key: aiConfig.api_key,
+        model: aiConfig.model,
+        base_url: aiConfig.base_url,
+        auto_minimize_on_task: aiConfig.auto_minimize_on_task
+      });
+
+      if (!silent) {
+        testAiKeyNow();
+      }
+    }
+
+    function handlePromptSubmit(e) {
+      e.preventDefault();
+      var inp = document.getElementById("ai_prompt_inp");
+      var text = inp.value.trim();
+      if (!text) return;
+      inp.value = "";
+      triggerCoworkTask(text);
+    }
+
+    function updateBubbleAndStatus(working, statusText, lastReply) {
+      isWorking = working;
+      var dot = document.getElementById("ai_status_dot");
+      if (working) dot.classList.add("working");
+      else dot.classList.remove("working");
+
+      sendRust({
+        cmd: "sync_bubble_status",
+        working: working,
+        status_text: statusText || "",
+        last_reply: lastReply || ""
+      });
+    }
+
+    window.triggerCoworkTask = function (promptText) {
+      if (!promptText || !promptText.trim()) return;
+      pendingPrompt = promptText.trim();
+      appendMessage("user", escapeHtml(pendingPrompt));
+
+      // Nếu bật "Tự thu gọn khi làm việc", lập tức thu ngăn phải về chế độ Bong bóng nổi!
+      if (aiConfig.auto_minimize_on_task) {
+        sendRust({ cmd: "set_ai_mode", mode: "bubble" });
+      }
+
+      updateBubbleAndStatus(true, "⚡ AI đang đọc nội dung trang đang mở...", "Đang xử lý: " + pendingPrompt);
+
+      // Yêu cầu Rust lấy toàn bộ ngữ cảnh DOM của Tab đang mở và danh sách các Tab
+      sendRust({ cmd: "request_dom_context_for_ai" });
+    };
+
+    // Rust gọi hàm này khi đã thu thập xong DOM của trang đang mở
+    window.__tpReceiveDomContext = async function (ctx) {
+      var prompt = pendingPrompt || "Tóm tắt trang này";
+      var activeUrl = (ctx && ctx.url) || "";
+      currentActiveUrl = activeUrl;
+      var activeTitle = (ctx && ctx.title) || "";
+      var visibleText = (ctx && ctx.visible_text) || "";
+      var elements = (ctx && ctx.elements) || [];
+      var allTabs = (ctx && ctx.all_tabs) || [];
+
+      document.getElementById("ctx_active_page").innerHTML =
+        "Đang nhìn: <b>" + escapeHtml(activeTitle || activeUrl || "Trang hiện tại") + "</b> (" + allTabs.length + " tab)";
+
+      updateBubbleAndStatus(true, "🔵 AI đang phân tích & áp dụng Skill...", "Đang phân tích trang: " + activeTitle);
+
+      try {
+        var result = await runAiOrSmartFallback(prompt, activeUrl, activeTitle, visibleText, elements, allTabs);
+        var replyText = result.reply || "Đã hoàn thành yêu cầu.";
+        var actions = Array.isArray(result.actions) ? result.actions : [];
+
+        if (result.save_skill && result.save_skill.name) {
+          upsertSkill(result.save_skill);
+        }
+
+        if (actions.length > 0) {
+          for (var i = 0; i < actions.length; i++) {
+            var act = actions[i];
+            var stepMsg = "🟢 AI đang thao tác (" + (i + 1) + "/" + actions.length + "): " + (act.type || "action");
+            updateBubbleAndStatus(true, stepMsg, replyText);
+            appendMessage("system", "⚡ Thực thi trên trang: <b>" + escapeHtml(JSON.stringify(act)) + "</b>");
+            sendRust({
+              cmd: "execute_dom_action",
+              action_json: JSON.stringify(act)
+            });
+            await new Promise(function (r) { setTimeout(r, 420); });
+          }
+        }
+
+        appendMessage("ai", escapeHtml(replyText).replace(/\n/g, "<br/>"));
+        updateBubbleAndStatus(false, "✅ Đã xong: " + replyText.slice(0, 65), replyText);
+      } catch (err) {
+        var errMsg = "Lỗi khi gọi AI: " + (err && err.message ? err.message : String(err));
+        appendMessage("system", escapeHtml(errMsg));
+        updateBubbleAndStatus(false, "⚠ " + errMsg.slice(0, 60), errMsg);
+      }
+    };
+
+    function getRelevantSkillsForUrl(url) {
+      var dom = extractDomain(url);
+      return learnedSkills.filter(function (s) {
+        var sd = (s.domain || "*").toLowerCase();
+        return sd === "*" || dom.includes(sd) || sd.includes(dom);
+      });
+    }
+
+    async function runAiOrSmartFallback(prompt, url, title, visibleText, elements, allTabs) {
+      var pLower = prompt.toLowerCase();
+
+      var matchedSkill = learnedSkills.find(function (s) {
+        return s.name && pLower.includes(s.name.toLowerCase()) && Array.isArray(s.steps) && s.steps.length > 0;
+      });
+      if (matchedSkill && !pLower.includes("sửa") && !pLower.includes("lưu")) {
+        return {
+          reply: "Em đã nhận diện và chạy Skill '" + matchedSkill.name + "' (" + matchedSkill.steps.length + " bước chuẩn anh đã dạy).",
+          actions: matchedSkill.steps
+        };
+      }
+
+      // 1. Kiểm tra nếu người dùng có nhập API Key (hoặc chọn OpenAI/9Router local)
+      if (aiConfig.api_key || aiConfig.provider === "openai") {
+        try {
+          return await callConfiguredLlm(prompt, url, title, visibleText, elements, allTabs);
+        } catch (apiErr) {
+          appendMessage("system", "Lưu ý API (" + escapeHtml(apiErr.message) + ") -> Chuyển sang bộ xử lý Cowork trực tiếp trên DOM.");
+        }
+      }
+
+      // 2. Bộ xử lý Cowork nội bộ thông minh (hoạt động ngay cả khi chưa nhập API Key)
+      var actions = [];
+      var reply = "";
+
+      if (pLower.includes("cuộn xuống") || pLower.includes("scroll down")) {
+        actions.push({ type: "scroll", direction: "down" });
+        reply = "Em đã cuộn trang '" + title + "' xuống dưới để anh xem tiếp.";
+      } else if (pLower.includes("cuộn lên") || pLower.includes("scroll up")) {
+        actions.push({ type: "scroll", direction: "up" });
+        reply = "Em đã cuộn trang '" + title + "' lên đầu trang.";
+      } else if (pLower.startsWith("mở trang ") || pLower.startsWith("vào trang ") || pLower.startsWith("open ")) {
+        var targetUrl = prompt.replace(/^(mở trang|vào trang|open)\s+/i, "").trim();
+        actions.push({ type: "navigate", url: targetUrl });
+        reply = "Em đã chuyển trang hiện tại tới: " + targetUrl;
+      } else if (pLower.includes("điền ") || pLower.includes("gõ ") || pLower.includes("tìm kiếm ") || pLower.includes("tìm ")) {
+        // Tìm ô input đầu tiên trên trang
+        var firstInput = elements.find(function (el) {
+          return el.tag === "input" || el.tag === "textarea";
+        });
+        var fillVal = prompt
+          .replace(/^(điền|gõ|tìm kiếm|tìm)\s+(từ khóa\s+)?/i, "")
+          .replace(/\s+vào ô.*$/i, "")
+          .replace(/^["']|["']$/g, "")
+          .trim();
+        if (firstInput && fillVal) {
+          actions.push({ type: "fill", target_id: firstInput.id, value: fillVal, submit: true });
+          reply = "Đã tự động điền '" + fillVal + "' vào ô nhập liệu [" + (firstInput.label || firstInput.tag) + "] trên trang.";
+        } else if (fillVal) {
+          actions.push({ type: "navigate", url: "https://www.google.com/search?q=" + encodeURIComponent(fillVal) });
+          reply = "Trang hiện tại không có ô tìm kiếm trống, em đã mở tìm kiếm Google cho: '" + fillVal + "'.";
+        }
+      } else if (pLower.includes("bấm ") || pLower.includes("click ")) {
+        var kw = prompt.replace(/^(bấm|click)\s+(vào\s+)?(nút\s+|mục\s+)?/i, "").trim().toLowerCase();
+        var matchBtn = elements.find(function (el) {
+          return (el.label || "").toLowerCase().includes(kw);
+        });
+        if (matchBtn) {
+          actions.push({ type: "click", target_id: matchBtn.id });
+          reply = "Đã bấm vào mục '" + matchBtn.label + "' (ID #" + matchBtn.id + ") trên trang.";
+        } else {
+          reply = "Em đã quét " + elements.length + " nút/ô trên trang nhưng chưa thấy nút khớp với '" + kw + "'.";
+        }
+      } else if (pLower.includes("tổng hợp mọi tab") || pLower.includes("tất cả các tab")) {
+        var lines = allTabs.map(function (t, idx) {
+          return (idx + 1) + ". [" + (t.profile || "Chính") + "] " + (t.title || t.url) + " (" + t.url + ")";
+        });
+        reply = "Hiện đang mở " + allTabs.length + " Tab:\n" + lines.join("\n") +
+          "\n\nNội dung chính Tab đang chọn (" + title + "):\n" + (visibleText ? visibleText.slice(0, 380) + "..." : "(Trang khởi đầu)");
+      } else if (pLower.includes("quét nút") || pLower.includes("ô nhập")) {
+        var sample = elements.slice(0, 10).map(function (e) {
+          return "• [#" + e.id + " " + e.tag.toUpperCase() + "] " + (e.label || "(không nhãn)");
+        });
+        reply = "Đã phát hiện " + elements.length + " phần tử tương tác trên trang '" + title + "':\n" +
+          (sample.length ? sample.join("\n") : "Không có ô nhập/nút nào.") +
+          "\n(Anh có thể nhắn: 'Điền ... vào ô tìm kiếm' hoặc 'Bấm vào ...' để AI thao tác hộ)";
+      } else {
+        var snippet = (visibleText || "").replace(/\s+/g, " ").trim().slice(0, 460);
+        reply = "📄 Tóm tắt trang đang mở [" + (title || url) + "]:\n" +
+          (snippet ? snippet + "..." : "Trang bắt đầu TPbrowser (sẵn sàng mở web hoặc thực thi lệnh Cowork).") +
+          "\n• Số phần tử tương tác (nút/ô nhập) AI đọc được: " + elements.length + " mục." +
+          (!aiConfig.api_key ? "\n💡 Mẹo: Anh có thể bấm '⚙ API Key' để thêm Gemini/OpenAI Key cho các phân tích chuyên sâu." : "");
+      }
+
+      return { reply: reply, actions: actions };
+    }
+
+    async function callConfiguredLlm(prompt, url, title, visibleText, elements, allTabs) {
+      var domainSkills = getRelevantSkillsForUrl(url);
+      var sysPrompt =
+        "Bạn là trợ lý AI Cowork tích hợp trong trình duyệt Rust TPbrowser của anh Phú. " +
+        "Bạn có toàn quyền đọc nội dung trang đang mở và trả về các hành động thao tác DOM hộ người dùng.\n" +
+        "1. Mảng \"actions\" hỗ trợ: fill, click, scroll, navigate, new_tab, split_view (mỗi action có thể kèm target_id, label, selector, value).\n" +
+        "2. TỰ HỌC SKILL: Nếu anh Phú hướng dẫn cách làm, dặn quy tắc, hoặc bảo 'lưu thành skill', hãy trả về trường \"save_skill\": {\"name\": \"Tên ngắn gọn\", \"domain\": \"" +
+        extractDomain(url) +
+        "\", \"notes\": \"Quy tắc/hướng dẫn chi tiết\", \"steps\": [các bước actions chuẩn]}.\n" +
+        "3. Trả về ĐÚNG định dạng JSON: {\"reply\": \"Câu trả lời tiếng Việt ngắn gọn, rõ ràng\", \"actions\": [...], \"save_skill\": null}.";
+
+      var contextPayload =
+        "YÊU CẦU CỦA ANH PHÚ: " + prompt + "\n\n" +
+        "CÁC SKILL ĐÃ HỌC CHO TRANG NÀY (" + extractDomain(url) + "): " + JSON.stringify(domainSkills) + "\n" +
+        "TAB ĐANG MỞ: " + title + " (" + url + ")\n" +
+        "DANH SÁCH TẤT CẢ CÁC TAB: " + JSON.stringify(allTabs) + "\n" +
+        "CÁC NÚT & Ô NHẬP LIỆU TRÊN TRANG (target_id, label, selector): " + JSON.stringify(elements.slice(0, 35)) + "\n" +
+        "NỘI DUNG VĂN BẢN TRÊN TRANG:\n" + (visibleText || "").slice(0, 8000);
+
+      if (aiConfig.provider === "gemini") {
+        if (!aiConfig.api_key) throw new Error("Chưa nhập Gemini API Key");
+        var endpoint =
+          "https://generativelanguage.googleapis.com/v1beta/models/" +
+          encodeURIComponent(aiConfig.model || "gemini-2.5-flash") +
+          ":generateContent?key=" +
+          encodeURIComponent(aiConfig.api_key);
+        var resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: sysPrompt }] },
+            contents: [{ role: "user", parts: [{ text: contextPayload }] }],
+            generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
+          })
+        });
+        if (!resp.ok) throw new Error("Gemini HTTP " + resp.status);
+        var data = await resp.json();
+        var rawText =
+          data &&
+          data.candidates &&
+          data.candidates[0] &&
+          data.candidates[0].content &&
+          data.candidates[0].content.parts &&
+          data.candidates[0].content.parts[0] &&
+          data.candidates[0].content.parts[0].text;
+        return parseLlmJsonOrText(rawText);
+      } else {
+        var base = normalizeOpenAiBase(aiConfig.base_url);
+        var headers = { "Content-Type": "application/json" };
+        if (aiConfig.api_key) headers["Authorization"] = "Bearer " + aiConfig.api_key;
+        var resp2 = await fetch(base + "/chat/completions", {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({
+            model: aiConfig.model || "gemini-2.5-flash",
+            messages: [
+              { role: "system", content: sysPrompt },
+              { role: "user", content: contextPayload }
+            ],
+            temperature: 0.2
+          })
+        });
+        if (!resp2.ok) throw new Error("Endpoint HTTP " + resp2.status);
+        var data2 = await resp2.json();
+        var content =
+          data2 &&
+          data2.choices &&
+          data2.choices[0] &&
+          data2.choices[0].message &&
+          data2.choices[0].message.content;
+        return parseLlmJsonOrText(content);
+      }
+    }
+
+    window.__tpLoadAiConfigFromRust = function (cfg) {
+      if (!cfg) return;
+      if (cfg.ui_theme) document.documentElement.setAttribute('data-theme', cfg.ui_theme);
+      aiConfig.provider = cfg.provider || "gemini";
+      aiConfig.api_key = cfg.api_key || "";
+      aiConfig.model = cfg.model || "gemini-2.5-flash";
+      aiConfig.base_url = normalizeOpenAiBase(cfg.base_url || "http://127.0.0.1:20128/v1");
+      aiConfig.auto_minimize_on_task = cfg.auto_minimize_on_task !== false;
+
+      if (Array.isArray(cfg.skills)) {
+        learnedSkills = cfg.skills;
+        renderSkillsList();
+      }
+
+      document.getElementById("cfg_provider").value = aiConfig.provider;
+      document.getElementById("cfg_api_key").value = aiConfig.api_key;
+      document.getElementById("cfg_model").value = aiConfig.model;
+      document.getElementById("cfg_base_url").value = aiConfig.base_url;
+      document.getElementById("cfg_auto_min").checked = aiConfig.auto_minimize_on_task;
+      document.getElementById("quick_auto_min").checked = aiConfig.auto_minimize_on_task;
+      onProviderChange();
+
+      var masked = aiConfig.api_key
+        ? "Đã lưu Key (" + aiConfig.api_key.slice(0, 4) + "..." + aiConfig.api_key.slice(-3) + ")"
+        : "Chưa nhập API Key (Đang dùng Cowork nội bộ)";
+      document.getElementById("cfg_status_lbl").textContent = masked;
+
+      if (cfg.open_drawer) {
+        toggleSettingsDrawer(true);
+      }
+      if (aiConfig.api_key && !window.__tpTestedOnce) {
+        window.__tpTestedOnce = true;
+        setTimeout(testAiKeyNow, 300);
+      }
+    };
+
+    window.addEventListener("DOMContentLoaded", function () {
+      sendRust({ cmd: "ai_panel_ready" });
+    });
+    setTimeout(function () {
+      sendRust({ cmd: "ai_panel_ready" });
+    }, 150);
+  </script>
+</body>
+</html>

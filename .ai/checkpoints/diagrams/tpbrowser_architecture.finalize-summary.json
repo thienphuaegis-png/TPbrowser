@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "D:\\Projects_Hermes\\TPbrowser\\.ai\\cache\\arch_candidate.json",
+    "sha256": "fd383459fcf32223f20b951a915baee5bc20d87fa08755737ef871901685b414",
+    "bytes": 2172
+  },
+  "artifact": {
+    "path": "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.html"
+  },
+  "gates": {
+    "validate": "not-run",
+    "deliver": "fail",
+    "check": "not-run",
+    "browser-check": "not-run"
+  },
+  "failedStage": "deliver",
+  "diagnostics": [
+    {
+      "code": "output/meta-path-syntax",
+      "severity": "error",
+      "message": "meta.output must be a portable POSIX-relative path.",
+      "subject": {
+        "path": "/meta/output"
+      },
+      "evidence": {
+        "reason": "type"
+      },
+      "supportedFixes": [
+        "set meta.output to a portable relative .html path such as reports/diagram.html"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.finalize.json",
+    "summaryReceipt": "D:\\Projects_Hermes\\TPbrowser\\.ai\\checkpoints\\diagrams\\tpbrowser_architecture.finalize-summary.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-10T12:18:22.151Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 322,
+  "browserCheck": {
+    "requested": true,
+    "ran": false
+  }
+}
