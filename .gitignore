@@ -11,3 +11,4 @@ WebView2Loader.dll
 .archify/
 *.bak*
 .pytest_cache/
+__pycache__/
