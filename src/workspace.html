@@ -9,439 +9,648 @@
   :root, html[data-theme="obsidian-gold"] {
     color-scheme: dark;
     --font-heading: "Cormorant Garamond Gnosis", "Cormorant Garamond", Georgia, serif;
-    --bg-base: #0B0C0E;
-    --bg-card: rgba(20, 23, 30, 0.94);
-    --bg-card-2: rgba(14, 16, 22, 0.96);
+    --bg-base: #0E0F12;
+    --bg-card: #16181F;
+    --bg-card-2: #111318;
     --gold-bright: #E2BE68;
     --gold-main: #C99B3B;
-    --gold-line: rgba(212, 175, 55, 0.28);
+    --gold-line: rgba(212, 175, 55, 0.24);
     --text-main: #F5F2EB;
     --text-sub: #C8C0B0;
-    --text-muted: #8E8779;
-    --cta-bg: linear-gradient(135deg, #E2BE68 0%, #B5872E 100%);
+    --text-muted: #9A9284;
+    --cta-bg: #E2BE68;
     --cta-fg: #140F05;
     --ok-bg: rgba(16, 185, 129, 0.14);
     --ok-fg: #34D399;
-    --warn-bg: rgba(239, 68, 68, 0.14);
-    --warn-fg: #FCA5A5;
+    --ok-bd: rgba(52, 211, 153, 0.35);
+    --warn-bg: rgba(245, 158, 11, 0.14);
+    --warn-fg: #FCD34D;
+    --warn-bd: rgba(252, 211, 77, 0.35);
+    --danger-bg: rgba(239, 68, 68, 0.14);
+    --danger-fg: #FCA5A5;
+    --danger-bd: rgba(252, 165, 165, 0.38);
   }
 
   html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
     color-scheme: light;
     --bg-base: #F6F2EA;
     --bg-card: #FFFFFF;
-    --bg-card-2: #FBF8F2;
-    --gold-bright: #8A5E10;
-    --gold-main: #A6731A;
-    --gold-line: rgba(154, 107, 22, 0.28);
-    --text-main: #18130C;
-    --text-sub: #3D3222;
-    --text-muted: #61533E;
-    --cta-bg: linear-gradient(135deg, #C79535 0%, #9A6B16 100%);
+    --bg-card-2: #FAF7F0;
+    --gold-bright: #7A4F0A;
+    --gold-main: #9A6B16;
+    --gold-line: #DDD2BE;
+    --text-main: #14110C;
+    --text-sub: #332B1E;
+    --text-muted: #5C503D;
+    --cta-bg: #14110C;
     --cta-fg: #FFFFFF;
-    --ok-bg: rgba(21, 128, 61, 0.10);
+    --ok-bg: #ECFDF5;
     --ok-fg: #166534;
-    --warn-bg: rgba(220, 38, 38, 0.10);
-    --warn-fg: #991B1B;
+    --ok-bd: #BBF7D0;
+    --warn-bg: #FEFCE8;
+    --warn-fg: #92400E;
+    --warn-bd: #FDE68A;
+    --danger-bg: #FEF2F2;
+    --danger-fg: #B91C1C;
+    --danger-bd: #FECACA;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
   body {
     background: var(--bg-base);
     color: var(--text-main);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-    padding: 20px 24px 40px;
-    line-height: 1.45;
+    font-family: "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 16px 24px 56px;
+    line-height: 1.5;
   }
+  .mono { font-family: "JetBrains Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
 
   .wrap {
-    max-width: 1260px;
+    max-width: 1240px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 24px;
   }
 
-  .top-hero {
+  .island-nav {
+    position: sticky;
+    top: 12px;
+    z-index: 40;
     background: var(--bg-card);
     border: 1px solid var(--gold-line);
-    border-radius: 16px;
-    padding: 16px 20px;
+    border-radius: 9999px;
+    padding: 8px 14px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
+    gap: 10px;
     flex-wrap: wrap;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
   }
-
-  .hero-left {
+  .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
-  }
-  .hero-left img {
-    width: 34px;
-    height: 34px;
-    border-radius: 9px;
-    object-fit: contain;
-  }
-  .hero-left h1 {
-    font-family: var(--font-heading);
-    font-size: 24px;
+    gap: 10px;
     font-weight: 700;
-    color: var(--gold-bright);
-    line-height: 1.15;
+    font-size: 13.5px;
+    color: var(--text-main);
   }
-  .hero-left p {
-    font-size: 12px;
+  .brand img { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; }
+  .nav-links { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .nav-links a {
+    text-decoration: none;
     color: var(--text-sub);
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    transition: background-color 0.16s ease, color 0.16s ease;
   }
-
-  .hero-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+  .nav-links a:hover, .nav-links a.active { background: var(--bg-card-2); color: var(--gold-bright); }
+  .nav-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
   .btn {
     border: 1px solid var(--gold-line);
     background: var(--bg-card-2);
     color: var(--text-main);
-    border-radius: 999px;
-    padding: 7px 14px;
+    border-radius: 9999px;
+    padding: 7px 12px;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    transition: border-color 0.15s ease, transform 0.12s ease;
+    transition: border-color 0.16s ease, transform 0.12s ease, background-color 0.16s ease;
   }
   .btn:hover { border-color: var(--gold-bright); }
-  .btn:active { transform: scale(0.97); }
-  .btn.cta {
-    background: var(--cta-bg);
-    color: var(--cta-fg);
-    border-color: transparent;
-    font-weight: 700;
-  }
-  .btn.active-auto {
-    background: var(--ok-bg);
-    color: var(--ok-fg);
-    border-color: var(--ok-fg);
-  }
+  .btn:active { transform: scale(0.98); }
+  .btn:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+  .btn.cta { background: var(--cta-bg); color: var(--cta-fg); border-color: transparent; font-weight: 700; }
+  .btn.active-auto { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-bd); }
 
-  .worker-strip {
+  .hero {
     background: var(--bg-card);
     border: 1px solid var(--gold-line);
-    border-radius: 14px;
-    padding: 12px 16px;
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .hero-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gold-bright);
+    background: var(--bg-card-2);
+    border: 1px solid var(--gold-line);
+    padding: 4px 12px;
+    border-radius: 9999px;
+    margin-bottom: 10px;
+  }
+  .hero-title {
+    font-family: var(--font-heading);
+    font-size: 30px;
+    line-height: 36px;
+    font-weight: 700;
+    max-width: 680px;
+    color: var(--text-main);
+    margin-bottom: 6px;
+  }
+  .hero-sub { font-size: 13.5px; color: var(--text-sub); max-width: 660px; }
+  .hero-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .hero-stats { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 12px; }
+  @media (max-width: 1050px) { .hero-stats { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 620px) { .hero-stats { grid-template-columns: repeat(2, 1fr); } }
+
+  .stat-card {
+    background: var(--bg-card-2);
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color 0.16s ease, transform 0.12s ease;
+    text-align: left;
+  }
+  .stat-card:hover { border-color: var(--gold-bright); transform: translateY(-1px); }
+  .stat-card.danger { background: var(--danger-bg); border-color: var(--danger-bd); }
+  .stat-card.danger .stat-val { color: var(--danger-fg); }
+  .stat-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .stat-val { font-size: 22px; line-height: 30px; font-weight: 700; margin-top: 4px; color: var(--text-main); }
+  .stat-sub { font-size: 11.5px; color: var(--text-sub); margin-top: 4px; }
+
+  .worker-strip {
+    background: var(--bg-card-2);
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  .strip-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .strip-head b {
-    font-size: 12.5px;
-    color: var(--gold-bright);
-    letter-spacing: 0.3px;
-  }
-  .strip-head span {
-    font-size: 11.5px;
-    color: var(--text-muted);
-  }
-  .worker-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 10px;
-  }
+  .strip-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+  .strip-head b { color: var(--gold-bright); }
+  .strip-head span { color: var(--text-muted); }
+  .worker-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
   .w-card {
-    background: var(--bg-card-2);
+    background: var(--bg-card);
     border: 1px solid var(--gold-line);
-    border-radius: 11px;
+    border-radius: 10px;
     padding: 10px 12px;
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
-  .w-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 6px;
-  }
+  .w-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
   .w-name { font-size: 12.5px; font-weight: 700; }
   .w-badge {
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 600;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: 9999px;
     background: var(--ok-bg);
     color: var(--ok-fg);
+    border: 1px solid var(--ok-bd);
   }
-  .w-badge.warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .w-badge.warn { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd); }
   .w-meta { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .w-btns { display: flex; gap: 6px; flex-wrap: wrap; }
-  .w-mini {
-    font-size: 10.5px;
-    font-weight: 600;
-    padding: 3px 9px;
-    border-radius: 999px;
-    border: 1px solid var(--gold-line);
-    background: transparent;
-    color: var(--text-sub);
-    cursor: pointer;
-  }
-  .w-mini:hover { border-color: var(--gold-bright); color: var(--text-main); }
 
-  .cols-2 {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-  }
+  .section { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 76px; }
+  .section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+  .section-head h2 { font-family: var(--font-heading); font-size: 24px; line-height: 30px; font-weight: 700; color: var(--gold-bright); }
+  .section-head p { font-size: 13px; color: var(--text-sub); }
 
-  .panel {
+  .cols-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .cols-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 1000px) { .cols-2, .cols-3 { grid-template-columns: 1fr; } }
+
+  .card {
     background: var(--bg-card);
     border: 1px solid var(--gold-line);
     border-radius: 16px;
-    padding: 16px 18px;
+    padding: 18px;
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
-  .panel-head {
+  .card-head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    padding-bottom: 8px;
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--gold-line);
   }
-  .panel-head h2 {
-    font-family: var(--font-heading);
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--gold-bright);
-  }
-  .ts-lbl { font-size: 11px; color: var(--text-muted); }
+  .card-title { font-size: 15.5px; font-weight: 700; color: var(--text-main); }
 
-  .kpi-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
-    gap: 10px;
-  }
-  .kpi {
-    background: var(--bg-card-2);
-    border: 1px solid var(--gold-line);
-    border-radius: 11px;
-    padding: 10px 12px;
-  }
-  .kpi .k-lbl { font-size: 11px; color: var(--text-muted); font-weight: 600; }
-  .kpi .k-val { font-size: 18px; font-weight: 700; color: var(--text-main); margin-top: 2px; }
-  .kpi .k-sub { font-size: 10.5px; color: var(--gold-bright); margin-top: 2px; }
-
-  .tbl-wrap {
-    overflow-x: auto;
-    max-height: 290px;
-    border: 1px solid var(--gold-line);
-    border-radius: 10px;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 11.5px;
-  }
-  th, td {
-    padding: 7px 9px;
-    text-align: left;
-    border-bottom: 1px solid var(--gold-line);
-  }
-  th {
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    border: 1px solid var(--gold-line);
     background: var(--bg-card-2);
-    color: var(--gold-bright);
-    font-weight: 700;
-    position: sticky;
-    top: 0;
+    color: var(--text-sub);
   }
+  .pill.ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-bd); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-bd); }
+  .pill.danger { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd); }
+
+  .filter-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .f-tab {
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--gold-line);
+    background: var(--bg-card-2);
+    color: var(--text-sub);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .f-tab.active { background: var(--cta-bg); color: var(--cta-fg); border-color: transparent; }
+  .search-inp {
+    margin-left: auto;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--gold-line);
+    background: var(--bg-card-2);
+    color: var(--text-main);
+    font-size: 12px;
+    min-width: 150px;
+  }
+
+  .tbl-wrap { overflow: auto; max-height: 360px; border: 1px solid var(--gold-line); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--gold-line); vertical-align: top; }
+  th { background: var(--bg-card-2); color: var(--gold-bright); font-size: 11.5px; font-weight: 700; position: sticky; top: 0; }
   tr:last-child td { border-bottom: none; }
+  tbody tr.clickable { cursor: pointer; transition: background-color 0.14s ease; }
+  tbody tr.clickable:hover { background: var(--bg-card-2); }
+
+  .review-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; padding-right: 2px; }
+  .review-item {
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    padding: 12px;
+    background: var(--bg-card-2);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .review-item:hover { border-color: var(--gold-bright); }
+  .review-item.fake-alert { background: var(--danger-bg); border-color: var(--danger-bd); }
+  .review-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .stars { color: #D97706; font-weight: 700; }
+
+  .promo-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+  .promo-item {
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    padding: 11px 12px;
+    background: var(--bg-card-2);
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.12s ease;
+  }
+  .promo-item:hover { border-color: var(--gold-bright); transform: translateY(-1px); }
+  .promo-item.expiring { background: var(--warn-bg); border-color: var(--warn-bd); }
+  .promo-item.live-now { background: var(--ok-bg); border-color: var(--ok-bd); }
+  .promo-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
+  .promo-name { font-size: 13px; font-weight: 600; color: var(--text-main); }
+  .promo-sub { font-size: 11.5px; color: var(--text-sub); }
+  .promo-time { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+
+  .link-inline { color: var(--gold-bright); text-decoration: underline; cursor: pointer; font-weight: 600; }
 
   .alert-box {
-    background: var(--warn-bg);
-    color: var(--warn-fg);
+    background: var(--danger-bg);
+    color: var(--danger-fg);
+    border: 1px solid var(--danger-bd);
     border-radius: 10px;
-    padding: 9px 12px;
-    font-size: 11.5px;
+    padding: 10px 12px;
+    font-size: 12px;
     display: none;
   }
 
   .log-box {
     background: var(--bg-card-2);
     border: 1px solid var(--gold-line);
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 10px 12px;
     max-height: 150px;
     overflow-y: auto;
     font-family: Consolas, monospace;
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--text-sub);
     display: flex;
     flex-direction: column;
     gap: 3px;
   }
-
-  @media (max-width: 960px) {
-    .cols-2 { grid-template-columns: 1fr; }
-  }
 </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="top-hero">
-      <div class="hero-left">
+    <nav class="island-nav">
+      <div class="brand">
         <img id="ws_brand_icon" alt="TPbrowser" />
+        <span>Workspace</span>
+      </div>
+      <div class="nav-links">
+        <a href="#tong-quan" data-sec="tong-quan" class="active">Tổng quan</a>
+        <a href="#kiem-toan" data-sec="kiem-toan">Đơn &amp; Đánh giá</a>
+        <a href="#live-ads" data-sec="live-ads">Live &amp; Ads</a>
+        <a href="#khuyen-mai" data-sec="khuyen-mai">Khuyến mãi &amp; Flash Sale</a>
+      </div>
+      <div class="nav-actions">
+        <button type="button" class="btn" id="btn_auto_scan" onclick="toggleAutoScan()">Tự động: Tắt</button>
+        <button type="button" class="btn" onclick="exportShopeeCsv()">Xuất CSV</button>
+        <button type="button" class="btn" onclick="copyReportText()">Copy Báo Cáo</button>
+        <button type="button" class="btn cta" onclick="runScan('all')">Quét Tất Cả</button>
+      </div>
+    </nav>
+
+    <section id="tong-quan" class="hero">
+      <div class="hero-head">
         <div>
-          <h1>Không Gian Làm Việc TMĐT &amp; Tab Ngầm</h1>
-          <p>Lấy dữ liệu Shopee (Đơn hàng + PAS) &amp; TikTok Seller song song trên Tab ngầm — không chiếm chuột, không đổi Tab đang xem.</p>
+          <span class="eyebrow" id="ws_status_banner">Sẵn sàng — bấm "Quét Tất Cả Ngầm" để cập nhật dữ liệu thật</span>
+          <h1 class="hero-title">Trung tâm kiểm toán rủi ro &amp; vận hành Shopee, TikTok</h1>
+          <p class="hero-sub">Quét 200 đơn hàng gần nhất, 200 đánh giá 1★ đến 3★ cảnh báo hàng giả nhái, Shopee Live, khuyến mãi, voucher, Flash Sale và quảng cáo. Bấm trực tiếp vào từng mục để mở sang đúng màn hình xử lý.</p>
+        </div>
+        <div class="hero-btns">
+          <button type="button" class="btn" onclick="runScan('shopee_orders')">Quét Shopee Tổng Hợp</button>
+          <button type="button" class="btn" onclick="runScan('shopee_pas')">Quét Shopee PAS</button>
+          <button type="button" class="btn" onclick="runScan('tiktok')">Quét TikTok Hôm nay</button>
         </div>
       </div>
-      <div class="hero-actions">
-        <button type="button" class="btn cta" onclick="runScan('all')">⚡ Quét Tất Cả Ngầm</button>
-        <button type="button" class="btn" onclick="runScan('shopee_orders')">🟠 Quét Đơn Shopee</button>
-        <button type="button" class="btn" onclick="runScan('shopee_pas')">📈 Quét Shopee PAS</button>
-        <button type="button" class="btn" onclick="runScan('tiktok')">🎵 Quét TikTok Hôm nay</button>
-        <button type="button" class="btn" id="btn_auto_scan" onclick="toggleAutoScan()">⏱ Tự động: Tắt</button>
-        <button type="button" class="btn" onclick="exportShopeeCsv()">📥 Xuất CSV Đơn</button>
-        <button type="button" class="btn" onclick="copyReportText()">📋 Copy Báo Cáo</button>
+
+      <div class="hero-stats">
+        <button type="button" class="stat-card" onclick="openDirect('https://banhang.shopee.vn/portal/sale/order?type=toship')">
+          <div class="stat-lbl">Chờ lấy hàng (Shopee)</div>
+          <div class="stat-val mono" id="sp_toship">—</div>
+          <div class="stat-sub" id="sp_shipping_sub">Đang giao: — • Chờ XN: —</div>
+        </button>
+        <button type="button" class="stat-card" id="card_anom_kpi" onclick="scrollToId('kiem-toan')">
+          <div class="stat-lbl">Đơn giá bất thường</div>
+          <div class="stat-val mono" id="sp_anom_count">—</div>
+          <div class="stat-sub" id="sp_scanned_sub">Đã kiểm tra: — đơn</div>
+        </button>
+        <button type="button" class="stat-card" id="card_rating_kpi" onclick="scrollToId('kiem-toan')">
+          <div class="stat-lbl">Đánh giá 1–3★ / Nghi giả</div>
+          <div class="stat-val mono" id="sp_bad_kpi">—</div>
+          <div class="stat-sub" id="sp_rating_sub">Cần trả lời: — • Đánh giá tốt: —</div>
+        </button>
+        <button type="button" class="stat-card" onclick="scrollToId('live-ads')">
+          <div class="stat-lbl">Shopee Live</div>
+          <div class="stat-val mono" id="sp_live_kpi">—</div>
+          <div class="stat-sub" id="sp_live_sub">Bấm để xem phiên Live</div>
+        </button>
+        <button type="button" class="stat-card" onclick="scrollToId('live-ads')">
+          <div class="stat-lbl">Shopee PAS Hôm nay</div>
+          <div class="stat-val mono" id="sp_pas_sales">—</div>
+          <div class="stat-sub" id="sp_pas_sub">CP: — • ROAS: —</div>
+        </button>
+        <button type="button" class="stat-card" onclick="scrollToId('live-ads')">
+          <div class="stat-lbl">TikTok Ads Hôm nay</div>
+          <div class="stat-val mono" id="tt_sales">—</div>
+          <div class="stat-sub" id="tt_kpi_sub">CP: — • Đơn: — • ROI: —</div>
+        </button>
       </div>
-    </div>
 
-    <div class="worker-strip">
-      <div class="strip-head">
-        <b>CÁC TAB NGẦM ĐANG QUẢN LÝ (Dùng chung Cookie • Lớp dưới không chiếm chuột)</b>
-        <span id="ws_status_banner">Sẵn sàng — bấm "Quét Tất Cả Ngầm" để bắt đầu</span>
+      <div class="worker-strip">
+        <div class="strip-head">
+          <b>TAB NGẦM ĐANG QUẢN LÝ (Dùng chung Cookie • Lớp dưới không chiếm chuột)</b>
+          <span id="sp_ts">Chưa cập nhật</span>
+        </div>
+        <div class="worker-cards" id="ws_worker_cards"></div>
       </div>
-      <div class="worker-cards" id="ws_worker_cards"></div>
-    </div>
+    </section>
 
-    <div class="cols-2">
-      <!-- SHOPEE PANEL -->
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Shopee Kênh Người Bán</h2>
-          <span class="ts-lbl" id="sp_ts">Chưa có dữ liệu</span>
+    <section id="kiem-toan" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Kiểm toán giá bán bất thường &amp; Đánh giá 1★–3★</h2>
+          <p>Phát hiện đơn dưới 15.000đ hoặc tụt quá 28% giá trung vị; lọc đánh giá 1★, 2★, 3★ nghi hàng giả, hàng nhái hoặc biến chất. Bấm vào từng dòng để mở thẳng đơn hoặc trang phản hồi.</p>
         </div>
-        <div class="kpi-row">
-          <div class="kpi">
-            <div class="k-lbl">Chờ lấy hàng</div>
-            <div class="k-val" id="sp_toship">—</div>
-            <div class="k-sub" id="sp_express">Hỏa tốc: —</div>
+      </div>
+
+      <div class="cols-2">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Đơn hàng có giá bất thường</span>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span class="pill" id="sp_anom_badge">Chưa quét</span>
+              <button type="button" class="btn" onclick="openDirect('https://banhang.shopee.vn/portal/sale/order')">Mở Đơn Hàng</button>
+            </div>
           </div>
-          <div class="kpi">
-            <div class="k-lbl">Đang giao / Đã quét</div>
-            <div class="k-val" id="sp_shipping">—</div>
-            <div class="k-sub" id="sp_scanned">Đã đọc: — đơn</div>
-          </div>
-          <div class="kpi">
-            <div class="k-lbl">PAS Doanh số</div>
-            <div class="k-val" id="sp_pas_sales">—</div>
-            <div class="k-sub" id="sp_pas_cost">Chi phí: —</div>
-          </div>
-          <div class="kpi">
-            <div class="k-lbl">PAS ROAS / Đơn</div>
-            <div class="k-val" id="sp_pas_roas">—</div>
-            <div class="k-sub" id="sp_pas_orders">Đơn QC: —</div>
+          <div class="alert-box" id="sp_login_box"></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mã đơn &amp; Khách</th>
+                  <th>Sản phẩm &amp; SL</th>
+                  <th>Giá thu / Trung vị</th>
+                  <th>Lý do cảnh báo</th>
+                </tr>
+              </thead>
+              <tbody id="sp_anom_tbody">
+                <tr><td colspan="4" style="color:var(--text-muted);text-align:center;">Bấm "Quét Shopee Tổng Hợp" để kiểm toán 200 đơn mới nhất.</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div class="alert-box" id="sp_anomaly_box"></div>
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Đánh giá 1★ 2★ 3★ &amp; Cảnh báo Hàng giả / Nhái</span>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span class="pill" id="sp_rating_badge">Chưa quét</span>
+              <button type="button" class="btn" onclick="openDirect('https://banhang.shopee.vn/portal/settings/shop/rating')">Mở Đánh Giá</button>
+            </div>
+          </div>
+          <div class="filter-bar">
+            <button type="button" class="f-tab active" data-rf="all" onclick="setReviewFilter('all', this)">Tất cả (<span id="cnt_r_all">0</span>)</button>
+            <button type="button" class="f-tab" data-rf="fake" onclick="setReviewFilter('fake', this)">Nghi Giả/Nhái (<span id="cnt_r_fake">0</span>)</button>
+            <button type="button" class="f-tab" data-rf="1" onclick="setReviewFilter('1', this)">1★ (<span id="cnt_r_1">0</span>)</button>
+            <button type="button" class="f-tab" data-rf="2" onclick="setReviewFilter('2', this)">2★ (<span id="cnt_r_2">0</span>)</button>
+            <button type="button" class="f-tab" data-rf="3" onclick="setReviewFilter('3', this)">3★ (<span id="cnt_r_3">0</span>)</button>
+            <button type="button" class="f-tab" data-rf="unreplied" onclick="setReviewFilter('unreplied', this)">Chưa trả lời (<span id="cnt_r_unrep">0</span>)</button>
+            <input type="text" class="search-inp" id="review_search" placeholder="Tìm sản phẩm / nội dung..." oninput="renderReviews()" />
+          </div>
+          <div class="review-list" id="sp_reviews_list">
+            <div class="review-item" style="cursor:default;color:var(--text-muted);text-align:center;">Chưa có dữ liệu đánh giá 1★–3★. Bấm Quét để tải 200 đánh giá gần nhất.</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-        <div class="tbl-wrap">
+    <section id="live-ads" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Shopee Live &amp; Quảng cáo Đa sàn</h2>
+          <p>Theo dõi phiên Livestream tại Creator Center và danh sách chiến dịch Shopee PAS, TikTok Seller. Bấm trực tiếp vào bất kỳ dòng nào để mở trang quản lý.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Shopee Live (Creator Center)</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="pill" id="sp_live_badge">Chưa kiểm tra</span>
+            <button type="button" class="btn" onclick="openDirect('https://banhang.shopee.vn/creator-center/insight/live')">Mở Shopee Live</button>
+          </div>
+        </div>
+        <div class="tbl-wrap" style="max-height:240px;">
           <table>
             <thead>
               <tr>
-                <th>Chiến dịch Shopee PAS</th>
-                <th>Ngân sách</th>
-                <th>Chi phí</th>
-                <th>Doanh số</th>
-                <th>ROAS</th>
-                <th>ACOS</th>
+                <th>Phiên Livestream</th>
+                <th>Trạng thái</th>
+                <th>Bắt đầu &amp; Thời lượng</th>
+                <th>Lượt xem / CCU / ATC</th>
+                <th>Đơn đặt / Xác nhận</th>
+                <th>Doanh thu XN</th>
               </tr>
             </thead>
-            <tbody id="sp_pas_tbody">
-              <tr><td colspan="6" style="color:var(--text-muted); text-align:center;">Bấm "Quét Shopee PAS" để nạp danh sách chiến dịch.</td></tr>
+            <tbody id="sp_live_tbody">
+              <tr><td colspan="6" style="color:var(--text-muted);text-align:center;">Chưa có dữ liệu phiên Live.</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- TIKTOK PANEL -->
-      <div class="panel">
-        <div class="panel-head">
-          <h2>TikTok Seller Ads (Hôm nay)</h2>
-          <span class="ts-lbl" id="tt_ts">Chưa có dữ liệu</span>
-        </div>
-        <div class="kpi-row">
-          <div class="kpi">
-            <div class="k-lbl">Chi phí Ads</div>
-            <div class="k-val" id="tt_cost">—</div>
-            <div class="k-sub" id="tt_period">Kỳ: Hôm nay</div>
+      <div class="cols-2">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Quảng cáo Shopee PAS</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="pill" id="sp_pas_ts">Chưa quét</span>
+              <button type="button" class="btn" onclick="openDirect('https://banhang.shopee.vn/portal/marketing/pas/index')">Mở Shopee PAS</button>
+            </div>
           </div>
-          <div class="kpi">
-            <div class="k-lbl">Đơn hàng SKU</div>
-            <div class="k-val" id="tt_orders">—</div>
-            <div class="k-sub" id="tt_cpa">CPA: —</div>
-          </div>
-          <div class="kpi">
-            <div class="k-lbl">Doanh thu gộp</div>
-            <div class="k-val" id="tt_sales">—</div>
-            <div class="k-sub" id="tt_live">Live: —</div>
-          </div>
-          <div class="kpi">
-            <div class="k-lbl">ROI tổng</div>
-            <div class="k-val" id="tt_roi">—</div>
-            <div class="k-sub">IIFE ẩn danh SecSDK</div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Chiến dịch PAS</th>
+                  <th>Ngân sách</th>
+                  <th>Chi phí</th>
+                  <th>Doanh số</th>
+                  <th>ROAS</th>
+                  <th>ACOS</th>
+                </tr>
+              </thead>
+              <tbody id="sp_pas_tbody">
+                <tr><td colspan="6" style="color:var(--text-muted);text-align:center;">Bấm "Quét Shopee PAS" để nạp chiến dịch.</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div class="alert-box" id="tt_captcha_box"></div>
-
-        <div class="tbl-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Chiến dịch TikTok</th>
-                <th>Ngân sách</th>
-                <th>Chi phí</th>
-                <th>Đơn</th>
-                <th>Doanh thu</th>
-                <th>ROI</th>
-              </tr>
-            </thead>
-            <tbody id="tt_tbody">
-              <tr><td colspan="6" style="color:var(--text-muted); text-align:center;">Bấm "Quét TikTok Hôm nay" để nạp chiến dịch.</td></tr>
-            </tbody>
-          </table>
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Quảng cáo TikTok Seller (Hôm nay)</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="pill" id="tt_ts">Chưa quét</span>
+              <button type="button" class="btn" onclick="openDirect('https://seller-vn.tiktok.com/ads-creation/dashboard')">Mở TikTok Ads</button>
+            </div>
+          </div>
+          <div class="alert-box" id="tt_captcha_box"></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Chiến dịch TikTok</th>
+                  <th>Ngân sách</th>
+                  <th>Chi phí</th>
+                  <th>Đơn</th>
+                  <th>Doanh thu</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+              <tbody id="tt_tbody">
+                <tr><td colspan="6" style="color:var(--text-muted);text-align:center;">Bấm "Quét TikTok Hôm nay" để nạp chiến dịch.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="panel">
-      <div class="panel-head">
-        <h2>Nhật Ký Chạy Ngầm</h2>
-        <span class="ts-lbl">Theo dõi tiến trình Worker Tab &amp; AI Cowork</span>
+    <section id="khuyen-mai" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Lịch trình Khuyến mãi, Mã giảm giá &amp; Flash Sale</h2>
+          <p>Hiển thị Đang diễn ra + Sắp diễn ra kèm giờ bắt đầu/kết thúc, tự động tô nổi bật chương trình sắp hết hạn trong 24h. Bấm trực tiếp vào bất kỳ thẻ nào để chỉnh sửa trên Shopee.</p>
+        </div>
+        <div class="filter-bar">
+          <button type="button" class="f-tab active" data-pf="all" onclick="setPromoFilter('all', this)">Đang chạy + Sắp chạy</button>
+          <button type="button" class="f-tab" data-pf="expiring" onclick="setPromoFilter('expiring', this)">Sắp hết hạn ≤ 24h (<span id="cnt_p_exp">0</span>)</button>
+          <button type="button" class="f-tab" data-pf="ongoing" onclick="setPromoFilter('ongoing', this)">Đang diễn ra</button>
+          <button type="button" class="f-tab" data-pf="upcoming" onclick="setPromoFilter('upcoming', this)">Sắp diễn ra</button>
+        </div>
       </div>
-      <div class="log-box" id="ws_log_box">
-        <div>• Khởi tạo Không Gian Làm Việc TMĐT TPbrowser.</div>
+
+      <div class="cols-3">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Khuyến mãi của Shop</span>
+            <button type="button" class="btn" onclick="openDirect('https://banhang.shopee.vn/portal/marketing/list/discount')">Quản lý</button>
+          </div>
+          <div class="promo-list" id="sp_discounts_list">
+            <div class="promo-item" style="cursor:default;color:var(--text-muted);">Chưa có dữ liệu Khuyến mãi.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Mã Giảm Giá (Voucher)</span>
+            <button type="button" class="btn" onclick="openDirect('https://banhang.shopee.vn/portal/marketing/vouchers/list')">Quản lý</button>
+          </div>
+          <div class="promo-list" id="sp_vouchers_list">
+            <div class="promo-item" style="cursor:default;color:var(--text-muted);">Chưa có dữ liệu Voucher.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Flash Sale của Shop</span>
+            <button type="button" class="btn" onclick="openDirect('https://banhang.shopee.vn/portal/marketing/shop-flash-sale/list')">Quản lý</button>
+          </div>
+          <div class="promo-list" id="sp_flashsales_list">
+            <div class="promo-item" style="cursor:default;color:var(--text-muted);">Chưa có dữ liệu Flash Sale.</div>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
+
+    <section class="section">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Nhật ký chạy ngầm Worker Tab &amp; AI Cowork</span>
+        </div>
+        <div class="log-box" id="ws_log_box">
+          <div>• Khởi tạo Không Gian Làm Việc TMĐT TPbrowser.</div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script>/*__TP_BRAND_ASSETS_JS__*/</script>
@@ -449,6 +658,8 @@
     var currentTheme = document.documentElement.getAttribute("data-theme") || "obsidian-gold";
     var currentLogoStyle = "ribbon";
     var autoScanEnabled = false;
+    var reviewFilter = "all";
+    var promoFilter = "all";
     var lastData = { shopee_orders: null, shopee_pas: null, tiktok: null };
 
     function sendRust(payload) {
@@ -459,9 +670,44 @@
       } catch (_) {}
     }
 
+    function openDirect(url) {
+      if (!url) return;
+      sendRust({ cmd: "new_tab", url: url, isolated: false });
+    }
+
+    function scrollToId(id) {
+      var el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
     function fmtVnd(n) {
       var v = Math.round(Number(n || 0));
       return v ? v.toLocaleString("vi-VN") + "đ" : "0đ";
+    }
+
+    function fmtUnixSec(sec) {
+      var n = Number(sec || 0);
+      if (!n) return "—";
+      var d = new Date(n * 1000);
+      var hh = String(d.getHours()).padStart(2, "0");
+      var mm = String(d.getMinutes()).padStart(2, "0");
+      var dd = String(d.getDate()).padStart(2, "0");
+      var mo = String(d.getMonth() + 1).padStart(2, "0");
+      var yy = d.getFullYear();
+      return hh + ":" + mm + " " + dd + "/" + mo + "/" + yy;
+    }
+
+    function fmtUnixMs(ms) {
+      if (!ms) return "—";
+      return fmtUnixSec(Math.floor(Number(ms) / 1000));
+    }
+
+    function fmtDuration(ms) {
+      var s = Math.floor(Number(ms || 0) / 1000);
+      if (s <= 0) return "—";
+      var h = Math.floor(s / 3600);
+      var m = Math.floor((s % 3600) / 60);
+      return (h > 0 ? h + "g " : "") + m + "p";
     }
 
     function esc(s) {
@@ -494,7 +740,7 @@
     function renderAutoBtn() {
       var btn = document.getElementById("btn_auto_scan");
       if (!btn) return;
-      btn.textContent = autoScanEnabled ? "⏱ Tự động: 15 phút" : "⏱ Tự động: Tắt";
+      btn.textContent = autoScanEnabled ? "Tự động: 15 phút" : "Tự động: Tắt";
       btn.classList.toggle("active-auto", autoScanEnabled);
     }
 
@@ -502,20 +748,176 @@
       sendRust({ cmd: "export_shopee_csv" });
     }
 
+    function setReviewFilter(mode, btn) {
+      reviewFilter = mode;
+      document.querySelectorAll("[data-rf]").forEach(function (el) { el.classList.remove("active"); });
+      if (btn) btn.classList.add("active");
+      renderReviews();
+    }
+
+    function setPromoFilter(mode, btn) {
+      promoFilter = mode;
+      document.querySelectorAll("[data-pf]").forEach(function (el) { el.classList.remove("active"); });
+      if (btn) btn.classList.add("active");
+      renderPromos();
+    }
+
+    function renderReviews() {
+      var sp = lastData.shopee_orders || {};
+      var all = Array.isArray(sp.bad_reviews) ? sp.bad_reviews : [];
+      var q = (document.getElementById("review_search").value || "").trim().toLowerCase();
+      var listEl = document.getElementById("sp_reviews_list");
+
+      var c1 = all.filter(function (r) { return r.rating_star === 1; }).length;
+      var c2 = all.filter(function (r) { return r.rating_star === 2; }).length;
+      var c3 = all.filter(function (r) { return r.rating_star === 3; }).length;
+      var cFake = all.filter(function (r) { return r.is_fake_alert; }).length;
+      var cUnrep = all.filter(function (r) { return !r.replied; }).length;
+
+      document.getElementById("cnt_r_all").textContent = all.length;
+      document.getElementById("cnt_r_fake").textContent = cFake;
+      document.getElementById("cnt_r_1").textContent = c1;
+      document.getElementById("cnt_r_2").textContent = c2;
+      document.getElementById("cnt_r_3").textContent = c3;
+      document.getElementById("cnt_r_unrep").textContent = cUnrep;
+
+      var filtered = all.filter(function (r) {
+        if (reviewFilter === "fake" && !r.is_fake_alert) return false;
+        if (reviewFilter === "1" && r.rating_star !== 1) return false;
+        if (reviewFilter === "2" && r.rating_star !== 2) return false;
+        if (reviewFilter === "3" && r.rating_star !== 3) return false;
+        if (reviewFilter === "unreplied" && r.replied) return false;
+        if (q) {
+          var hay = ((r.product_name || "") + " " + (r.comment || "") + " " + (r.order_sn || "") + " " + (r.user_name || "")).toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      if (all.length === 0) {
+        listEl.innerHTML = '<div class="review-item" style="cursor:default;color:var(--text-muted);text-align:center;">Chưa có dữ liệu đánh giá 1★–3★. Bấm "Quét Shopee Tổng Hợp" để tải 200 đánh giá gần nhất.</div>';
+        return;
+      }
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="review-item" style="cursor:default;color:var(--text-muted);text-align:center;">Không có đánh giá nào khớp bộ lọc hiện tại.</div>';
+        return;
+      }
+
+      listEl.innerHTML = filtered.slice(0, 120).map(function (r) {
+        var stars = "★".repeat(Math.max(1, Math.min(3, r.rating_star || 1)));
+        var fakeBadge = r.is_fake_alert
+          ? '<span class="pill danger">Nghi vấn: ' + esc((r.alert_keywords || []).join(", ")) + '</span>'
+          : '<span class="pill ' + (r.replied ? 'ok' : 'warn') + '">' + (r.replied ? 'Đã trả lời' : 'Chưa trả lời') + '</span>';
+        var ordAction = r.order_url
+          ? 'event.stopPropagation(); openDirect(\'' + esc(r.order_url) + '\');'
+          : 'event.stopPropagation(); openDirect(\'' + esc(r.url) + '\');';
+        return '<div class="review-item ' + (r.is_fake_alert ? 'fake-alert' : '') + '" onclick="openDirect(\'' + esc(r.url) + '\')">' +
+          '<div class="review-meta">' +
+            '<span><span class="stars">' + stars + '</span> • <span class="link-inline mono" onclick="' + ordAction + '">' + esc(r.order_sn) + '</span> • ' + esc(r.user_name) + ' • ' + fmtUnixSec(r.ctime) + '</span>' +
+            fakeBadge +
+          '</div>' +
+          '<div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">' + esc(r.product_name) + (r.model_name ? ' <span style="color:var(--text-muted);font-weight:400;">(' + esc(r.model_name.slice(0, 60)) + ')</span>' : '') + '</div>' +
+          '<div style="font-size:12.5px;color:var(--text-sub);">' + (r.comment ? esc(r.comment) : '<i style="color:var(--text-muted);">Người mua không để lại bình luận</i>') + '</div>' +
+        '</div>';
+      }).join("");
+    }
+
+    function renderPromos() {
+      var sp = lastData.shopee_orders || {};
+      var discounts = Array.isArray(sp.discounts) ? sp.discounts : [];
+      var vouchers = Array.isArray(sp.vouchers) ? sp.vouchers : [];
+      var flashSales = Array.isArray(sp.flash_sales) ? sp.flash_sales : [];
+
+      var expCount =
+        discounts.filter(function (x) { return x.expiring_24h; }).length +
+        vouchers.filter(function (x) { return x.expiring_24h; }).length +
+        flashSales.filter(function (x) { return x.expiring_24h; }).length;
+      document.getElementById("cnt_p_exp").textContent = expCount;
+
+      function passFilter(x) {
+        if (promoFilter === "expiring") return !!x.expiring_24h;
+        if (promoFilter === "ongoing") return Number(x.time_status) === 2;
+        if (promoFilter === "upcoming") return Number(x.time_status) === 1;
+        return true;
+      }
+
+      var dList = discounts.filter(passFilter);
+      document.getElementById("sp_discounts_list").innerHTML = dList.length
+        ? dList.map(function (d) {
+            var stCls = d.expiring_24h ? "warn" : (d.time_status === 2 ? "ok" : "");
+            var stTxt = d.expiring_24h ? "Hết hạn < 24h" : (d.time_status === 2 ? "Đang diễn ra" : "Sắp diễn ra");
+            return '<div class="promo-item ' + (d.expiring_24h ? 'expiring' : '') + '" onclick="openDirect(\'' + esc(d.url) + '\')">' +
+              '<div class="promo-top"><span class="promo-name">' + esc(d.name) + '</span><span class="pill ' + stCls + '">' + stTxt + '</span></div>' +
+              '<div class="promo-sub">' + esc(d.kind_label) + (d.item_count ? (' • ' + d.item_count + ' SP') : '') + '</div>' +
+              '<div class="promo-time mono">' + fmtUnixSec(d.start_time) + ' → ' + fmtUnixSec(d.end_time) + '</div>' +
+            '</div>';
+          }).join("")
+        : '<div class="promo-item" style="cursor:default;color:var(--text-muted);">Không có chương trình khuyến mãi khớp bộ lọc.</div>';
+
+      var vList = vouchers.filter(passFilter);
+      document.getElementById("sp_vouchers_list").innerHTML = vList.length
+        ? vList.map(function (v) {
+            var stCls = v.expiring_24h ? "warn" : (v.time_status === 2 ? "ok" : "");
+            var stTxt = v.expiring_24h ? "Hết hạn < 24h" : (v.time_status === 2 ? "Đang diễn ra" : "Sắp diễn ra");
+            var valTxt = v.discount_pct > 0
+              ? ('Giảm ' + v.discount_pct + '% (tối đa ' + fmtVnd(v.max_value) + ')')
+              : ('Giảm ' + fmtVnd(v.value));
+            return '<div class="promo-item ' + (v.expiring_24h ? 'expiring' : '') + '" onclick="openDirect(\'' + esc(v.url) + '\')">' +
+              '<div class="promo-top"><span class="promo-name">' + esc(v.name) + '</span><span class="pill ' + stCls + '">' + stTxt + '</span></div>' +
+              '<div class="promo-sub">Mã: <b class="mono">' + esc(v.voucher_code) + '</b> • ' + valTxt + ' • Đơn từ ' + fmtVnd(v.min_price) + '</div>' +
+              '<div class="promo-time mono">Đã dùng: ' + v.current_usage + '/' + v.usage_limit + ' • ' + fmtUnixSec(v.start_time) + ' → ' + fmtUnixSec(v.end_time) + '</div>' +
+            '</div>';
+          }).join("")
+        : '<div class="promo-item" style="cursor:default;color:var(--text-muted);">Không có mã giảm giá khớp bộ lọc.</div>';
+
+      var fList = flashSales.filter(passFilter);
+      document.getElementById("sp_flashsales_list").innerHTML = fList.length
+        ? fList.map(function (f) {
+            var stCls = f.time_status === 2 ? (f.expiring_24h ? "warn" : "ok") : "";
+            var stTxt = f.time_status === 2 ? "Đang chạy" : "Sắp diễn ra";
+            return '<div class="promo-item ' + (f.time_status === 2 ? 'live-now' : (f.expiring_24h ? 'expiring' : '')) + '" onclick="openDirect(\'' + esc(f.url) + '\')">' +
+              '<div class="promo-top"><span class="promo-name mono">' + fmtUnixSec(f.start_time) + '</span><span class="pill ' + stCls + '">' + stTxt + '</span></div>' +
+              '<div class="promo-sub">Bật ' + f.enabled_item_count + '/' + f.item_count + ' sản phẩm tham gia</div>' +
+              '<div class="promo-time mono">Kết thúc: ' + fmtUnixSec(f.end_time) + '</div>' +
+            '</div>';
+          }).join("")
+        : '<div class="promo-item" style="cursor:default;color:var(--text-muted);">Không có khung Flash Sale khớp bộ lọc.</div>';
+    }
+
     function copyReportText() {
       var sp = lastData.shopee_orders || {};
       var pas = lastData.shopee_pas || {};
       var tt = lastData.tiktok || {};
+      var rs = sp.rating_summary || {};
+      var anoms = Array.isArray(sp.anomalies) ? sp.anomalies : [];
+      var fakes = Array.isArray(sp.fake_reviews) ? sp.fake_reviews : [];
+      var live = sp.live || {};
+      var latestLive = (live.sessions && live.sessions[0]) || null;
+      var fsList = Array.isArray(sp.flash_sales) ? sp.flash_sales : [];
+      var fsRunning = fsList.filter(function (f) { return f.time_status === 2; }).length;
+      var fsUpcoming = fsList.filter(function (f) { return f.time_status === 1; }).length;
+      var vCount = Array.isArray(sp.vouchers) ? sp.vouchers.filter(function (v) { return v.time_status === 2; }).length : 0;
+
       var lines = [
-        "📊 BÁO CÁO NHANH SÀN TMĐT (" + new Date().toLocaleTimeString("vi-VN") + ")",
-        "🟠 SHOPEE: Chờ lấy " + (sp.to_ship || 0) + " | Đang giao " + (sp.shipping || 0) + " | Hỏa tốc " + (sp.express_orders || 0) + " | Đơn bất thường: " + ((sp.anomalies && sp.anomalies.length) || 0),
-        "   • PAS: DS " + fmtVnd(pas.sales_ads || 0) + " | CP " + fmtVnd(pas.cost_ads || 0) + " | ROAS " + (pas.roas_ads || 0),
-        "🎵 TIKTOK: DS " + fmtVnd(tt.sales_ads || 0) + " | CP " + fmtVnd(tt.cost_ads || 0) + " | Đơn SKU " + (tt.orders_ads || 0) + " | ROI " + (tt.roas_ads || 0)
+        "BÁO CÁO VẬN HÀNH SÀN TMĐT (" + new Date().toLocaleTimeString("vi-VN") + ")",
+        "1) SHOPEE ĐƠN HÀNG: Chờ lấy " + (sp.to_ship || 0) + " | Đang giao " + (sp.shipping || 0) + " | Chờ XN " + (sp.unpaid || 0) + " | Hỏa tốc " + (sp.express_orders || 0),
+        "   • Giá bất thường: " + anoms.length + " dòng" + (anoms.length ? (" (" + anoms.slice(0, 3).map(function (a) { return a.order_sn + ": " + fmtVnd(a.effective_price); }).join("; ") + ")") : ""),
+        "2) ĐÁNH GIÁ 1-3★: Cần trả lời " + (rs.to_reply_count || 0) + " | 1★:" + (rs.one_star_count || 0) + " 2★:" + (rs.two_star_count || 0) + " 3★:" + (rs.three_star_count || 0) + " | Nghi Giả/Nhái: " + fakes.length,
+        "3) SHOPEE LIVE: " + (live.is_live_now ? "ĐANG PHÁT SÓNG" : "Chưa bật Live") + (latestLive ? (" | Phiên gần nhất: " + latestLive.title + " (" + latestLive.confirmed_orders + " đơn, " + fmtVnd(latestLive.confirmed_sales) + ")") : ""),
+        "4) KHUYẾN MÃI & FLASH SALE: Voucher chạy " + vCount + " | Flash Sale chạy " + fsRunning + ", sắp chạy " + fsUpcoming,
+        "5) SHOPEE PAS: DS " + fmtVnd(pas.sales_ads || 0) + " | CP " + fmtVnd(pas.cost_ads || 0) + " | ROAS " + (pas.roas_ads || 0),
+        "6) TIKTOK HÔM NAY: DS " + fmtVnd(tt.sales_ads || 0) + " | CP " + fmtVnd(tt.cost_ads || 0) + " | Đơn SKU " + (tt.orders_ads || 0) + " | ROI " + (tt.roas_ads || 0)
       ];
+      if (fakes.length > 0) {
+        lines.push("   CẢNH BÁO NGHI GIẢ/NHÁI:");
+        fakes.slice(0, 3).forEach(function (r) {
+          lines.push("   - " + r.order_sn + " (" + r.rating_star + "★ - " + (r.alert_keywords || []).join(",") + "): " + (r.comment || "").slice(0, 90));
+        });
+      }
       var text = lines.join("\n");
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function () {
-          document.getElementById("ws_status_banner").textContent = "✅ Đã copy báo cáo nhanh vào Clipboard!";
+          document.getElementById("ws_status_banner").textContent = "Đã copy báo cáo đầy đủ (Đơn, Giá bất thường, Đánh giá Giả/Nhái, Live, KM, Ads) vào Clipboard.";
         }).catch(function () {});
       }
     }
@@ -537,98 +939,138 @@
         document.getElementById("ws_status_banner").textContent = st.status_text;
       }
 
-      // Render Worker Tabs
       var cardsEl = document.getElementById("ws_worker_cards");
       var workers = st.worker_tabs || [];
       if (workers.length === 0) {
-        cardsEl.innerHTML = '<div class="w-card"><div class="w-top"><span class="w-name">Chưa có Tab ngầm nào đang mở</span><span class="w-badge">Nhàn rỗi</span></div><div class="w-meta">Khi anh bấm Quét hoặc giao việc cho AI Cowork, Tab ngầm sẽ tự mở &amp; chạy tại đây.</div></div>';
+        cardsEl.innerHTML = '<div class="w-card"><div class="w-top"><span class="w-name">Chưa có Tab ngầm nào đang mở</span><span class="w-badge">Nhàn rỗi</span></div><div class="w-meta">Khi bấm Quét hoặc giao việc cho AI Cowork, Tab ngầm sẽ tự chạy ở đây mà không chiếm chuột.</div></div>';
       } else {
-        var html = "";
-        for (var i = 0; i < workers.length; i++) {
-          var w = workers[i];
+        cardsEl.innerHTML = workers.map(function (w) {
           var isWarn = /lỗi|captcha|đăng nhập/i.test(w.status || "");
-          html += '<div class="w-card">' +
+          return '<div class="w-card">' +
             '<div class="w-top">' +
               '<span class="w-name">[' + esc((w.worker_kind || "BOT").toUpperCase()) + '] ' + esc(w.title || w.url) + '</span>' +
               '<span class="w-badge ' + (isWarn ? 'warn' : '') + '">' + esc(w.status || 'Đang chạy ngầm') + '</span>' +
             '</div>' +
             '<div class="w-meta">' + esc(w.url) + '</div>' +
             '<div class="w-btns">' +
-              '<button type="button" class="w-mini" onclick="sendRust({cmd:\'focus_tab_by_id\', tab_id:' + w.id + '})">👁 Mở xem Tab</button>' +
-              '<button type="button" class="w-mini" onclick="sendRust({cmd:\'close_tab_by_id\', tab_id:' + w.id + '})">✕ Đóng</button>' +
+              '<button type="button" class="btn" style="padding:3px 10px;font-size:11px;" onclick="sendRust({cmd:\'focus_tab_by_id\', tab_id:' + w.id + '})">Mở xem Tab</button>' +
+              '<button type="button" class="btn" style="padding:3px 10px;font-size:11px;" onclick="sendRust({cmd:\'close_tab_by_id\', tab_id:' + w.id + '})">Đóng</button>' +
             '</div>' +
           '</div>';
-        }
-        cardsEl.innerHTML = html;
+        }).join("");
       }
 
-      // Shopee Orders
       if (st.shopee_orders) {
         lastData.shopee_orders = st.shopee_orders;
         var sp = st.shopee_orders;
-        document.getElementById("sp_ts").textContent = "Cập nhật: " + (sp.ts || "vừa xong");
+        document.getElementById("sp_ts").textContent = "Shopee cập nhật: " + (sp.ts || "vừa xong");
         document.getElementById("sp_toship").textContent = sp.to_ship !== undefined ? sp.to_ship : "0";
-        document.getElementById("sp_express").textContent = "Hỏa tốc: " + (sp.express_orders || 0);
-        document.getElementById("sp_shipping").textContent = sp.shipping !== undefined ? sp.shipping : "0";
-        document.getElementById("sp_scanned").textContent = "Đã đọc: " + (sp.scanned_orders || 0) + " đơn";
+        document.getElementById("sp_shipping_sub").textContent = "Đang giao: " + (sp.shipping || 0) + " • Chờ XN: " + (sp.unpaid || 0);
+        document.getElementById("sp_scanned_sub").textContent = "Đã kiểm toán: " + (sp.scanned_orders || 0) + " đơn";
 
-        var anomBox = document.getElementById("sp_anomaly_box");
+        var loginBox = document.getElementById("sp_login_box");
         if (sp.need_login) {
-          anomBox.style.display = "block";
-          anomBox.innerHTML = "⚠️ Worker Shopee cần đăng nhập 1 lần. Bấm <b>👁 Mở xem Tab</b> ở trên để đăng nhập tài khoản Kênh Người Bán.";
-        } else if (Array.isArray(sp.anomalies) && sp.anomalies.length > 0) {
-          anomBox.style.display = "block";
-          anomBox.innerHTML = "<b>⚠️ Phát hiện " + sp.anomalies.length + " dòng giá bất thường:</b> " +
-            sp.anomalies.slice(0, 4).map(function (a) {
-              return esc(a.order_sn) + " (" + esc(a.item_name).slice(0, 36) + ": " + fmtVnd(a.effective_price) + " — " + esc((a.reasons || []).join(", ")) + ")";
-            }).join(" • ");
+          loginBox.style.display = "block";
+          loginBox.textContent = "Worker Shopee cần đăng nhập 1 lần. Bấm Mở xem Tab ở khung Tab ngầm phía trên để đăng nhập.";
         } else {
-          anomBox.style.display = "none";
+          loginBox.style.display = "none";
         }
+
+        var anoms = Array.isArray(sp.anomalies) ? sp.anomalies : [];
+        document.getElementById("sp_anom_count").textContent = anoms.length;
+        document.getElementById("card_anom_kpi").classList.toggle("danger", anoms.length > 0);
+        var ab = document.getElementById("sp_anom_badge");
+        ab.textContent = anoms.length > 0 ? (anoms.length + " dòng bất thường") : "0 bất thường";
+        ab.className = "pill " + (anoms.length > 0 ? "danger" : "ok");
+
+        var anomBody = document.getElementById("sp_anom_tbody");
+        if (anoms.length === 0) {
+          anomBody.innerHTML = '<tr><td colspan="4" style="color:var(--ok-fg);text-align:center;">Toàn bộ ' + (sp.scanned_orders || 0) + ' đơn kiểm tra gần nhất đều hợp lệ giá bán.</td></tr>';
+        } else {
+          anomBody.innerHTML = anoms.map(function (a) {
+            return '<tr class="clickable" onclick="openDirect(\'' + esc(a.url) + '\')">' +
+              '<td><strong class="mono">' + esc(a.order_sn) + '</strong><br/><span style="color:var(--text-muted);font-size:11px;">' + esc(a.buyer || "") + ' • ' + esc(a.status || "") + '</span></td>' +
+              '<td><b>' + esc(a.item_name) + '</b><br/><span style="color:var(--text-muted);font-size:11px;">' + esc(a.model_name || "") + ' • SL: ' + esc(a.qty) + '</span></td>' +
+              '<td class="mono"><b style="color:var(--danger-fg);">' + fmtVnd(a.effective_price) + '</b><br/><span style="color:var(--text-muted);font-size:11px;">TV: ' + fmtVnd(a.median_price || a.order_total) + '</span></td>' +
+              '<td><span class="pill danger">' + esc((a.reasons || []).join(", ")) + '</span></td>' +
+            '</tr>';
+          }).join("");
+        }
+
+        var rs = sp.rating_summary || {};
+        var fakes = Array.isArray(sp.fake_reviews) ? sp.fake_reviews : [];
+        document.getElementById("sp_bad_kpi").textContent = (rs.to_reply_count || 0) + " / " + fakes.length;
+        document.getElementById("sp_rating_sub").textContent = "1★:" + (rs.one_star_count || 0) + " 2★:" + (rs.two_star_count || 0) + " 3★:" + (rs.three_star_count || 0) + " • Tốt " + (rs.good_rating_rate || 0) + "%";
+        document.getElementById("card_rating_kpi").classList.toggle("danger", fakes.length > 0);
+        var rb = document.getElementById("sp_rating_badge");
+        rb.textContent = fakes.length > 0 ? ("Cảnh báo giả/nhái: " + fakes.length) : ("Cần trả lời: " + (rs.to_reply_count || 0));
+        rb.className = "pill " + (fakes.length > 0 ? "danger" : "warn");
+        renderReviews();
+
+        var live = sp.live || {};
+        var sessions = Array.isArray(live.sessions) ? live.sessions : [];
+        document.getElementById("sp_live_kpi").textContent = live.is_live_now ? "ĐANG LIVE" : (sessions.length + " phiên");
+        var latestLive = sessions[0] || null;
+        document.getElementById("sp_live_sub").textContent = latestLive
+          ? ("Gần nhất: " + fmtVnd(latestLive.confirmed_sales) + " (" + latestLive.confirmed_orders + " đơn)")
+          : "Chưa có phiên Live 7–30 ngày";
+        var lb = document.getElementById("sp_live_badge");
+        lb.textContent = live.is_live_now ? "Đang phát sóng trực tiếp" : "Chưa bật Live hiện tại";
+        lb.className = "pill " + (live.is_live_now ? "ok" : "warn");
+        var lBody = document.getElementById("sp_live_tbody");
+        if (sessions.length === 0) {
+          lBody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);text-align:center;">Chưa có phiên Shopee Live nào trong 30 ngày qua.</td></tr>';
+        } else {
+          lBody.innerHTML = sessions.map(function (s) {
+            return '<tr class="clickable" onclick="openDirect(\'' + esc(s.url) + '\')">' +
+              '<td><b>' + esc(s.title) + '</b></td>' +
+              '<td><span class="pill ' + (s.is_live ? 'ok' : '') + '">' + (s.is_live ? 'Đang Live' : 'Đã kết thúc') + '</span></td>' +
+              '<td class="mono">' + fmtUnixMs(s.start_time_ms) + '<br/><span style="color:var(--text-muted);">' + fmtDuration(s.duration_ms) + '</span></td>' +
+              '<td class="mono">' + s.viewers + ' xem • CCU ' + s.avg_ccu + ' • ATC ' + s.atc + '</td>' +
+              '<td class="mono">' + s.placed_orders + ' / <b>' + s.confirmed_orders + '</b></td>' +
+              '<td class="mono"><b>' + fmtVnd(s.confirmed_sales) + '</b></td>' +
+            '</tr>';
+          }).join("");
+        }
+
+        renderPromos();
       }
 
-      // Shopee PAS
       if (st.shopee_pas) {
         lastData.shopee_pas = st.shopee_pas;
         var pas = st.shopee_pas;
+        document.getElementById("sp_pas_ts").textContent = "Cập nhật: " + (pas.ts || "vừa xong");
         document.getElementById("sp_pas_sales").textContent = fmtVnd(pas.sales_ads || 0);
-        document.getElementById("sp_pas_cost").textContent = "Chi phí: " + fmtVnd(pas.cost_ads || 0);
-        document.getElementById("sp_pas_roas").textContent = pas.roas_ads || 0;
-        document.getElementById("sp_pas_orders").textContent = "Đơn QC: " + (pas.orders_ads || 0);
+        document.getElementById("sp_pas_sub").textContent = "CP: " + fmtVnd(pas.cost_ads || 0) + " • ROAS: " + (pas.roas_ads || 0) + " • Đơn: " + (pas.orders_ads || 0);
         var tb = document.getElementById("sp_pas_tbody");
         var camps = pas.campaigns || [];
         if (camps.length > 0) {
           tb.innerHTML = camps.map(function (c) {
-            return "<tr><td><b>" + esc(c.name) + "</b><br/><span style='color:var(--text-muted);font-size:10px;'>" + esc(c.status) + "</span></td>" +
-              "<td>" + esc(c.budget_raw || fmtVnd(c.budget)) + "</td>" +
-              "<td>" + fmtVnd(c.cost) + "</td>" +
-              "<td>" + fmtVnd(c.sales) + "</td>" +
-              "<td><b>" + esc(c.roas) + "</b></td>" +
-              "<td>" + esc(c.acos) + "%</td></tr>";
+            return '<tr class="clickable" onclick="openDirect(\'' + esc(c.url || "https://banhang.shopee.vn/portal/marketing/pas/index") + '\')">' +
+              '<td><b>' + esc(c.name) + '</b><br/><span style="color:var(--text-muted);font-size:11px;">' + esc(c.status) + '</span></td>' +
+              '<td class="mono">' + esc(c.budget_raw || fmtVnd(c.budget)) + '</td>' +
+              '<td class="mono">' + fmtVnd(c.cost) + '</td>' +
+              '<td class="mono">' + fmtVnd(c.sales) + '</td>' +
+              '<td class="mono"><b>' + esc(c.roas) + '</b></td>' +
+              '<td class="mono">' + esc(c.acos) + '%</td></tr>';
           }).join("");
         }
       }
 
-      // TikTok
       if (st.tiktok) {
         lastData.tiktok = st.tiktok;
         var tt = st.tiktok;
         document.getElementById("tt_ts").textContent = "Cập nhật: " + (tt.ts || "vừa xong");
-        document.getElementById("tt_cost").textContent = fmtVnd(tt.cost_ads || 0);
-        document.getElementById("tt_period").textContent = tt.period_label || "Hôm nay";
-        document.getElementById("tt_orders").textContent = tt.orders_ads !== undefined ? tt.orders_ads : "0";
-        document.getElementById("tt_cpa").textContent = "CPA: " + fmtVnd(tt.cpa_ads || 0);
         document.getElementById("tt_sales").textContent = fmtVnd(tt.sales_ads || 0);
-        document.getElementById("tt_live").textContent = tt.live_streaming ? "🔴 Đang Live" : "Phiên thường";
-        document.getElementById("tt_roi").textContent = tt.roas_ads || 0;
+        document.getElementById("tt_kpi_sub").textContent = "CP: " + fmtVnd(tt.cost_ads || 0) + " • Đơn: " + (tt.orders_ads || 0) + " • ROI: " + (tt.roas_ads || 0);
 
         var capBox = document.getElementById("tt_captcha_box");
         if (tt.captcha_active) {
           capBox.style.display = "block";
-          capBox.innerHTML = "🧩 TikTok đang yêu cầu kéo mảnh ghép CAPTCHA. Bấm <b>👁 Mở xem Tab</b> ở khung Tab ngầm phía trên để anh kéo 1 lần.";
+          capBox.textContent = "TikTok đang yêu cầu kéo mảnh ghép CAPTCHA. Bấm Mở xem Tab ở khung Tab ngầm phía trên để kéo 1 lần.";
         } else if (tt.need_login) {
           capBox.style.display = "block";
-          capBox.innerHTML = "⚠️ TikTok Seller chưa đăng nhập. Bấm <b>👁 Mở xem Tab</b> ở khung Tab ngầm phía trên để đăng nhập.";
+          capBox.textContent = "TikTok Seller chưa đăng nhập. Bấm Mở xem Tab ở khung Tab ngầm phía trên để đăng nhập.";
         } else {
           capBox.style.display = "none";
         }
@@ -637,12 +1079,13 @@
         var tcamps = tt.campaigns || [];
         if (tcamps.length > 0) {
           ttb.innerHTML = tcamps.map(function (c) {
-            return "<tr><td><b>" + esc(c.name) + "</b><br/><span style='color:var(--text-muted);font-size:10px;'>" + esc(c.status) + "</span></td>" +
-              "<td>" + fmtVnd(c.budget) + "</td>" +
-              "<td>" + fmtVnd(c.cost) + "</td>" +
-              "<td>" + esc(c.orders) + "</td>" +
-              "<td>" + fmtVnd(c.sales) + "</td>" +
-              "<td><b>" + esc(c.roas) + "</b></td></tr>";
+            return '<tr class="clickable" onclick="openDirect(\'https://seller-vn.tiktok.com/ads-creation/dashboard\')">' +
+              '<td><b>' + esc(c.name) + '</b><br/><span style="color:var(--text-muted);font-size:11px;">' + esc(c.status) + '</span></td>' +
+              '<td class="mono">' + fmtVnd(c.budget) + '</td>' +
+              '<td class="mono">' + fmtVnd(c.cost) + '</td>' +
+              '<td class="mono">' + esc(c.orders) + '</td>' +
+              '<td class="mono">' + fmtVnd(c.sales) + '</td>' +
+              '<td class="mono"><b>' + esc(c.roas) + '</b></td></tr>';
           }).join("");
         }
       }
@@ -669,6 +1112,24 @@
 
     syncWorkspaceBrand();
     sendRust({ cmd: "ui_shell_ready", shell: "workspace" });
+
+    try {
+      var navLinks = Array.prototype.slice.call(document.querySelectorAll(".nav-links a[data-sec]"));
+      var obs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) {
+            var id = en.target.id;
+            navLinks.forEach(function (a) {
+              a.classList.toggle("active", a.getAttribute("data-sec") === id);
+            });
+          }
+        });
+      }, { rootMargin: "-20% 0px -65% 0px", threshold: 0.01 });
+      ["tong-quan", "kiem-toan", "live-ads", "khuyen-mai"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) obs.observe(el);
+      });
+    } catch (_) {}
   </script>
 </body>
 </html>

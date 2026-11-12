@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup — TPbrowser Shopee &amp; TikTok Landing Workspace</title>
+<style>
+  :root {
+    --bg: #F6F4EF;
+    --surface: #FFFFFF;
+    --surface-2: #EFECE4;
+    --border: #DDD6C7;
+    --text: #14110C;
+    --muted: #524B3F;
+    --accent: #B45309;
+    --accent-soft: #FEF3C7;
+    --danger: #B91C1C;
+    --danger-bg: #FEF2F2;
+    --danger-bd: #FECACA;
+    --ok: #15803D;
+    --ok-bg: #F0FDF4;
+    --ok-bd: #BBF7D0;
+    --warn: #A16207;
+    --warn-bg: #FEFCE8;
+    --warn-bd: #FDE68A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding-bottom: 64px;
+  }
+  .mono { font-family: "JetBrains Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  /* Floating island nav */
+  .island-nav {
+    position: sticky;
+    top: 16px;
+    z-index: 40;
+    max-width: 1120px;
+    margin: 16px auto 0;
+    padding: 8px 16px;
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    box-shadow: 0 8px 24px rgba(20, 17, 12, 0.06);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .brand-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    background: var(--accent);
+  }
+  .nav-links {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .nav-links a {
+    text-decoration: none;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 9999px;
+  }
+  .nav-links a.active, .nav-links a:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .nav-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .btn {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: #14110C;
+    color: #FFFFFF;
+    border-color: #14110C;
+  }
+
+  .container {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 32px 24px 0;
+  }
+
+  /* Hero section */
+  .hero {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 24px;
+  }
+  .hero-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 4px 12px;
+    border-radius: 9999px;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 30px;
+    line-height: 36px;
+    font-weight: 700;
+    max-width: 680px;
+    margin-bottom: 8px;
+  }
+  .subhead {
+    font-size: 14px;
+    color: var(--muted);
+    max-width: 640px;
+  }
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  @media (max-width: 980px) { .hero-stats { grid-template-columns: repeat(3, 1fr); } }
+  .stat-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .stat-lbl {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .stat-val {
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .stat-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .stat-card.alert {
+    background: var(--danger-bg);
+    border-color: var(--danger-bd);
+  }
+  .stat-card.alert .stat-val { color: var(--danger); }
+
+  /* Section header */
+  .section {
+    margin-top: 32px;
+  }
+  .section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 700;
+  }
+  .section-desc {
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 960px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .pill {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .pill.danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-bd); }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-bd); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-bd); }
+
+  .tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .tab {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .tab.active {
+    background: #14110C;
+    color: #FFFFFF;
+    border-color: #14110C;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  .review-item {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: var(--bg);
+  }
+  .review-item.fake-alert {
+    background: var(--danger-bg);
+    border-color: var(--danger-bd);
+  }
+  .review-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .stars { color: #D97706; font-weight: 700; }
+
+  .promo-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 980px) { .promo-grid { grid-template-columns: 1fr; } }
+
+  .promo-row {
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+    margin-bottom: 8px;
+  }
+  .promo-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .promo-time { font-size: 12px; color: var(--muted); }
+  .worker-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 24px;
+    font-size: 12px;
+    align-items: center;
+  }
+</style>
+</head>
+<body>
+  <nav class="island-nav">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>TPbrowser Workspace • mastercareforpet</span>
+    </div>
+    <div class="nav-links">
+      <a href="#tong-quan" class="active">Tổng quan</a>
+      <a href="#kiem-toan">Giá bất thường &amp; Đánh giá xấu</a>
+      <a href="#live-ads">Shopee Live &amp; Quảng cáo</a>
+      <a href="#khuyen-mai">Khuyến mãi, Voucher &amp; Flash Sale</a>
+    </div>
+    <div class="nav-actions">
+      <button class="btn">Xuất CSV</button>
+      <button class="btn">Copy Báo Cáo Zalo</button>
+      <button class="btn btn-primary">Quét Tất Cả Ngầm</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="worker-bar">
+      <strong>Tab ngầm đang chạy (không chiếm chuột):</strong>
+      <span class="pill ok">BOT Shopee Đơn + Đánh giá + KM: Đã lấy xong</span>
+      <span class="pill ok">BOT Shopee PAS: Đã lấy xong</span>
+      <span class="pill ok">BOT TikTok Ads: Đã lấy xong</span>
+    </div>
+
+    <!-- HERO SECTION -->
+    <section id="tong-quan" class="hero">
+      <div class="hero-top">
+        <div>
+          <span class="eyebrow">Cập nhật dữ liệu thật • Tự động chạy ngầm mỗi 15 phút</span>
+          <h1>Trung tâm vận hành &amp; kiểm toán rủi ro Shopee và TikTok</h1>
+          <p class="subhead">Theo dõi tức thời đơn tụt giá, đánh giá 1 đến 3 sao nghi hàng giả nhái, hiệu suất Shopee Live, quảng cáo và lịch chạy khuyến mãi có thời hạn.</p>
+        </div>
+      </div>
+
+      <div class="hero-stats">
+        <div class="stat-card">
+          <div class="stat-lbl">Chờ lấy hàng</div>
+          <div class="stat-val mono">116</div>
+          <div class="stat-sub">Đang giao: 2.749 • Chờ XN: 11</div>
+        </div>
+        <div class="stat-card alert">
+          <div class="stat-lbl">Đơn giá bất thường</div>
+          <div class="stat-val mono">3</div>
+          <div class="stat-sub">Phát hiện từ 120 đơn mới</div>
+        </div>
+        <div class="stat-card alert">
+          <div class="stat-lbl">Đánh giá 1–3★ / Nghi giả</div>
+          <div class="stat-val mono">19 / 1</div>
+          <div class="stat-sub">Cần phản hồi: 19 • 1★: 969</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Shopee Live (7 ngày)</div>
+          <div class="stat-val mono">4 phiên</div>
+          <div class="stat-sub">Phiên gần nhất: 27,28tr • 173 đơn</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Shopee PAS Hôm nay</div>
+          <div class="stat-val mono">35,62tr</div>
+          <div class="stat-sub">Chi phí 8,86tr • ROAS 4.02</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">TikTok Hôm nay</div>
+          <div class="stat-val mono">25,17tr</div>
+          <div class="stat-sub">Chi phí 5,29tr • ROI 4.76</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: ANOMALIES & BAD RATINGS -->
+    <section id="kiem-toan" class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Kiểm toán rủi ro giá bán &amp; đánh giá tiêu cực</h2>
+          <p class="section-desc">Khoanh đỏ tự động đơn dưới 15.000đ, tụt trên 28% trung vị và đánh giá 1★ 2★ 3★ có từ khóa hàng giả, hàng nhái, kém chất lượng.</p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Price anomalies -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Đơn hàng có giá bất thường</div>
+            <span class="pill danger">3 dòng cần kiểm tra</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Mã đơn &amp; Khách</th>
+                <th>Sản phẩm</th>
+                <th>Giá thu thực</th>
+                <th>Cảnh báo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono"><strong>26111254VBFBMJ</strong><br/>unbiz10qvv</td>
+                <td>Cần Câu Mèo Dây Thép<br/><span style="color:var(--muted)">SL: 1 • Chờ lấy hàng</span></td>
+                <td class="mono" style="color:var(--danger);font-weight:700;">13.000đ</td>
+                <td><span class="pill danger">Đơn dưới 15.000đ</span></td>
+              </tr>
+              <tr>
+                <td class="mono"><strong>2611124VXNSD3Q</strong><br/>minhanh92</td>
+                <td>Khăn Tắm 40x30cm [6KT]<br/><span style="color:var(--muted)">Trung vị: 57.721đ</span></td>
+                <td class="mono" style="color:var(--danger);font-weight:700;">33.545đ</td>
+                <td><span class="pill danger">Tụt 42% so với trung vị</span></td>
+              </tr>
+              <tr>
+                <td class="mono"><strong>2611124V5X8J01</strong><br/>thuynguyenex</td>
+                <td>Lược Chải Ve Rận<br/><span style="color:var(--muted)">Trung vị: 56.007đ</span></td>
+                <td class="mono" style="color:var(--danger);font-weight:700;">15.000đ</td>
+                <td><span class="pill danger">Tụt 73% so với trung vị</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Ratings 1* 2* 3* + fake alerts -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Đánh giá 1★ 2★ 3★ &amp; Cảnh báo Hàng giả / Nhái</div>
+            <span class="pill warn">Cần trả lời: 19</span>
+          </div>
+          <div class="tabs">
+            <span class="tab active">Cảnh báo Giả / Nhái (1)</span>
+            <span class="tab">1★ (969)</span>
+            <span class="tab">2★ (408)</span>
+            <span class="tab">3★ (1.468)</span>
+            <span class="tab">Chưa trả lời (19)</span>
+          </div>
+
+          <div class="review-item fake-alert">
+            <div class="review-meta">
+              <span><span class="stars">1★</span> • Đơn <strong class="mono">2611100F06S7SQ</strong> • trnnhnng791</span>
+              <span class="pill danger">Từ khóa nghi vấn: mùi lạ / giả nhái</span>
+            </div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Khăn Tắm MASTERCARE &amp; Sữa Tắm — 12/11/2026 16:30</div>
+            <div style="font-size:13px;">"Mùi kì quá, nghi hàng pha hoặc để lâu biến chất, shop kiểm tra lại lô này giúp mình."</div>
+          </div>
+
+          <div class="review-item">
+            <div class="review-meta">
+              <span><span class="stars">2★</span> • Đơn <strong class="mono">2611111YWGN5HP</strong> • fbkdh.05</span>
+              <span class="pill">Chưa trả lời</span>
+            </div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Khăn Tắm MASTERCARE 40x30cm — 12/11/2026 17:12</div>
+            <div style="font-size:13px;">"Khăn có vết cắt không đều nhưng dùng thì tạm ổn."</div>
+          </div>
+
+          <div class="review-item">
+            <div class="review-meta">
+              <span><span class="stars">3★</span> • Đơn <strong class="mono">2611111VBQH7GQ</strong> • vppkhanghy</span>
+              <span class="pill">Chưa trả lời</span>
+            </div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Xịt Ve Rận Chó Mèo MASTERCARE 100ml</div>
+            <div style="font-size:13px;">"Chưa sử dụng vì shop không kèm tờ hướng dẫn sử dụng."</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: SHOPEE LIVE & ADS -->
+    <section id="live-ads" class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Shopee Live &amp; Hiệu quả Quảng cáo Đa Sàn</h2>
+          <p class="section-desc">Trạng thái phát sóng trực tiếp từ Creator Center và bảng đối chiếu chi phí quảng cáo Shopee PAS với TikTok GMV Max.</p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Shopee Live (Creator Center)</div>
+            <span class="pill warn">Hiện chưa phát sóng • Phiên gần nhất: 27,28tr</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Phiên Live</th>
+                <th>Thời gian</th>
+                <th>Xem / CCU</th>
+                <th>Đơn XN / Doanh thu</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Mastercare_Live Cs</strong><br/><span class="pill">Đã kết thúc</span></td>
+                <td class="mono">10/11 10:24<br/>22h 46p</td>
+                <td class="mono">1.471 lượt<br/>CCU: 243 • ATC: 563</td>
+                <td class="mono"><strong>173 đơn</strong><br/>27.289.836đ</td>
+              </tr>
+              <tr>
+                <td><strong>Mastercare_Live Cs</strong><br/><span class="pill">Đã kết thúc</span></td>
+                <td class="mono">09/11 08:26<br/>25h 57p</td>
+                <td class="mono">762 lượt<br/>CCU: 148 • ATC: 265</td>
+                <td class="mono"><strong>105 đơn</strong><br/>14.932.164đ</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Quảng cáo TikTok Hôm nay &amp; Shopee PAS</div>
+            <span class="pill ok">Khớp 10/10 chiến dịch TikTok</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Sàn / Chiến dịch nổi bật</th>
+                <th>Chi phí</th>
+                <th>Đơn</th>
+                <th>Doanh thu</th>
+                <th>ROI</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>TikTok: Luoc Ve CC New</strong></td>
+                <td class="mono">972.273đ</td>
+                <td class="mono">85</td>
+                <td class="mono">3.390.334đ</td>
+                <td class="mono">3.49</td>
+              </tr>
+              <tr>
+                <td><strong>TikTok: ToanCH NEw</strong></td>
+                <td class="mono">892.651đ</td>
+                <td class="mono">100</td>
+                <td class="mono">4.300.820đ</td>
+                <td class="mono">4.82</td>
+              </tr>
+              <tr>
+                <td><strong>Shopee PAS: Nước Lau Sàn 1L</strong></td>
+                <td class="mono">766.950đ</td>
+                <td class="mono">78</td>
+                <td class="mono">2.921.594đ</td>
+                <td class="mono">3.81</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4: PROMOTIONS, VOUCHERS & FLASH SALES -->
+    <section id="khuyen-mai" class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Lịch trình Khuyến mãi, Mã giảm giá &amp; Flash Sale</h2>
+          <p class="section-desc">Theo dõi chính xác khung giờ bắt đầu và kết thúc để tránh hở khung Flash Sale hoặc hết hạn quà tặng.</p>
+        </div>
+      </div>
+
+      <div class="promo-grid">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Khuyến mãi &amp; Quà tặng</div>
+            <span class="pill ok">Đang chạy</span>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">Sữa tắm tặng khăn (Mua tặng quà • 17 SP)</div>
+            <div class="promo-time mono">27/10/2026 16:30 → 31/01/2027 08:30</div>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">Mặc định đến 18/1/2027 (Giảm giá • 130 SP)</div>
+            <div class="promo-time mono">23/07/2026 09:00 → 18/01/2027 10:30</div>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">Mua xịt ve tặng quà (8 SP)</div>
+            <div class="promo-time mono">03/09/2026 15:30 → 31/01/2027 16:30</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Mã Giảm Giá (Voucher Shop)</div>
+            <span class="pill ok">9 mã đang chạy</span>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">Voucher Follower <span class="mono">(3.000đ / đơn 99k)</span></div>
+            <div class="promo-time mono">Đã dùng: 853 / 10.000 • Đến 05/03/2027</div>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">MAST7K399 <span class="mono">(Giảm 7.000đ / đơn 399k)</span></div>
+            <div class="promo-time mono">Đã dùng: 18 / 10.000 • Đến 10/12/2026</div>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">MAST2K299 <span class="mono">(Giảm 5.000đ / đơn 299k)</span></div>
+            <div class="promo-time mono">Đã dùng: 1.730 / 10.000 • Đến 10/12/2026</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Flash Sale của Shop</div>
+            <span class="pill ok">1 đang chạy • 9 sắp chạy</span>
+          </div>
+          <div class="promo-row" style="background:var(--ok-bg);border-color:var(--ok-bd);">
+            <div class="promo-name">Khung đang chạy • 9/9 SP bật</div>
+            <div class="promo-time mono">12/11/2026 15:00 → 17:00</div>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">Sắp diễn ra • 9/9 SP bật</div>
+            <div class="promo-time mono">13/11/2026 19:00 → 21:00</div>
+          </div>
+          <div class="promo-row">
+            <div class="promo-name">Sắp diễn ra • 9/9 SP bật</div>
+            <div class="promo-time mono">13/11/2026 21:00 → 00:00</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

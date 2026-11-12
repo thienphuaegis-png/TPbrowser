@@ -1,21 +1,17 @@
 # STATE.md — TPbrowser (`D:\Projects_Hermes\TPbrowser`)
 
-**Checkpoint:** `v0.5.5-ecommerce-workspace-and-background-workers` (2026-11-12)
-**Dự án:** `TPbrowser` — Trình duyệt cá nhân Rust (`tao` + `wry` / WebView2), giao diện **AURELIA**, **Màn hình làm việc riêng TMĐT (`tp://workspace`)**, **Worker Tabs chạy ngầm không chiếm chuột**, **Thanh trên Icon-First tích hợp Tab Ngang + URL ngắn**, **Favicon thật trên từng Tab**, **Kéo giãn Tab Dọc tự do**, **Cửa sổ Chat tối giản**, **Bộ Logo & App Icon**, **Universal MCP Server**, AI Cowork & `uBlock Origin Lite`.
+**Checkpoint:** `v0.5.6-shopee-landing-audit-live-ratings-promos` (2026-11-12)
+**Dự án:** `TPbrowser` — Trình duyệt cá nhân Rust (`tao` + `wry` / WebView2), giao diện **AURELIA**, **Màn hình làm việc riêng TMĐT (`tp://workspace`) dạng Landing Page**, **Worker Tabs chạy ngầm không chiếm chuột**, **Thanh trên Icon-First tích hợp Tab Ngang + URL ngắn**, **Favicon thật trên từng Tab**, **Kéo giãn Tab Dọc tự do**, **Cửa sổ Chat tối giản**, **Bộ Logo & App Icon**, **Universal MCP Server**, AI Cowork & `uBlock Origin Lite`.
 
 ---
 
 ## 1. Phiên Hiện Tại
 
-- **Tích hợp Màn Hình Làm Việc Riêng TMĐT & Worker Tab Chạy Ngầm (`src/main.rs`, `src/workspace.html`, `src/ecom_agents.js`, `src/titlebar.html`, `src/tab_shell.html`, `src/ai_panel.html`)**:
-  - **Màn hình làm việc riêng `tp://workspace`**: Mở nhanh bằng nút icon trên thanh trên (`Alt+W`), giao diện AURELIA Sáng/Tối đồng bộ, quản lý quét song song **Shopee (Đơn hàng + Kiểm toán giá bất thường + Quảng cáo PAS)** và **TikTok Seller (KPI Hôm nay + Bảng Chiến dịch)**.
-  - **Nguyên tắc Không chiếm chuột & Không cướp Tab**:
-    - Thêm `worker_kind: Option<String>` vào `BrowserTab` (`BOT` / `AI`), gán nhãn huy hiệu trên cả Tab Dọc lẫn Tab Ngang.
-    - Worker Tab chạy ở lớp nền (`HWND_BOTTOM`) với kích thước thật `1366x860` + `MemoryUsageLevel::Normal` để SPA/API chạy mượt mà mà **không đổi `active_idx`**, **không gọi `webview.focus()`** và **không chiếm con trỏ chuột Windows**.
-  - **AI Cowork tự mở Worker Tab riêng**: Thêm tùy chọn `quick_worker_tab` (mặc định BẬT) giúp AI Cowork tự tạo/dùng Tab ngầm `AI` để duyệt web, tìm kiếm và thao tác DOM mà không đè lên Tab người dùng đang xem.
-  - **TikTok Seller Center (`TIKTOK_PASSIVE_SCAN_JS`)**: Sửa lỗi ngắt dòng RegExp (`split("\n")`), hỗ trợ quét bảng ảo Shadow DOM `<ks-virtual-table>` (quét ngang `.table__wrapper` thu đủ slot `[slot^="cell-"]`: ngân sách, chi phí, `onsite_roi2_shopping_sku`, `onsite_roi2_shopping_value`, ROI), tự bấm lọc `"Hôm nay"` trên Arco Picker (kiểm chứng thực tế khớp `5.285.934đ`, `371` đơn, `25.168.872đ`, `ROI 4.76`, đủ 10/10 chiến dịch).
-  - **Kho xuất & báo cáo**: Tự lưu cache `exports/*.json`, xuất file CSV `exports/shopee_don_hang.csv` chuẩn Excel tiếng Việt (UTF-8 BOM), nút Copy báo cáo chuẩn định dạng Zalo.
-- **Sửa Lỗi Nút Cài Đặt & Khởi Động Ổn Định (`v0.5.4`)**: Đã hoàn tất trước đó.
+- **Nâng Cấp Màn Hình TMĐT `tp://workspace` Dạng Landing Page & Kiểm Toán Toàn Diện Shopee (`src/ecom_agents.js`, `src/workspace.html`, `src/main.rs`)**:
+  - **Sửa lỗi kiểm toán đơn giá bất thường & đếm tab Shopee v3**: Đọc tổng đơn từ `payment_info.total_price` (micro-VND / 100.000), khách từ `buyer_info.username`, trạng thái `status_info.status`, vận chuyển `fulfilment_info.masked_channel_name`; chuẩn hóa mã tab `200=Chờ XN, 300=Chờ lấy, 400=Đang giao, 500=Đã giao`; chunk batch `5` đơn/request + `next_page_sentinel` để quét ~200 đơn mới nhất; tính trung vị theo đúng cặp `tên SP + phân loại` (không chia đều combo khi thiếu giá lẻ).
+  - **Bổ sung 4 nguồn dữ liệu thật Shopee**: Đánh giá `1★/2★/3★` (200 đánh giá gần nhất qua `cursor = last_comment_id` + phát hiện từ khóa **Hàng giả / Hàng nhái / Mùi lạ / Hết hạn**), **Shopee Live** (`liveList/v2`), **Khuyến mãi Shop** (`discount/list` `limit<=10`), **Mã giảm giá** (`voucher/list`), **Flash Sale** (`get_shop_flash_sale_list` + cảnh báo hết hạn `≤ 24h`).
+  - **Giao diện Landing Page & Mở trực tiếp**: Thanh điều hướng nổi 1 hàng, 6 thẻ KPI Hero, bảng chi tiết đơn bất thường, lọc đánh giá 1–3★ + search, lưới 3 cột Khuyến mãi/Voucher/Flash Sale, tích hợp đầy đủ vào nút **Copy Báo Cáo**, và **click vào bất kỳ dòng/thẻ nào sẽ mở Tab đi thẳng tới đúng đơn/chương trình để xử lý**.
+- **TikTok Seller Center (`TIKTOK_PASSIVE_SCAN_JS`) & Worker Tab Ngầm (`v0.5.5`)**: Đã hoàn tất trước đó.
 
 ---
 
@@ -23,7 +19,7 @@
 
 - **Rust Unit Tests (`cargo test`)**: `16 passed; 0 failed` (bao gồm `test_workspace_and_background_worker_tabs`, `test_settings_modal_and_startup_stability`, `test_compact_icon_ui_and_sidebar_resizer`, `test_brand_logo_and_icon_assets`).
 - **Build Release (`cargo build --release`)**: `0 errors, 0 warnings`, đã deploy ra `TPbrowser.exe`.
-- **Kiểm chứng sống & thị giác (`TPbrowser.exe` + MCP + `PrintWindow` + `vision_analyze`)**: Xác nhận qua `live_workspace_view.png` (`tp://workspace` hiển thị chuẩn), `live_workspace_scanning.png` (3 tab ngầm `[BOT]` Shopee đơn, Shopee PAS, TikTok Ads chạy song song và cập nhật tiến trình vào dashboard mà không chiếm chuột hay cướp tab đang xem), và `live_user_tab_uninterrupted.png` (Tab 0 của người dùng hoàn toàn nguyên vẹn, giữ trọn focus).
+- **Kiểm chứng sống & thị giác (`TPbrowser.exe` + MCP + `PrintWindow` + `vision_analyze`)**: Xác nhận trên tài khoản thật (`mastercareforpet`): `Chờ lấy 118 | Đang giao 2738 | 172–200 đơn | 200 đánh giá 1–3★ (5 cảnh báo giả/nhái/mùi lạ) | 4 phiên Live | 11 KM | 9 Voucher | 11 Flash Sale`; kiểm tra trực tiếp `live_v2_hero.png`, `live_v3_audit.png`, `live_v3_promos.png` và click dòng mở thẳng `/portal/sale/order/...`, `/portal/marketing/add-on-deal/...`, `/portal/marketing/shop-flash-sale/...`.
 - **Kiểm tra Checkpoint Trio (`pytest -q tests/test_checkpoint_integrity.py`)**: Đầy đủ `AGENTS.md`, `CLAUDE.md`, `STATE.md` (< 100 dòng), `MAP.html`, `PROJECT_STATE.json`.
 
 ---

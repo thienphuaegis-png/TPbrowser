@@ -4415,8 +4415,8 @@ impl TpBrowserApp {
                     "shopee_orders" => {
                         self.shopee_orders_json = data_json.clone();
                         self.save_export_file("shopee_orders_latest.json", &data_json);
-                        self.ecom_status_text = "✅ Đã cập nhật dữ liệu Đơn hàng Shopee (Tab ngầm).".to_string();
-                        self.push_ecom_log("Shopee Đơn hàng: đã cập nhật JSON & kiểm toán giá.");
+                        self.ecom_status_text = "✅ Đã cập nhật Đơn hàng, Đánh giá 1–3★, Live & Khuyến mãi Shopee.".to_string();
+                        self.push_ecom_log("Shopee Tổng hợp: đã cập nhật 200 đơn, đánh giá 1-3★, Live & Khuyến mãi.");
                         for t in &mut self.tabs {
                             if t.worker_kind.as_deref() == Some("bot") && t.url.contains("banhang.shopee.vn/portal/sale") {
                                 t.worker_status = if data_json.contains("\"need_login\":true") {
@@ -5702,8 +5702,19 @@ mod tests {
         assert!(WORKSPACE_HTML.contains("__tpSyncWorkspace"));
         assert!(WORKSPACE_HTML.contains("run_ecom_scan"));
         assert!(WORKSPACE_HTML.contains("export_shopee_csv"));
+        assert!(WORKSPACE_HTML.contains("openDirect"));
+        assert!(WORKSPACE_HTML.contains("sp_anom_tbody"));
+        assert!(WORKSPACE_HTML.contains("sp_reviews_list"));
+        assert!(WORKSPACE_HTML.contains("sp_live_tbody"));
+        assert!(WORKSPACE_HTML.contains("sp_discounts_list"));
+        assert!(WORKSPACE_HTML.contains("sp_vouchers_list"));
+        assert!(WORKSPACE_HTML.contains("sp_flashsales_list"));
         assert!(ECOM_AGENTS_JS.contains("__tpRunShopeeScan"));
         assert!(ECOM_AGENTS_JS.contains("search_order_list_index"));
+        assert!(ECOM_AGENTS_JS.contains("payment_info"));
+        assert!(ECOM_AGENTS_JS.contains("search_shop_rating_comments_new"));
+        assert!(ECOM_AGENTS_JS.contains("liveList/v2"));
+        assert!(ECOM_AGENTS_JS.contains("get_shop_flash_sale_list"));
         assert!(TIKTOK_PASSIVE_SCAN_JS.contains("update_platform_data"));
         assert!(TIKTOK_PASSIVE_SCAN_JS.contains("split(\"\\n\")"));
         assert!(TIKTOK_PASSIVE_SCAN_JS.contains("onsite_roi2_shopping_value"));
