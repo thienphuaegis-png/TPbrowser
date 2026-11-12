@@ -1,12 +1,12 @@
 {
   "project": "TPbrowser",
   "version": "0.1.0",
-  "git_commit": "e61adfb",
-  "updated_at": "2026-11-12 18:12:29",
+  "git_commit": "267f2d6",
+  "updated_at": "2026-11-12 19:35:30",
   "codegraph_ast": {
-    "files": 5,
-    "nodes": 130,
-    "edges": 440
+    "files": 9,
+    "nodes": 413,
+    "edges": 1
   },
   "codegraph_commands": {
     "callers": "codegraph callers <symbol>",
@@ -15,34 +15,47 @@
   },
   "architecture_layers": [
     {
-      "layer": "1. Rust Native Shell & Multi-WebView Orchestrator",
+      "layer": "1. Rust Native Shell, Multi-WebView Orchestrator & Universal MCP",
       "files": [
         "src/main.rs",
-        "src/layout.rs"
+        "src/layout.rs",
+        "src/json_mini.rs",
+        "src/mcp_server.rs"
       ],
-      "responsibility": "Win32 borderless window management (tao), multi-WebView2 layout (tab_shell, content tabs, ai_shell, fb_shell, zalo_shell, titlebar_shell, dock_resizer_shell, settings_shell), MV3 uBlock Origin Lite extension loader, popunder blocker, and centralized JSON IPC + tp_config_changed broadcaster."
+      "responsibility": "Win32 borderless window management (tao), multi-WebView2 layout (tab_shell, content & background BOT/AI worker tabs, ai_shell, fb_shell, zalo_shell, titlebar_shell, sidebar_resizer_shell, dock_resizer_shell, settings_shell), Universal MCP Server (:17777/mcp + stdio), MV3 uBlock Origin Lite loader, popunder blocker, and centralized JSON IPC + tp_config_changed broadcaster."
     },
     {
       "layer": "2. AURELIA Minimalist Surfaces & Zen Settings Modal",
       "files": [
         "src/settings_modal.html",
         "src/newtab.html",
+        "src/history.html",
         "src/tab_shell.html",
         "src/ai_panel.html",
         "src/chat_header.html",
         "src/titlebar.html",
+        "src/sidebar_resizer.html",
         "src/dock_resizer.html"
       ],
-      "responsibility": "Classic Bronze-Gold AURELIA Dark (obsidian-gold) & Light (carrara-light) UI surfaces, 999px pill controls, 1.75px stroke SVGs, 6-tab Zen Settings Modal (Alt+,), auto-hide custom titlebar, and Hover-Reveal tab bar."
+      "responsibility": "Classic Bronze-Gold AURELIA Dark (obsidian-gold) & Light (carrara-light) UI surfaces, 999px pill controls, 1.75px stroke SVGs, 6-tab Zen Settings Modal (Alt+,), unified icon-first 40px titlebar + horizontal tabs, real website favicons, free-resize vertical tab bar, and AI Cowork background worker mode."
     },
     {
-      "layer": "3. Content Agent, Skill Recorder & 3-Layer Ad Shield",
+      "layer": "3. E-Commerce Landing Workspace (tp://workspace) & Background Scrapers",
+      "files": [
+        "src/workspace.html",
+        "src/ecom_agents.js",
+        "src/main.rs"
+      ],
+      "responsibility": "Non-intrusive background BOT worker tabs (HWND_BOTTOM, shared cookie WebContext) for Shopee (200-order price anomaly audit, 200 1-3★ ratings + counterfeit keyword alerts, Shopee Live, Promotions, Vouchers, Flash Sale, PAS) and TikTok Seller (anonymous IIFE SecSDK-safe Shadow-DOM ks-virtual-table sweep), click-to-open-direct workflows, CSV UTF-8 BOM export, and Zalo report copy."
+    },
+    {
+      "layer": "4. Content Agent, Skill Recorder & 3-Layer Ad Shield",
       "files": [
         "src/content_agent.js",
         "skills/skills.json",
         "extensions/uBOLite.chromium/manifest.json"
       ],
-      "responsibility": "DOM context extraction, 3-tier element locator, live user interaction recorder (__tpRecordingSkill), unread badge orbs, anti-adblock 0px CSS shield, and YouTube 16x auto-skipper."
+      "responsibility": "Trusted-Types-safe DOM context extraction, 3-tier element locator, live user interaction recorder (__tpRecordingSkill), unread badge orbs, anti-adblock 0px CSS shield, YouTube 16x auto-skipper, and TikTok auth allowlist rules in uBOLite."
     }
   ],
   "guided_tour": [
@@ -56,31 +69,37 @@
       "step": 2,
       "file": "src/main.rs",
       "symbol": "TpBrowserApp::execute",
-      "note": "Central command dispatcher, config.json persistence, and tp_config_changed broadcaster across all child WebViews."
+      "note": "Central command dispatcher, background BOT/AI worker tab lifecycle, config.json persistence, and tp_config_changed broadcaster."
     },
     {
       "step": 3,
-      "file": "src/settings_modal.html",
-      "symbol": "__tpSyncSettingsModal",
-      "note": "6-tab Zen-style centralized Settings Modal with live AI Key testing, Dock Width slider, and zero-reload config sync."
+      "file": "src/workspace.html",
+      "symbol": "__tpSyncWorkspace",
+      "note": "Landing-page workspace (tp://workspace) displaying Shopee anomalies, 1-3★ counterfeit alerts, Live, Promos/Vouchers/Flash Sale, PAS, and TikTok KPIs with click-to-open navigation."
     },
     {
       "step": 4,
-      "file": "src/newtab.html",
-      "symbol": "__tpSyncNewTab",
-      "note": "AURELIA Dark & Light luxury minimalist start page with floating omnibox and 3 floating AI/Messenger/Zalo orbs."
+      "file": "src/ecom_agents.js",
+      "symbol": "__tpRunShopeeScan",
+      "note": "Shopee Seller background agent polling order APIs (chunk=5), rating comments (1-3★), Live sessions, Discounts, Vouchers, Flash Sales, and PAS tables."
     },
     {
       "step": 5,
-      "file": "src/ai_panel.html",
-      "symbol": "triggerCoworkTask",
-      "note": "Executes AI Cowork tasks with domain-scoped skills and auto-minimizes into floating bubble."
+      "file": "src/settings_modal.html",
+      "symbol": "__tpSyncSettingsModal",
+      "note": "6-tab Zen-style centralized Settings Modal with live AI Key testing, startup mode, logo style, and zero-reload config sync."
     },
     {
       "step": 6,
+      "file": "src/ai_panel.html",
+      "symbol": "triggerCoworkTask",
+      "note": "Executes AI Cowork tasks on isolated background AI worker tabs or active tab with domain-scoped skills."
+    },
+    {
+      "step": 7,
       "file": "src/content_agent.js",
       "symbol": "runActiveAdCleanerAndSkipper",
-      "note": "3-layer ad shield for movie streaming sites and YouTube video ads."
+      "note": "3-layer ad shield for movie streaming sites and YouTube video ads (guarded off on tiktok.com)."
     }
   ]
 }

@@ -20,7 +20,7 @@
 - **Rust Unit Tests (`cargo test`)**: `16 passed; 0 failed` (bao gồm `test_workspace_and_background_worker_tabs`, `test_settings_modal_and_startup_stability`, `test_compact_icon_ui_and_sidebar_resizer`, `test_brand_logo_and_icon_assets`).
 - **Build Release (`cargo build --release`)**: `0 errors, 0 warnings`, đã deploy ra `TPbrowser.exe`.
 - **Kiểm chứng sống & thị giác (`TPbrowser.exe` + MCP + `PrintWindow` + `vision_analyze`)**: Xác nhận trên tài khoản thật (`mastercareforpet`): `Chờ lấy 118 | Đang giao 2738 | 172–200 đơn | 200 đánh giá 1–3★ (5 cảnh báo giả/nhái/mùi lạ) | 4 phiên Live | 11 KM | 9 Voucher | 11 Flash Sale`; kiểm tra trực tiếp `live_v2_hero.png`, `live_v3_audit.png`, `live_v3_promos.png` và click dòng mở thẳng `/portal/sale/order/...`, `/portal/marketing/add-on-deal/...`, `/portal/marketing/shop-flash-sale/...`.
-- **Kiểm tra Checkpoint Trio (`pytest -q tests/test_checkpoint_integrity.py`)**: Đầy đủ `AGENTS.md`, `CLAUDE.md`, `STATE.md` (< 100 dòng), `MAP.html`, `PROJECT_STATE.json`.
+- **Kiểm tra Checkpoint Trio (`pytest -q tests/test_checkpoint_integrity.py`)**: `4 passed`, CodeGraph AST synced (`9 files, 413 nodes`), commit nền `267f2d6`, đầy đủ `AGENTS.md`, `CLAUDE.md`, `STATE.md` (< 100 dòng), `MAP.html` (`v0.5.6-2026-11-12-workspace-landing`), `PROJECT_STATE.json`.
 
 ---
 

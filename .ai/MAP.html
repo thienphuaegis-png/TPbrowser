@@ -122,14 +122,19 @@
 ├── CAP_NHAT_CHECKPOINT.bat
 ├── CHAY_TPBROWSER.bat
 ├── src/
-│   ├── main.rs            (Win32 + Multi-WebView2 + IPC + Font Injector)
+│   ├── main.rs            (Win32 + Multi-WebView2 + Worker Tabs + IPC + Font Injector)
 │   ├── layout.rs          (Bố cục Tab Dọc/Ngang + BSP)
+│   ├── json_mini.rs       (JSON Parser & Builder thuần Rust cho IPC & MCP)
+│   ├── mcp_server.rs      (Universal MCP Server HTTP :17777 + stdio)
+│   ├── workspace.html     (Landing Page TMĐT tp://workspace: Shopee Audit/Live/Ratings/KM & TikTok)
+│   ├── ecom_agents.js     (Shopee Worker Agent: 200 đơn, 1-3★ Giả/Nhái, Live, KM/Voucher/Flash Sale)
 │   ├── settings_modal.html(Bảng Cài Đặt Tập Trung 6 Tab chuẩn Zen)
 │   ├── newtab.html        (AURELIA Tối & Sáng + 3 Orbs)
-│   ├── tab_shell.html     (Thanh Tab Hover-Reveal)
-│   ├── ai_panel.html      (Trợ lý AI + Tự học Skill)
+│   ├── history.html       (Trang lịch sử duyệt web tp://history)
+│   ├── tab_shell.html     (Thanh Tab Hover-Reveal + Favicon + Huy hiệu BOT/AI)
+│   ├── ai_panel.html      (Trợ lý AI + Tự học Skill + Worker Tab ngầm)
 │   ├── chat_header.html   (Thanh chuyển kênh Chat nổi)
-│   ├── titlebar.html      (Thanh trên Icon-first + Tab Ngang + URL ngắn + Logo mở Cài đặt)
+│   ├── titlebar.html      (Thanh trên Icon-first + Tab Ngang + URL ngắn + Nút Workspace)
 │   ├── sidebar_resizer.html(Thanh kéo giãn tự do độ rộng Tab Dọc)
 │   ├── dock_resizer.html  (Thanh kéo độ rộng ngăn phải)
 │   └── content_agent.js   (Bong bóng + Adblock 3 lớp)
@@ -166,7 +171,7 @@
   </div>
 
   <script>
-    const ROADMAP_VERSION = "v0.3-2026-11-11-zen-settings-modal";
+    const ROADMAP_VERSION = "v0.5.6-2026-11-12-workspace-landing";
     const DEFAULT_TASKS = [
       { id: "t1", cat: "UI", title: "Giao diện AURELIA (Giao diện Tối Đen Vàng Gold & Sáng Ngọc Trắng)", done: true, note: "Dựng nguyên bản 2 ảnh mẫu AURELIA với dải lụa 3D SVG, trục kim cương và 3 bong bóng Vàng Gold (AI, Messenger, Zalo) trong src/newtab.html." },
       { id: "t2", cat: "UI", title: "Thanh Tab & Ngăn Trợ lý AI tối giản thoáng mắt (Hover Reveal)", done: true, note: "Đồng bộ bảng màu Đen + Vàng Gold (obsidian-gold) & Sáng, ẩn gọn nút điều hướng phụ và nút đóng tab × khi chưa rê chuột." },
