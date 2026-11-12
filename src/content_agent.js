@@ -5,6 +5,9 @@
 // 4. Thực thi thao tác Cowork (hỗ trợ cả thẻ contenteditable của Zalo/Messenger/Docs và tìm nút theo Nhãn ngữ nghĩa khi trang đổi giao diện).
 (function () {
   var TAB_ID = __TAB_ID__;
+  if ((window.location.hostname || "").toLowerCase().indexOf("tiktok.com") !== -1) {
+    return;
+  }
   window.__tpRecordingSkill = false;
 
   function sendRust(payload) {

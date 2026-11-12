@@ -1817,9 +1817,7 @@ impl TpBrowserApp {
                 CONTENT_AGENT_JS.replace("__TAB_ID__", &tab_id.to_string()),
                 ECOM_AGENTS_JS
             );
-            builder = builder
-                .with_user_agent(CHROME_USER_AGENT)
-                .with_initialization_script(&init_js);
+            builder = builder.with_initialization_script(&init_js);
         }
 
         let mut builder = builder
