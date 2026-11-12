@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="obsidian-gold">
+<head>
+<meta charset="UTF-8" />
+<title>TPbrowser Chat Mini Bar</title>
+<style>
+/*__TP_FONT_FACE__*/
+  :root, html[data-theme="obsidian-gold"] {
+    --ease-ui: cubic-bezier(0.22, 1, 0.36, 1);
+    --bg-bar: #111318;
+    --bg-pill: #1A1D24;
+    --bg-pill-hover: #252934;
+    --gold-bright: #E2BE68;
+    --text-primary: #F5F2EB;
+    --text-secondary: #C8C0B0;
+    --border-col: rgba(212, 175, 55, 0.34);
+  }
+
+  html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
+    --bg-bar: #EFE9DC;
+    --bg-pill: #FFFFFF;
+    --bg-pill-hover: #FAF6EE;
+    --gold-bright: #8A5E10;
+    --text-primary: #18130C;
+    --text-secondary: #3D3222;
+    --border-col: rgba(154, 107, 22, 0.38);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body {
+    width: 100%;
+    height: 28px;
+    overflow: hidden;
+    background: var(--bg-bar);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    border: 1px solid var(--border-col);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px;
+  }
+
+  .ch-mini-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gold-bright);
+    min-width: 0;
+  }
+  .ch-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--gold-bright);
+    flex-shrink: 0;
+  }
+  .ch-lbl {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ch-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .ch-ico-btn {
+    width: 22px;
+    height: 22px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 999px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.14s var(--ease-ui), color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui), transform 0.12s var(--ease-ui);
+  }
+  .ch-ico-btn:hover {
+    background: var(--bg-pill-hover);
+    color: var(--gold-bright);
+    border-color: var(--border-col);
+  }
+  .ch-ico-btn:active {
+    transform: scale(0.92);
+  }
+  .ch-ico-btn svg {
+    width: 12.5px;
+    height: 12.5px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+</style>
+</head>
+<body>
+  <div class="ch-mini-title">
+    <span class="ch-dot"></span>
+    <span class="ch-lbl" id="ch_channel_name">Messenger</span>
+  </div>
+
+  <div class="ch-actions">
+    <button type="button" class="ch-ico-btn" id="btn_scan_task" onclick="sendRust({cmd:'scan_zalo_chat'})" title="Quét tin nhắn &amp; lập Kế Hoạch Cowork" style="display:none; color:var(--gold-bright);">
+      <svg viewBox="0 0 16 16"><path d="M5.5 2.5h5v2h-5z"/><path d="M4 3.5H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-1"/><path d="M5.5 8.5l1.6 1.6 3.4-3.4"/></svg>
+    </button>
+    <button type="button" class="ch-ico-btn" id="btn_dock_style" onclick="sendRust({cmd:'toggle_chat_dock_style'})" title="Chuyển Ngăn Phải / Cửa Sổ Nổi">
+      <svg viewBox="0 0 16 16"><path d="M3 8h10M5.5 5.5L3 8l2.5 2.5M10.5 5.5L13 8l-2.5 2.5"/></svg>
+    </button>
+    <button type="button" class="ch-ico-btn" id="btn_open_tab" onclick="sendRust({cmd:'open_channel_in_tab'})" title="Mở ra Tab lớn" style="display:none;">
+      <svg viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M13.5 2.5L7.5 8.5"/><path d="M12.5 9.5v3a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h3"/></svg>
+    </button>
+    <button type="button" class="ch-ico-btn" onclick="sendRust({cmd:'set_ai_mode', mode:'bubble'})" title="Thu nhỏ về 3 nút tròn">
+      <svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>
+    </button>
+  </div>
+
+  <script>
+    function sendRust(payload) {
+      try {
+        if (window.ipc && typeof window.ipc.postMessage === "function") {
+          window.ipc.postMessage(JSON.stringify(payload));
+        }
+      } catch (_) {}
+    }
+
+    window.__tpSyncChatHeader = function (st) {
+      if (!st) return;
+      if (st.ui_theme) {
+        document.documentElement.setAttribute("data-theme", st.ui_theme);
+      }
+      var ch = st.channel || st.chat_channel || "ai";
+      var lbl = document.getElementById("ch_channel_name");
+      if (lbl) {
+        lbl.textContent = ch === "fb" ? "Messenger" : (ch === "zalo" ? "Zalo" : (st.custom_title || "App"));
+      }
+      var dockBtn = document.getElementById("btn_dock_style");
+      if (dockBtn) {
+        dockBtn.title = st.ai_mode === "dock" ? "Thu về Cửa sổ nổi" : "Gắn Ngăn phải";
+      }
+      var openTabBtn = document.getElementById("btn_open_tab");
+      if (openTabBtn) {
+        openTabBtn.style.display = (ch === "fb" || ch === "zalo" || ch === "custom") ? "inline-flex" : "none";
+      }
+      var scanTaskBtn = document.getElementById("btn_scan_task");
+      if (scanTaskBtn) {
+        scanTaskBtn.style.display = (ch === "fb" || ch === "zalo") ? "inline-flex" : "none";
+      }
+    };
+
+    window.addEventListener("tp_config_changed", function (ev) {
+      if (ev && ev.detail) {
+        window.__tpSyncChatHeader(ev.detail);
+      }
+    });
+    sendRust({ cmd: "ui_shell_ready", shell: "chat_header" });
+  </script>
+</body>
+</html>

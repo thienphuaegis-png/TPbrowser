@@ -1,40 +1,60 @@
 <!DOCTYPE html>
-<html lang="vi" data-mode="dark">
+<html lang="vi" data-theme="obsidian-gold">
 <head>
 <meta charset="UTF-8" />
-<title>TPbrowser — AURELIA Minimalist</title>
+<title>TPbrowser — Không Gian Bắt Đầu</title>
+<link id="tp_favicon" rel="icon" type="image/png" href="" />
 <style>
-  /* ================= BIẾN MÀU TỐI (NGUYÊN BẢN ẢNH) & SÁNG (NGỌC CẨM THẠCH ẤM) ================= */
-  :root, html[data-mode="dark"] {
-    --bg-base: #0a0a0c;
-    --bg-header: rgba(10, 10, 12, 0.86);
-    --gold-bright: #e5c372;
-    --gold-main: #cba358;
-    --gold-muted: #9e7f43;
-    --gold-line: rgba(203, 163, 88, 0.42);
-    --gold-line-strong: rgba(229, 195, 114, 0.78);
-    --text-sub: #d7ccb8;
-    --btn-bg: rgba(12, 12, 14, 0.58);
-    --btn-hover: rgba(203, 163, 88, 0.16);
-    --orb-bg: radial-gradient(circle at 30% 30%, #25211a, #0d0c0a 75%);
-    --orb-shadow: 0 6px 22px rgba(0, 0, 0, 0.7), 0 0 12px rgba(212, 175, 55, 0.22);
-    --title-shadow: 0 4px 24px rgba(0, 0, 0, 0.65);
+/*__TP_FONT_FACE__*/
+  /* ================= 2 CHẾ ĐỘ MÀU CHUẨN: TỐI (ĐEN & VÀNG ĐỒNG) / SÁNG (NGỌC TRẮNG & VÀNG ĐỒNG) ================= */
+  :root, html[data-theme="obsidian-gold"] {
+    color-scheme: dark;
+    --font-heading: "Cormorant Garamond Gnosis", "Cormorant Garamond", "Playfair Display", Georgia, serif;
+    --ease-ui: cubic-bezier(0.22, 1, 0.36, 1);
+    --bg-base: #0B0C0E;
+    --bg-header: rgba(14, 16, 20, 0.92);
+    --bg-card: rgba(22, 25, 32, 0.90);
+    --bg-card-hover: rgba(32, 36, 46, 0.98);
+    --bg-input: rgba(15, 17, 22, 0.94);
+    --gold-bright: #E2BE68;
+    --gold-main: #C99B3B;
+    --gold-muted: #9E782C;
+    --gold-line: rgba(212, 175, 55, 0.28);
+    --gold-line-strong: rgba(226, 190, 104, 0.68);
+    --text-main: #F5F2EB;
+    --text-sub: #C8C0B0;
+    --text-muted: #8E8779;
+    --cta-bg: linear-gradient(135deg, #E2BE68 0%, #B5872E 100%);
+    --cta-fg: #140F05;
+    --cta-shine: inset 0 1px 0 rgba(255, 255, 255, 0.36), 0 3px 12px rgba(181, 135, 46, 0.26);
+    --orb-bg: radial-gradient(circle at 30% 30%, #241F15, #0E0D0B 78%);
+    --orb-fg: #E2BE68;
+    --orb-shadow: 0 8px 24px rgba(0, 0, 0, 0.72), 0 0 12px rgba(212, 175, 55, 0.22);
+    --card-shadow: 0 12px 34px rgba(0, 0, 0, 0.48);
   }
 
-  html[data-mode="light"] {
-    --bg-base: #f7f4ee;
-    --bg-header: rgba(247, 244, 238, 0.88);
-    --gold-bright: #8c6520;
-    --gold-main: #9e762c;
-    --gold-muted: #b08d49;
-    --gold-line: rgba(158, 118, 44, 0.34);
-    --gold-line-strong: rgba(140, 101, 32, 0.72);
-    --text-sub: #5c5243;
-    --btn-bg: rgba(255, 253, 249, 0.72);
-    --btn-hover: rgba(158, 118, 44, 0.12);
-    --orb-bg: radial-gradient(circle at 30% 30%, #ffffff, #efe8da 80%);
-    --orb-shadow: 0 8px 22px rgba(120, 92, 35, 0.16), 0 0 10px rgba(180, 140, 60, 0.18);
-    --title-shadow: 0 2px 14px rgba(255, 255, 255, 0.7);
+  html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
+    color-scheme: light;
+    --bg-base: #F6F2EA;
+    --bg-header: rgba(248, 244, 236, 0.94);
+    --bg-card: rgba(255, 255, 255, 0.96);
+    --bg-card-hover: #FFFFFF;
+    --bg-input: #FFFFFF;
+    --gold-bright: #8A5E10;
+    --gold-main: #A6731A;
+    --gold-muted: #9A7228;
+    --gold-line: rgba(154, 107, 22, 0.30);
+    --gold-line-strong: rgba(138, 94, 16, 0.72);
+    --text-main: #18130C;
+    --text-sub: #3D3222;
+    --text-muted: #61533E;
+    --cta-bg: linear-gradient(135deg, #C79535 0%, #9A6B16 100%);
+    --cta-fg: #FFFFFF;
+    --cta-shine: inset 0 1px 0 rgba(255, 255, 255, 0.30), 0 3px 12px rgba(154, 107, 22, 0.24);
+    --orb-bg: radial-gradient(circle at 30% 30%, #FFFFFF, #F3ECE0 84%);
+    --orb-fg: #8A5E10;
+    --orb-shadow: 0 6px 20px rgba(138, 94, 16, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --card-shadow: 0 10px 28px rgba(92, 61, 8, 0.08);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -43,63 +63,15 @@
     height: 100vh;
     overflow: hidden;
     background: var(--bg-base);
-    color: var(--gold-main);
-    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
-    transition: background 0.35s ease, color 0.35s ease;
+    transition: background 0.28s ease, color 0.28s ease;
   }
 
-  /* Thanh chuyển Tối / Sáng nổi nhẹ ở góc dưới bên trái (không che menu COLLECTIONS / THE BRAND trên đầu) */
-  .demo-floating-bar {
-    position: fixed;
-    bottom: 20px;
-    left: 90px;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
-    border-radius: 999px;
-    background: rgba(18, 18, 22, 0.85);
-    border: 1px solid rgba(212, 175, 55, 0.48);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-  }
-  .dm-btn {
-    border: none;
-    background: transparent;
-    color: #d6c7a9;
-    padding: 5px 12px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    letter-spacing: 0.3px;
-    transition: all 0.18s ease;
-    white-space: nowrap;
-  }
-  .dm-btn:hover {
-    color: #ffffff;
-  }
-  .dm-btn.active {
-    background: linear-gradient(135deg, #e5c372, #b88a38);
-    color: #0e0d0a;
-    font-weight: 700;
-  }
-
-  /* ================= KHUNG CHÍNH NGUYÊN BẢN AURELIA ================= */
-  .aurelia-stage {
-    position: relative;
-    width: 100%;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  /* LỚP NỀN ĐÁ CẨM THẠCH + DẢI LỤA VÀNG 3D (SVG NGHỆ THUẬT) */
+  /* LỚP NỀN ĐÁ CẨM THẠCH & LỤA VÀNG 3D (PHONG CÁCH THẨM MỸ TỪ ẢNH MẪU) */
   .art-bg {
-    position: absolute;
+    position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
@@ -109,560 +81,829 @@
     height: 100%;
     display: block;
   }
-  html[data-mode="dark"] .svg-light { display: none; }
-  html[data-mode="light"] .svg-dark { display: none; }
+  html[data-theme="obsidian-gold"] .svg-light { display: none; }
+  html[data-theme="carrara-light"] .svg-dark,
+  html[data-theme="warm-paper"] .svg-dark,
+  html[data-theme="light"] .svg-dark { display: none; }
 
-  /* 1. HEADER BAR */
-  .top-header {
+  .workspace-shell {
     position: relative;
-    z-index: 10;
-    height: 68px;
+    z-index: 5;
     width: 100%;
-    border-bottom: 1px solid var(--gold-line);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* 1. THANH HEADER TRÊN CÙNG */
+  .top-bar {
+    min-height: 62px;
+    padding: 8px 24px;
     background: var(--bg-header);
-    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--gold-line);
+    backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 36px 0 22px;
+    gap: 10px;
   }
-  .logo-monogram {
-    width: 38px;
-    height: 38px;
+  .brand-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .tp-monogram {
+    height: 40px;
+    min-width: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    flex-shrink: 0;
   }
-  .nav-center {
-    display: flex;
-    align-items: center;
-    gap: 44px;
+  .tp-monogram img {
+    height: 40px;
+    width: auto;
+    display: block;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.25));
   }
-  .nav-center a {
-    text-decoration: none;
-    color: var(--gold-main);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 2.6px;
-    text-transform: uppercase;
-    transition: color 0.2s ease;
-    cursor: pointer;
+  .brand-text {
+    min-width: 0;
+    overflow: hidden;
   }
-  .nav-center a:hover {
+  .brand-text h2 {
+    font-family: var(--font-heading);
+    font-size: clamp(13px, 1.15vw, 15.5px);
+    font-weight: 700;
+    letter-spacing: 1px;
     color: var(--gold-bright);
-  }
-  .header-icons {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    color: var(--gold-main);
-  }
-  .header-icons svg {
-    width: 17px;
-    height: 17px;
-    stroke: var(--gold-main);
-    cursor: pointer;
-    transition: stroke 0.2s ease;
-  }
-  .header-icons svg:hover {
-    stroke: var(--gold-bright);
-  }
-
-  /* 2. BODY AREA (LEFT VERTICAL BAR + SPLIT HERO) */
-  .main-body {
-    position: relative;
-    z-index: 10;
-    flex: 1;
-    display: flex;
-    width: 100%;
-  }
-
-  /* Cột dọc bên trái */
-  .left-rail {
-    width: 66px;
-    border-right: 1px solid var(--gold-line);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    padding: 24px 0 22px 0;
-    position: relative;
-  }
-  /* Chữ xoay dọc 90 độ (Ảnh 2) */
-  .rail-vertical-menu {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 26px;
-    margin-top: 6px;
-  }
-  .rail-v-item {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    font-size: 9px;
-    letter-spacing: 2.2px;
-    color: var(--gold-main);
     text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .brand-text p {
+    font-size: 10.5px;
+    color: var(--text-sub);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+  }
+  .theme-switch-pill {
+    display: flex;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--gold-line-strong);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 3px;
+  }
+  .ui-ico {
+    width: 13px;
+    height: 13px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+  .ts-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-sub);
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
     cursor: pointer;
-    opacity: 0.85;
-    transition: opacity 0.15s ease, color 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background-color 0.16s var(--ease-ui), color 0.16s var(--ease-ui), transform 0.14s var(--ease-ui);
     white-space: nowrap;
   }
-  .rail-v-item:hover {
-    opacity: 1;
+  .ts-btn:hover {
+    color: var(--text-main);
+  }
+  .ts-btn:active {
+    transform: scale(0.96);
+  }
+  .ts-btn.active {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    box-shadow: var(--cta-shine);
+    font-weight: 700;
+  }
+
+  .luxury-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--gold-line);
+    color: var(--text-main);
+    padding: 7px 13px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background-color 0.16s var(--ease-ui), border-color 0.16s var(--ease-ui), color 0.16s var(--ease-ui), transform 0.14s var(--ease-ui);
+    white-space: nowrap;
+  }
+  .luxury-btn:hover {
+    border-color: var(--gold-line-strong);
+    background: var(--bg-card-hover);
     color: var(--gold-bright);
   }
-
-  /* Ký hiệu hình học tối giản ở giữa cột trái (Ảnh 1) */
-  .rail-geo-markers {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
-    margin: auto 0;
+  .luxury-btn:active {
+    transform: scale(0.96);
   }
-  .aurelia-stage.variant-img1 .rail-vertical-menu { display: none; }
-  .aurelia-stage.variant-img1 .rail-geo-markers { display: flex; }
+  button:focus-visible, .google-account-pill:focus-visible {
+    outline: 2px solid var(--gold-bright);
+    outline-offset: 2px;
+  }
 
-  .rail-socials {
+  .google-account-pill {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 14px;
-  }
-  .rail-socials svg {
-    width: 14px;
-    height: 14px;
-    fill: var(--gold-main);
-    opacity: 0.8;
+    gap: 9px;
+    background: var(--bg-card);
+    border: 1px solid var(--gold-line-strong);
+    border-radius: 999px;
+    padding: 4px 14px 4px 5px;
     cursor: pointer;
+    transition: background-color 0.16s var(--ease-ui), box-shadow 0.16s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
-  .rail-socials svg:hover {
-    opacity: 1;
-    fill: var(--gold-bright);
+  .google-account-pill:hover {
+    background: var(--bg-card-hover);
+    box-shadow: 0 0 14px rgba(154, 107, 22, 0.22);
   }
-
-  /* 3. SPLIT HERO SECTION */
-  .hero-split {
-    flex: 1;
-    position: relative;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .google-account-pill:active {
+    transform: scale(0.98);
+  }
+  .g-circle {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    font-weight: 800;
+    font-size: 12px;
+    display: flex;
     align-items: center;
+    justify-content: center;
   }
 
-  /* Trục chia đôi chính giữa: Đoạn kẻ trên + Hình thoi giữa + 3 chấm dưới */
-  .center-axis {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    bottom: 0;
-    transform: translateX(-50%);
+  /* 2. KHU VỰC TRUNG TÂM TRANG CHỦ TRÌNH DUYỆT (1 TRỤC TRUNG TÂM THOÁNG ĐÃNG) */
+  .center-stage-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 96px 16px 36px;
+    overflow-y: auto;
+  }
+  .center-stage {
+    width: 100%;
+    max-width: 820px;
+    background: var(--bg-card);
+    border: 1px solid var(--gold-line-strong);
+    border-radius: 16px;
+    padding: 26px 34px;
+    backdrop-filter: blur(12px);
+    box-shadow: var(--card-shadow);
+    position: relative;
+  }
+
+  .clock-hero {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
     align-items: center;
-    padding: 0 0 24px 0;
-    pointer-events: none;
+    text-align: center;
+    margin-bottom: 18px;
   }
-  .axis-top-line {
-    width: 1px;
-    height: 76px;
-    background: var(--gold-line);
+  .clock-time {
+    font-family: var(--font-heading);
+    font-size: 58px;
+    font-weight: 600;
+    letter-spacing: 5px;
+    font-variant-numeric: lining-nums tabular-nums;
+    color: var(--gold-bright);
+    line-height: 1.05;
+    margin-bottom: 6px;
   }
-  .axis-diamond {
-    width: 9px;
-    height: 9px;
+  .clock-greeting {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-sub);
+    letter-spacing: 0.4px;
+  }
+
+  /* Đường kẻ chỉ vàng mảnh đính hình thoi kim cương (ADN từ ảnh mẫu) */
+  .diamond-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 240px;
+    margin: 12px auto 4px auto;
+  }
+  .diamond-divider .line {
+    flex: 1;
+    height: 1px;
+    background: var(--gold-line-strong);
+  }
+  .diamond-divider .diamond {
+    width: 8px;
+    height: 8px;
     background: var(--gold-bright);
     transform: rotate(45deg);
-    box-shadow: 0 0 10px rgba(229, 195, 114, 0.5);
+    box-shadow: 0 0 8px rgba(212, 175, 55, 0.45);
   }
-  .axis-bottom-dots {
+
+  /* Thanh Tìm Kiếm / Địa Chỉ / Giao Việc AI (Bo tròn 999px đồng bộ) */
+  .omnibox-wrap {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
     align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1.5px solid var(--gold-line-strong);
+    background: var(--bg-input);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 22px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   }
-  .axis-bottom-dots span {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--gold-main);
-    opacity: 0.65;
+  .omnibox-wrap:focus-within {
+    box-shadow: 0 0 0 2px rgba(154, 107, 22, 0.28);
   }
-  .axis-bottom-dots span:first-child {
-    opacity: 1;
-    background: var(--gold-bright);
-  }
-
-  /* Nội dung Nửa Trái & Nửa Phải */
-  .hero-col {
-    padding: 0 64px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-  }
-  .hero-col.right-col {
-    padding-left: 78px;
-  }
-
-  .serif-heading-spaced {
-    font-family: "Cormorant Garamond", "Playfair Display", "Times New Roman", Georgia, serif;
-    font-size: 46px;
-    font-weight: 400;
-    letter-spacing: 14px;
-    color: var(--gold-bright);
-    text-transform: uppercase;
-    margin-bottom: 14px;
-    text-shadow: var(--title-shadow);
-    white-space: nowrap;
-  }
-  .serif-heading-stacked {
-    font-family: "Cormorant Garamond", "Playfair Display", "Times New Roman", Georgia, serif;
-    font-size: 46px;
-    font-weight: 400;
-    line-height: 1.14;
-    letter-spacing: 3px;
-    color: var(--gold-bright);
-    text-transform: uppercase;
-    margin-bottom: 14px;
-    text-shadow: var(--title-shadow);
-  }
-  .hero-subtitle {
+  .omnibox-wrap input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 9px 14px;
     font-size: 13.5px;
-    font-weight: 400;
-    color: var(--text-sub);
-    letter-spacing: 0.5px;
-    margin-bottom: 28px;
-  }
-  .luxury-cta {
-    background: var(--btn-bg);
-    border: 1px solid var(--gold-line-strong);
-    color: var(--gold-bright);
-    padding: 12px 28px;
-    font-size: 11px;
     font-weight: 500;
-    letter-spacing: 2.5px;
-    text-transform: uppercase;
+    color: var(--text-main);
+    outline: none;
+    user-select: text;
+  }
+  .omnibox-wrap input::placeholder {
+    color: var(--text-muted);
+  }
+  .omnibox-wrap .btn-open {
+    background: transparent;
+    color: var(--gold-bright);
+    border: 1px solid var(--gold-line);
+    border-radius: 999px;
+    padding: 9px 16px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 1px;
     cursor: pointer;
-    backdrop-filter: blur(4px);
-    transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    transition: background-color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
-  .luxury-cta:hover {
-    background: var(--btn-hover);
-    box-shadow: 0 0 18px rgba(203, 163, 88, 0.22);
+  .omnibox-wrap .btn-open:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--gold-line-strong);
   }
-  .luxury-cta:active {
-    transform: scale(0.97);
+  .omnibox-wrap .btn-open:active {
+    transform: scale(0.96);
+  }
+  .omnibox-wrap .btn-cowork {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    box-shadow: var(--cta-shine);
+    border: none;
+    border-radius: 999px;
+    padding: 9px 20px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    cursor: pointer;
+    transition: opacity 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .omnibox-wrap .btn-cowork:hover {
+    opacity: 0.93;
+  }
+  .omnibox-wrap .btn-cowork:active {
+    transform: scale(0.96);
   }
 
-  /* 4. CỤM 3 BONG BÓNG NỔI GÓC DƯỚI PHẢI (AI ROBOT, MESSENGER, ZALO - ẢNH 2) */
-  .floating-orbs {
+  /* Lưới Trang Ghim Nhanh (Bookmarks) hiển thị trực tiếp */
+  .sec-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--gold-line);
+  }
+  .sec-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.3px;
+    color: var(--gold-bright);
+    text-transform: uppercase;
+  }
+  .sec-title .mini-diamond {
+    width: 6px;
+    height: 6px;
+    background: var(--gold-bright);
+    transform: rotate(45deg);
+  }
+  .add-bm-link {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--gold-bright);
+    cursor: pointer;
+    padding: 4px 12px;
+    border: 1px solid var(--gold-line);
+    border-radius: 999px;
+    background: var(--bg-input);
+    transition: border-color 0.15s var(--ease-ui), background-color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .add-bm-link:hover {
+    border-color: var(--gold-line-strong);
+    background: var(--bg-card-hover);
+  }
+  .add-bm-link:active {
+    transform: scale(0.96);
+  }
+
+  .bm-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .bm-item {
+    background: var(--bg-input);
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    padding: 11px 13px;
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui), transform 0.15s var(--ease-ui), box-shadow 0.15s var(--ease-ui);
+  }
+  .bm-item:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--gold-line-strong);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+  }
+  .bm-item .bm-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bm-item .bm-url {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bm-del {
     position: absolute;
-    right: 54px;
-    bottom: 28px;
-    z-index: 25;
+    top: 5px;
+    right: 7px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.14s ease, color 0.14s ease;
+  }
+  .bm-item:hover .bm-del {
+    opacity: 1;
+  }
+  .bm-del:hover {
+    color: #DC2626;
+  }
+
+  /* Thanh tiện ích nhanh bên dưới lưới Bookmark */
+  .cowork-quick-bar {
+    background: var(--bg-input);
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .cowork-quick-bar span {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-sub);
+  }
+  .cowork-quick-bar b {
+    color: var(--gold-bright);
+  }
+  .cowork-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* 3. CỤM 3 NÚT TRÒN VÀNG GOLD GÓC DƯỚI PHẢI (BẬT/TẮT CỬA SỔ CHAT DẠNG FACEBOOK CHO AI, MESSENGER, ZALO) */
+  .floating-chat-heads {
+    position: fixed;
+    right: 18px;
+    bottom: 54px;
+    z-index: 8000;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
     align-items: center;
-  }
-  .aurelia-stage.variant-img1 .floating-orbs {
-    display: none;
   }
   .gold-orb {
     width: 54px;
     height: 54px;
     border-radius: 50%;
     background: var(--orb-bg);
-    border: 1.5px solid var(--gold-bright);
+    border: 1.5px solid var(--gold-line-strong);
     box-shadow: var(--orb-shadow);
+    color: var(--orb-fg);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
     position: relative;
   }
   .gold-orb:hover {
-    transform: translateY(-2px) scale(1.04);
+    transform: translateY(-2px) scale(1.06);
+    border-color: var(--gold-bright);
+  }
+  .gold-orb:active {
+    transform: scale(0.96);
+  }
+  .gold-orb.active-orb {
+    border: 2.5px solid var(--gold-bright);
+    box-shadow: 0 0 0 3px rgba(154, 107, 22, 0.28), var(--orb-shadow);
   }
   .gold-orb svg {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
+  }
+  .orb-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #10B981;
+    border: 2px solid var(--bg-base);
+    display: none;
+  }
+  .gold-orb.active-orb .orb-badge {
+    display: block;
+  }
+  .orb-count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #EF4444;
+    color: #FFFFFF;
+    border: 2px solid var(--bg-base);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 15px;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    display: none;
+    pointer-events: none;
+  }
+  .orb-count.show {
+    display: inline-block;
   }
 
-  /* 3 icon nhỏ sát mép phải dưới cùng (X, YouTube, Audio/Grid) */
-  .right-edge-mini {
-    position: absolute;
-    right: 18px;
-    bottom: 26px;
-    z-index: 20;
+  /* 4. CHÂN TRANG (FOOTER) */
+  .bottom-row {
+    height: 40px;
+    padding: 0 92px 0 28px;
+    border-top: 1px solid var(--gold-line);
+    background: var(--bg-header);
     display: flex;
-    flex-direction: column;
-    gap: 14px;
+    justify-content: space-between;
     align-items: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-sub);
   }
-  .right-edge-mini svg {
-    width: 13px;
-    height: 13px;
-    fill: var(--gold-main);
-    opacity: 0.75;
+
+  /* 5. MODAL THÊM BOOKMARK & QUẢN LÝ GOOGLE */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 11, 14, 0.65);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+  .modal-backdrop.open {
+    display: flex;
+  }
+  .modal-card {
+    background: var(--bg-card-hover);
+    border: 1.5px solid var(--gold-line-strong);
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    width: min(450px, 92vw);
+    padding: 22px 24px;
+    color: var(--text-main);
+  }
+  .modal-card h3 {
+    font-family: var(--font-heading);
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    margin-bottom: 12px;
+    color: var(--gold-bright);
+  }
+  .field {
+    margin-bottom: 12px;
+  }
+  .field label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 700;
+    margin-bottom: 5px;
+    color: var(--text-sub);
+  }
+  .field input {
+    width: 100%;
+    border: 1px solid var(--gold-line-strong);
+    background: var(--bg-input);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    outline: none;
+    user-select: text;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .cta-modal-btn {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    box-shadow: var(--cta-shine);
+    border: none;
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 12px;
+    font-weight: 700;
     cursor: pointer;
+    transition: opacity 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
-  .right-edge-mini svg:hover {
-    opacity: 1;
-    fill: var(--gold-bright);
+  .cta-modal-btn:active {
+    transform: scale(0.96);
   }
 </style>
 </head>
 <body>
-  <!-- Thanh chuyển đổi nhanh Tối / Sáng & 2 Phiên bản Ảnh -->
-  <div class="demo-floating-bar">
-    <button class="dm-btn active" id="btn_dark" onclick="setMode('dark')">🌙 Giao diện Tối (Đen & Vàng Gold)</button>
-    <button class="dm-btn" id="btn_light" onclick="setMode('light')">☀️ Giao diện Sáng (Ngọc Trắng & Gold)</button>
-    <button class="dm-btn" id="btn_var" onclick="toggleImgVariant()">⇄ Đổi Ảnh 2 (Có Bong bóng) / Ảnh 1</button>
+  <!-- LỚP NỀN ĐÁ CẨM THẠCH & LỤA VÀNG 3D (LẤY PHONG CÁCH TỪ HÌNH MẪU) -->
+  <div class="art-bg">
+    <!-- Nền Tối: Đen Cẩm Thạch & Lụa Vàng Gold -->
+    <svg class="svg-dark" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <radialGradient id="dk_bg" cx="35%" cy="40%" r="75%">
+          <stop offset="0%" stop-color="#15171C" />
+          <stop offset="55%" stop-color="#0C0D10" />
+          <stop offset="100%" stop-color="#07080A" />
+        </radialGradient>
+        <linearGradient id="dk_gold_rib1" x1="100%" y1="0%" x2="20%" y2="100%">
+          <stop offset="0%" stop-color="#4A3514" stop-opacity="0.55" />
+          <stop offset="35%" stop-color="#D4AF5A" stop-opacity="0.45" />
+          <stop offset="55%" stop-color="#F3DCA2" stop-opacity="0.5" />
+          <stop offset="80%" stop-color="#8B6523" stop-opacity="0.35" />
+          <stop offset="100%" stop-color="#0B0C0E" stop-opacity="0.1" />
+        </linearGradient>
+      </defs>
+      <rect width="1600" height="900" fill="url(#dk_bg)" />
+      <g stroke="rgba(255,255,255,0.035)" stroke-width="1.2" fill="none">
+        <path d="M 80,0 C 190,180 140,340 290,510 C 380,620 260,780 340,900" />
+        <path d="M 0,220 C 160,260 270,190 430,310 C 550,400 490,620 640,760" />
+      </g>
+      <path d="M 1600,-40 C 1340,80 1280,360 1040,560 C 830,730 620,790 430,900 L 860,900 C 1060,770 1240,580 1430,340 C 1510,220 1560,90 1600,-40 Z" fill="url(#dk_gold_rib1)" />
+    </svg>
+
+    <!-- Nền Sáng: Ngọc Trắng Carrara & Lụa Vàng Champagne -->
+    <svg class="svg-light" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <radialGradient id="lt_bg" cx="35%" cy="40%" r="75%">
+          <stop offset="0%" stop-color="#FDFBF7" />
+          <stop offset="60%" stop-color="#F5EFE4" />
+          <stop offset="100%" stop-color="#EAE1D0" />
+        </radialGradient>
+        <linearGradient id="lt_gold_rib1" x1="100%" y1="0%" x2="20%" y2="100%">
+          <stop offset="0%" stop-color="#D4B575" stop-opacity="0.45" />
+          <stop offset="45%" stop-color="#EFE0BE" stop-opacity="0.55" />
+          <stop offset="80%" stop-color="#C59F52" stop-opacity="0.35" />
+          <stop offset="100%" stop-color="#EAE1D0" stop-opacity="0.2" />
+        </linearGradient>
+      </defs>
+      <rect width="1600" height="900" fill="url(#lt_bg)" />
+      <g stroke="rgba(122,82,16,0.08)" stroke-width="1.2" fill="none">
+        <path d="M 80,0 C 190,180 140,340 290,510 C 380,620 260,780 340,900" />
+        <path d="M 0,220 C 160,260 270,190 430,310 C 550,400 490,620 640,760" />
+      </g>
+      <path d="M 1600,-40 C 1340,80 1280,360 1040,560 C 830,730 620,790 430,900 L 860,900 C 1060,770 1240,580 1430,340 C 1510,220 1560,90 1600,-40 Z" fill="url(#lt_gold_rib1)" />
+    </svg>
   </div>
 
-  <div class="aurelia-stage" id="aurelia_stage">
-    <!-- LỚP NỀN ĐÁ CẨM THẠCH & LỤA VÀNG 3D -->
-    <div class="art-bg">
-      <!-- SVG NỀN TỐI (ĐEN CẨM THẠCH + LỤA VÀNG KIM) -->
-      <svg class="svg-dark" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <radialGradient id="dk_bg" cx="35%" cy="45%" r="75%">
-            <stop offset="0%" stop-color="#17181c" />
-            <stop offset="55%" stop-color="#0d0e11" />
-            <stop offset="100%" stop-color="#070709" />
-          </radialGradient>
-          <linearGradient id="dk_gold_rib1" x1="100%" y1="0%" x2="25%" y2="100%">
-            <stop offset="0%" stop-color="#473314" />
-            <stop offset="28%" stop-color="#d4af5a" />
-            <stop offset="48%" stop-color="#f3dca2" />
-            <stop offset="68%" stop-color="#9e742b" />
-            <stop offset="100%" stop-color="#120f0a" />
-          </linearGradient>
-          <linearGradient id="dk_gold_rib2" x1="90%" y1="10%" x2="35%" y2="95%">
-            <stop offset="0%" stop-color="#17130d" />
-            <stop offset="40%" stop-color="#8b6523" />
-            <stop offset="65%" stop-color="#e2be6e" />
-            <stop offset="100%" stop-color="#0b0a08" />
-          </linearGradient>
-          <linearGradient id="dk_dark_wave" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#1b1c20" />
-            <stop offset="50%" stop-color="#0c0d10" />
-            <stop offset="100%" stop-color="#060608" />
-          </linearGradient>
-        </defs>
-        <rect width="1600" height="900" fill="url(#dk_bg)" />
-        <!-- Vân đá cẩm thạch mảnh bên trái -->
-        <g stroke="rgba(255,255,255,0.04)" stroke-width="1.2" fill="none">
-          <path d="M 80,0 C 190,180 140,340 290,510 C 380,620 260,780 340,900" />
-          <path d="M 0,220 C 160,260 270,190 430,310 C 550,400 490,620 640,760" />
-          <path d="M 240,0 C 310,140 460,210 520,390" stroke="rgba(212,175,85,0.06)" />
-        </g>
-        <!-- Dải lụa 3D Vàng Gold uốn lượn từ góc phải trên xuống giữa dưới -->
-        <path d="M 1600,0 L 1180,0 C 1020,210 1190,460 920,690 C 760,820 560,860 440,900 L 1600,900 Z" fill="url(#dk_dark_wave)" />
-        <path d="M 1600,-40 C 1340,80 1280,360 1040,560 C 830,730 620,790 430,900 L 790,900 C 980,770 1180,580 1390,340 C 1490,220 1560,90 1600,-40 Z" fill="url(#dk_gold_rib1)" opacity="0.92" />
-        <path d="M 1600,240 C 1420,390 1290,610 1030,740 C 860,825 710,865 550,900 L 940,900 C 1160,810 1380,640 1600,430 Z" fill="url(#dk_gold_rib2)" opacity="0.88" />
-        <path d="M 1600,490 C 1440,640 1260,790 980,900 L 1600,900 Z" fill="url(#dk_dark_wave)" opacity="0.95" />
-      </svg>
-
-      <!-- SVG NỀN SÁNG (NGỌC TRẮNG CARRARA + LỤA VÀNG CHAMPAGNE) -->
-      <svg class="svg-light" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <radialGradient id="lt_bg" cx="35%" cy="45%" r="75%">
-            <stop offset="0%" stop-color="#fdfbf7" />
-            <stop offset="60%" stop-color="#f5f0e6" />
-            <stop offset="100%" stop-color="#ebe3d5" />
-          </radialGradient>
-          <linearGradient id="lt_gold_rib1" x1="100%" y1="0%" x2="25%" y2="100%">
-            <stop offset="0%" stop-color="#d8be86" />
-            <stop offset="35%" stop-color="#f3e3be" />
-            <stop offset="55%" stop-color="#fff8e8" />
-            <stop offset="80%" stop-color="#c9a55c" />
-            <stop offset="100%" stop-color="#e8decb" />
-          </linearGradient>
-          <linearGradient id="lt_gold_rib2" x1="90%" y1="10%" x2="35%" y2="95%">
-            <stop offset="0%" stop-color="#efe7d6" />
-            <stop offset="45%" stop-color="#d2b06a" />
-            <stop offset="70%" stop-color="#f7ebd0" />
-            <stop offset="100%" stop-color="#e5dac5" />
-          </linearGradient>
-          <linearGradient id="lt_pearl_wave" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#faf6ee" />
-            <stop offset="50%" stop-color="#efe8da" />
-            <stop offset="100%" stop-color="#e2d8c5" />
-          </linearGradient>
-        </defs>
-        <rect width="1600" height="900" fill="url(#lt_bg)" />
-        <!-- Vân đá cẩm thạch trắng ngà nhẹ nhàng -->
-        <g stroke="rgba(158,118,44,0.08)" stroke-width="1.2" fill="none">
-          <path d="M 80,0 C 190,180 140,340 290,510 C 380,620 260,780 340,900" />
-          <path d="M 0,220 C 160,260 270,190 430,310 C 550,400 490,620 640,760" />
-          <path d="M 240,0 C 310,140 460,210 520,390" />
-        </g>
-        <!-- Dải lụa 3D Champagne & Ngọc trai -->
-        <path d="M 1600,0 L 1180,0 C 1020,210 1190,460 920,690 C 760,820 560,860 440,900 L 1600,900 Z" fill="url(#lt_pearl_wave)" />
-        <path d="M 1600,-40 C 1340,80 1280,360 1040,560 C 830,730 620,790 430,900 L 790,900 C 980,770 1180,580 1390,340 C 1490,220 1560,90 1600,-40 Z" fill="url(#lt_gold_rib1)" />
-        <path d="M 1600,240 C 1420,390 1290,610 1030,740 C 860,825 710,865 550,900 L 940,900 C 1160,810 1380,640 1600,430 Z" fill="url(#lt_gold_rib2)" opacity="0.9" />
-        <path d="M 1600,490 C 1440,640 1260,790 980,900 L 1600,900 Z" fill="url(#lt_pearl_wave)" opacity="0.92" />
-      </svg>
-    </div>
-
-    <!-- 1. THANH HEADER TRÊN CÙNG -->
-    <header class="top-header">
-      <div class="logo-monogram" title="AURELIA">
-        <svg viewBox="0 0 40 40" width="34" height="34" fill="none">
-          <path d="M20 4 L33 35 H28.5 L24.5 25.5 H14.5 C11.5 31 9.5 34.5 7 35 C10.5 29.5 14.5 18 20 4 Z" fill="var(--gold-bright)" />
-          <path d="M16 22 H23 L19.5 12.5 L16 22 Z" fill="var(--bg-base)" />
-        </svg>
+  <div class="workspace-shell">
+    <!-- 1. THANH HEADER TRANG CHỦ TRÌNH DUYỆT -->
+    <header class="top-bar">
+      <div class="brand-badge">
+        <div class="tp-monogram"><img id="nt_brand_logo" alt="TPbrowser" /></div>
+        <div class="brand-text">
+          <h2>TPBROWSER // KHÔNG GIAN CÁ NHÂN</h2>
+          <p>Đá Cẩm Thạch &amp; Vàng Đồng</p>
+        </div>
       </div>
 
-      <nav class="nav-center">
-        <a onclick="toggleBookmarksTray()">COLLECTIONS</a>
-        <a onclick="sendCmd({cmd:'navigate_active', url:'https://docs.google.com/spreadsheets'})">THE BRAND</a>
-        <a onclick="sendCmd({cmd:'navigate_active', url:'https://www.youtube.com'})">JOURNAL</a>
-        <a onclick="sendCmd({cmd:'open_google_login'})">CONTACT</a>
-      </nav>
+      <div class="top-actions">
+        <button class="luxury-btn" onclick="sendCmd({cmd:'toggle_tab_orientation'})">
+          <svg class="ui-ico" viewBox="0 0 16 16"><path d="M2.5 5.5h11M10.5 2.5l3 3-3 3M13.5 10.5h-11M5.5 7.5l-3 3 3 3"/></svg>
+          <span>Tab Dọc / Ngang</span>
+        </button>
+        <button class="luxury-btn" onclick="sendCmd({cmd:'open_settings_modal', section:'look_feel'})" title="Mở Bảng Cài Đặt Tập Trung (Alt+,)">
+          <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v1.5M8 12.7v1.5M1.8 8h1.5M12.7 8h1.5M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg>
+          <span>Cài Đặt</span>
+        </button>
 
-      <div class="header-icons">
-        <!-- Search icon -->
-        <svg onclick="document.getElementById('nt_input').focus()" title="Tìm kiếm" viewBox="0 0 24 24" fill="none" stroke-width="1.6">
-          <circle cx="11" cy="11" r="7" />
-          <line x1="16.5" y1="16.5" x2="21" y2="21" />
-        </svg>
-        <!-- Shopping bag icon -->
-        <svg onclick="sendCmd({cmd:'open_ai_settings'})" title="Cài đặt API Key & Kỹ năng" viewBox="0 0 24 24" fill="none" stroke-width="1.6">
-          <path d="M6 7h12l1 13H5L6 7z" />
-          <path d="M9 7V5a3 3 0 0 1 6 0v2" />
-        </svg>
+        <div class="google-account-pill" onclick="openGoogleModal()" title="Quản lý trình duyệt bằng Tài khoản Google">
+          <div class="g-circle" id="nt_g_avatar">G</div>
+          <div>
+            <div style="font-size:11.5px; font-weight:700; color:var(--text-main);" id="nt_g_name">Đăng nhập Google</div>
+            <div style="font-size:10px; font-weight:600; color:var(--gold-bright);" id="nt_g_sub">Bấm để quản lý trình duyệt</div>
+          </div>
+        </div>
       </div>
     </header>
 
-    <!-- 2. PHẦN THÂN (CỘT DỌC TRÁI + HERO CHIA ĐÔI) -->
-    <div class="main-body">
-      <!-- Cột dọc bên trái -->
-      <aside class="left-rail">
-        <!-- Menu chữ dọc (Ảnh 2) -->
-        <div class="rail-vertical-menu">
-          <span class="rail-v-item" onclick="sendCmd({cmd:'open_google_login'})">CONTACT</span>
-          <span class="rail-v-item" onclick="sendCmd({cmd:'cycle_view_mode'})">GALLERY</span>
-          <span class="rail-v-item" onclick="sendCmd({cmd:'navigate_active', url:'https://www.youtube.com'})">JOURNAL</span>
-          <span class="rail-v-item" onclick="sendCmd({cmd:'toggle_tab_orientation'})">THE BRAND</span>
-          <span class="rail-v-item" onclick="toggleBookmarksTray()">COLLECTIONS</span>
-          <span class="rail-v-item" onclick="sendCmd({cmd:'go_home'})">HOME</span>
-        </div>
-
-        <!-- Ký hiệu hình học giữa cột (Ảnh 1) -->
-        <div class="rail-geo-markers">
-          <span style="width:6px; height:6px; border-radius:50%; background:var(--gold-bright);"></span>
-          <span style="width:7px; height:7px; background:var(--gold-main); transform:rotate(45deg);"></span>
-          <span style="width:4px; height:4px; border-radius:50%; background:var(--gold-muted);"></span>
-        </div>
-
-        <!-- 3 icon mạng xã hội dưới đáy cột trái -->
-        <div class="rail-socials">
-          <!-- Facebook -->
-          <svg viewBox="0 0 24 24"><path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.326-.043-1.557-.14-2.857-.14C11.928 2 10 3.657 10 6.7v2.8H7v4h3V22h4v-8.5z"/></svg>
-          <!-- Instagram -->
-          <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0 3.675a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zm0 10.162a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-          <!-- Node / Share -->
-          <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
-        </div>
-      </aside>
-
-      <!-- Vùng Hero Chia Đôi -->
-      <main class="hero-split">
-        <!-- Trục trang trí chính giữa -->
-        <div class="center-axis">
-          <div class="axis-top-line"></div>
-          <div class="axis-diamond"></div>
-          <div class="axis-bottom-dots">
-            <span></span>
-            <span></span>
-            <span></span>
+    <!-- 2. KHU VỰC TRUNG TÂM: ĐỒNG HỒ + OMNIBOX + LƯỚI BOOKMARKS THẬT -->
+    <div class="center-stage-wrap">
+      <main class="center-stage">
+        <div class="clock-hero">
+          <div class="clock-time" id="nt_clock">00:00</div>
+          <div class="clock-greeting" id="nt_greeting">Chào anh Phú — Không gian làm việc cá nhân</div>
+          <div class="diamond-divider">
+            <span class="line"></span>
+            <span class="diamond"></span>
+            <span class="line"></span>
           </div>
         </div>
 
-        <!-- Khối Nội Dung Bên Trái -->
-        <section class="hero-col left-col">
-          <h1 class="serif-heading-spaced">AURELIA</h1>
-          <p class="hero-subtitle" id="nt_greeting">An exquisite experience of timeless design</p>
-          <form onsubmit="handleOmnibox(event)" style="display:flex; width:100%; max-width:390px; margin-bottom:18px; border:1px solid var(--gold-line-strong); background:var(--btn-bg); backdrop-filter:blur(6px);">
-            <input id="nt_input" type="text" placeholder="Nhập địa chỉ web, tìm kiếm hoặc @ai..." autocomplete="off" style="flex:1; border:none; background:transparent; padding:11px 14px; color:var(--gold-bright); font-size:12px; letter-spacing:0.5px; outline:none; user-select:text;" />
-            <button type="submit" style="border:none; border-left:1px solid var(--gold-line); background:transparent; color:var(--gold-bright); padding:0 18px; font-size:10.5px; letter-spacing:2px; cursor:pointer;">EXPLORE</button>
-          </form>
-          <button class="luxury-cta" onclick="toggleBookmarksTray()">EXPLORE NOW</button>
-        </section>
+        <form class="omnibox-wrap" onsubmit="handleOmnibox(event)">
+          <input id="nt_input" type="text" placeholder="Nhập địa chỉ web (google.com), tìm kiếm hoặc gõ @ai giao việc..." autocomplete="off" autofocus />
+          <button type="submit" class="btn-open">MỞ TRANG</button>
+        </form>
 
-        <!-- Khối Nội Dung Bên Phải -->
-        <section class="hero-col right-col">
-          <h2 class="serif-heading-stacked">THE ART OF<br/>MINIMALISM</h2>
-          <p class="hero-subtitle">Nơi sự tối giản gặp gỡ vẻ đẹp vĩnh cửu</p>
-          <button class="luxury-cta" onclick="sendCmd({cmd:'toggle_ai_mode'})">KHÁM PHÁ NGAY</button>
-        </section>
+        <div class="sec-bar">
+          <div class="sec-title">
+            <span class="mini-diamond"></span>
+            <span>TRANG GHIM NHANH (BOOKMARKS ĐỒNG BỘ THEO PROFILE)</span>
+          </div>
+          <span class="add-bm-link" onclick="openAddBookmarkModal()">+ Thêm trang mới</span>
+        </div>
+
+        <div id="nt_bm_grid" class="bm-grid"></div>
+
+        <div class="cowork-quick-bar">
+          <span><b>Cửa sổ Chat:</b> AI (Alt+A) • Messenger (Alt+F) • Zalo (Alt+Z)</span>
+          <div class="cowork-chips">
+            <button class="luxury-btn" style="padding:5px 12px; font-size:11px;" onclick="sendCmd({cmd:'toggle_chat_dock_style'})">
+              <svg class="ui-ico" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M10 3v10"/></svg>
+              <span>Đổi Cửa sổ FB / Ngăn Phải</span>
+            </button>
+            <button class="luxury-btn" style="padding:5px 12px; font-size:11px;" onclick="sendCmd({cmd:'cycle_view_mode'})">
+              <svg class="ui-ico" viewBox="0 0 16 16"><rect x="2" y="2.5" width="5" height="5" rx="1"/><rect x="9" y="2.5" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+              <span>Chia Khung BSP</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- KHAY VIỆC HÔM NAY (TODAY'S TASKS) -->
+        <div id="nt_today_tasks_wrap" style="margin-top:14px; background:var(--bg-input); border:1px solid var(--gold-line); border-radius:12px; padding:12px 14px; display:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="mini-diamond"></span>
+              <b style="font-family:var(--font-heading); font-size:13.5px; color:var(--gold-bright); letter-spacing:0.5px;">VIỆC HÔM NAY &amp; NHẮC NHỞ TỪ ZALO</b>
+            </div>
+            <button class="luxury-btn" style="padding:4px 10px; font-size:10.5px;" onclick="sendCmd({cmd:'open_chat_channel', channel:'ai'}); sendCmd({cmd:'set_ai_mode', mode:'popup'});">Mở Kế Hoạch AI</button>
+          </div>
+          <div id="nt_today_tasks_list" style="display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
       </main>
+    </div>
 
-      <!-- 3 Bong Bóng Nổi Góc Dưới Phải (AI Robot, Messenger, Zalo - Nguyên bản Ảnh 2) -->
-      <div class="floating-orbs">
-        <!-- 1. AI Robot Orb -->
-        <div class="gold-orb" title="Mở / Thu gọn Trợ lý AI Cowork" onclick="sendCmd({cmd:'toggle_ai_mode'})">
-          <svg viewBox="0 0 36 36" fill="none">
-            <line x1="18" y1="5" x2="18" y2="9" stroke="var(--gold-bright)" stroke-width="1.8" />
-            <circle cx="18" cy="4" r="2" fill="var(--gold-bright)" />
-            <rect x="8" y="9" width="20" height="16" rx="5" stroke="var(--gold-bright)" stroke-width="1.8" />
-            <rect x="12" y="14" width="4" height="3.5" rx="1" fill="var(--gold-bright)" />
-            <rect x="20" y="14" width="4" height="3.5" rx="1" fill="var(--gold-bright)" />
-            <path d="M14 21 H22" stroke="var(--gold-bright)" stroke-width="1.6" stroke-linecap="round" />
-            <path d="M11 28 C13 26 23 26 25 28" stroke="var(--gold-bright)" stroke-width="1.6" stroke-linecap="round" />
-          </svg>
-        </div>
+    <!-- 4. CHÂN TRANG -->
+    <footer class="bottom-row">
+      <span>Phím tắt: Ctrl+L (Địa chỉ) | Ctrl+F (Tìm) | Ctrl+D (Ghim) | Alt+B (Bookmarks) | Alt+A/Z/F (Chat) | Alt+, (Cài đặt)</span>
+      <span id="nt_profile_badge">Profile: Chính (default) • uBlock Origin Lite + ABPVN</span>
+    </footer>
+  </div>
 
-        <!-- 2. Facebook Messenger Orb -->
-        <div class="gold-orb" title="Mở Facebook Messenger" onclick="sendCmd({cmd:'navigate_active', url:'https://www.messenger.com'})">
-          <svg viewBox="0 0 36 36" fill="none">
-            <path d="M18 6C11.1 6 5.5 11.1 5.5 17.4c0 3.6 1.8 6.8 4.6 8.9V31l4.4-2.4c1.1.3 2.3.5 3.5.5 6.9 0 12.5-5.1 12.5-11.4S24.9 6 18 6z" fill="var(--gold-bright)" />
-            <path d="M10.8 20.6l5.1-5.4 2.6 2.7 4.8-2.7-5.1 5.4-2.5-2.7-4.9 2.7z" fill="var(--bg-base)" />
-          </svg>
-        </div>
-
-        <!-- 3. Zalo Orb -->
-        <div class="gold-orb" title="Mở Zalo Web" onclick="sendCmd({cmd:'navigate_active', url:'https://chat.zalo.me'})">
-          <svg viewBox="0 0 36 36" fill="none">
-            <path d="M18 6C11.1 6 5.5 11.1 5.5 17.4c0 3.6 1.8 6.8 4.6 8.9V31l4.4-2.4c1.1.3 2.3.5 3.5.5 6.9 0 12.5-5.1 12.5-11.4S24.9 6 18 6z" fill="var(--gold-bright)" />
-            <text x="18" y="20.5" text-anchor="middle" fill="var(--bg-base)" font-family="Segoe UI, sans-serif" font-weight="800" font-size="9.5">zalo</text>
-          </svg>
-        </div>
+  <!-- MODAL THÊM BOOKMARK -->
+  <div id="bm_modal" class="modal-backdrop">
+    <div class="modal-card">
+      <h3>+ Thêm Trang Ghim Nhanh (Bookmark)</h3>
+      <div class="field">
+        <label>Tên trang hiển thị</label>
+        <input id="bm_title_inp" type="text" placeholder="Ví dụ: Bảng Tính Lương Nhân Sự" />
       </div>
-
-      <!-- 3 Icon nhỏ sát mép phải dưới cùng -->
-      <div class="right-edge-mini">
-        <!-- X / Twitter -->
-        <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-        <!-- YouTube -->
-        <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-        <!-- Audio Equalizer bars -->
-        <svg viewBox="0 0 24 24"><path d="M4 9h2v11H4zm5-5h2v16H9zm5 8h2v8h-2zm5-4h2v12h-2z"/></svg>
+      <div class="field">
+        <label>Địa chỉ URL</label>
+        <input id="bm_url_inp" type="text" placeholder="https://docs.google.com/spreadsheets" />
+      </div>
+      <div class="modal-actions">
+        <button class="luxury-btn" onclick="closeAddBookmarkModal()">Hủy</button>
+        <button class="cta-modal-btn" onclick="saveNewBookmark()">Lưu Bookmark</button>
       </div>
     </div>
   </div>
 
-
-  <!-- Khay Collections (Bookmarks) sang trọng kiểu AURELIA khi bấm EXPLORE NOW / COLLECTIONS -->
-  <div id="bm_tray" style="position:fixed; inset:0; background:rgba(8,8,10,0.78); backdrop-filter:blur(8px); z-index:9000; display:none; align-items:center; justify-content:center;">
-    <div style="width:min(680px,92vw); background:var(--bg-base); border:1px solid var(--gold-line-strong); padding:28px 32px; box-shadow:0 20px 50px rgba(0,0,0,0.7);">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--gold-line); padding-bottom:12px;">
-        <span style="font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; letter-spacing:5px; color:var(--gold-bright);">COLLECTIONS</span>
-        <button class="luxury-cta" style="padding:6px 14px;" onclick="toggleBookmarksTray()">ĐÓNG</button>
+  <!-- MODAL QUẢN LÝ TÀI KHOẢN GOOGLE -->
+  <div id="google_modal" class="modal-backdrop">
+    <div class="modal-card">
+      <h3>Quản Lý Trình Duyệt Bằng Tài Khoản Google</h3>
+      <p style="font-size:12px; color:var(--text-sub); margin-bottom:12px; line-height:1.45;">
+        Đăng nhập tài khoản Google thật trên trình duyệt để đồng bộ phiên làm việc (Gmail, Drive, Sheets, YouTube) và gắn tên quản lý cho Profile hiện tại.
+      </p>
+      <div class="field">
+        <label>Tên hiển thị / Email Google quản lý trình duyệt</label>
+        <input id="g_user_inp" type="text" placeholder="Ví dụ: Bùi Thiên Phú (thienphu@gmail.com)" />
       </div>
-      <div id="nt_bm_grid" style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;"></div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button class="luxury-btn" onclick="loginGoogleRealPage()">
+          <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a9 9 0 0 1 0 12M8 2a9 9 0 0 0 0 12"/></svg>
+          <span>Mở trang Đăng nhập Google thật</span>
+        </button>
+        <div style="display:flex; gap:6px;">
+          <button class="luxury-btn" onclick="closeGoogleModal()">Đóng</button>
+          <button class="cta-modal-btn" onclick="saveGoogleUser()">Lưu</button>
+        </div>
+      </div>
     </div>
   </div>
+
+  <script>/*__TP_MOTION_JS__*/</script>
+  <script>/*__TP_BRAND_ASSETS_JS__*/</script>
   <script>
-    var currentBookmarks = [
+    var currentLogoStyle = "ribbon";
+    var currentTheme = document.documentElement.getAttribute("data-theme") || "obsidian-gold";
+
+    function syncNewTabBrand() {
+      var logoEl = document.getElementById("nt_brand_logo");
+      if (logoEl && window.__tpResolveBrandAsset) {
+        var lSrc = window.__tpResolveBrandAsset("logo", currentLogoStyle, currentTheme);
+        if (lSrc && logoEl.getAttribute("src") !== lSrc) logoEl.src = lSrc;
+      }
+      if (window.__tpSetFavicon && window.__tpResolveBrandAsset) {
+        window.__tpSetFavicon(window.__tpResolveBrandAsset("app", currentLogoStyle, currentTheme));
+      }
+    }
+    var defaultBookmarks = [
       { title: "Google Sheets", url: "https://docs.google.com/spreadsheets" },
       { title: "Gmail Cá Nhân", url: "https://mail.google.com" },
       { title: "Google Drive", url: "https://drive.google.com" },
@@ -672,6 +913,7 @@
       { title: "Google Gemini", url: "https://gemini.google.com" },
       { title: "Tài Khoản Google", url: "https://myaccount.google.com" }
     ];
+    var currentBookmarks = defaultBookmarks.slice();
 
     function sendCmd(payload) {
       try {
@@ -681,35 +923,39 @@
       } catch (_) {}
     }
 
-    function setMode(m, fromRust) {
-      var mode = (m === "light" || m === "warm-paper") ? "light" : "dark";
-      document.documentElement.setAttribute("data-mode", mode);
-      document.getElementById("btn_dark").classList.toggle("active", mode === "dark");
-      document.getElementById("btn_light").classList.toggle("active", mode === "light");
+    function updateClock() {
+      var now = new Date();
+      var hh = String(now.getHours()).padStart(2, "0");
+      var mm = String(now.getMinutes()).padStart(2, "0");
+      document.getElementById("nt_clock").textContent = hh + ":" + mm;
+    }
+    updateClock();
+    setInterval(updateClock, 10000);
+
+    function setThemeMode(theme, fromRust) {
+      var isLight = (theme === "carrara-light" || theme === "warm-paper" || theme === "light");
+      var normalized = isLight ? "carrara-light" : "obsidian-gold";
+      currentTheme = normalized;
+      document.documentElement.setAttribute("data-theme", normalized);
+      var btnDark = document.getElementById("btn_theme_dark");
+      var btnLight = document.getElementById("btn_theme_light");
+      if (btnDark) btnDark.classList.toggle("active", !isLight);
+      if (btnLight) btnLight.classList.toggle("active", isLight);
+      syncNewTabBrand();
       if (!fromRust) {
-        sendCmd({ cmd: "set_ui_theme", theme: mode === "light" ? "warm-paper" : "obsidian-gold" });
+        sendCmd({ cmd: "set_ui_theme", theme: normalized });
       }
     }
-
-    function toggleImgVariant() {
-      var st = document.getElementById("aurelia_stage");
-      st.classList.toggle("variant-img1");
+    if (window.location.search.indexOf("theme=light") !== -1) {
+      setThemeMode("carrara-light", true);
     }
 
-    function handleOmnibox(e) {
-      e.preventDefault();
-      var v = document.getElementById("nt_input").value.trim();
-      if (!v) return;
-      if (v.toLowerCase().startsWith("@ai ")) {
-        sendCmd({ cmd: "run_ai_prompt", prompt: v.slice(4).trim() });
-      } else {
-        sendCmd({ cmd: "navigate_active", url: v });
-      }
-    }
-
-    function toggleBookmarksTray() {
-      var tr = document.getElementById("bm_tray");
-      tr.style.display = (tr.style.display === "flex") ? "none" : "flex";
+    function escapeHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     function renderBookmarks() {
@@ -718,25 +964,188 @@
       var html = "";
       for (var i = 0; i < currentBookmarks.length; i++) {
         var b = currentBookmarks[i];
-        html += '<div onclick="sendCmd({cmd:\'navigate_active\', url:\'' + b.url + '\'})" style="border:1px solid var(--gold-line); padding:12px; cursor:pointer; background:var(--btn-bg);">' +
-          '<div style="color:var(--gold-bright); font-size:12px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">' + b.title.toUpperCase() + '</div>' +
-          '<div style="color:var(--text-sub); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + b.url.replace(/^https?:\/\//, "") + '</div>' +
-        '</div>';
+        html +=
+          '<div class="bm-item" onclick="sendCmd({cmd:\'navigate_active\', url:\'' + escapeHtml(b.url) + '\'})">' +
+            '<button class="bm-del" onclick="event.stopPropagation(); removeBookmark(' + i + ')" title="Xóa trang ghim">×</button>' +
+            '<div class="bm-title">' + escapeHtml(b.title) + '</div>' +
+            '<div class="bm-url">' + escapeHtml(b.url.replace(/^https?:\/\//, "")) + '</div>' +
+          '</div>';
       }
       grid.innerHTML = html;
     }
     renderBookmarks();
 
+    function handleOmnibox(e) {
+      e.preventDefault();
+      var v = document.getElementById("nt_input").value.trim();
+      if (!v) return;
+      if (v.toLowerCase().startsWith("@ai ")) {
+        sendCmd({ cmd: "open_chat_channel", channel: "ai" });
+        sendCmd({ cmd: "run_ai_prompt", prompt: v.slice(4).trim() });
+      } else {
+        sendCmd({ cmd: "navigate_active", url: v });
+      }
+    }
+
+    function submitAsAiTask() {
+      var v = document.getElementById("nt_input").value.trim();
+      sendCmd({ cmd: "open_chat_channel", channel: "ai" });
+      if (!v) {
+        sendCmd({ cmd: "focus_ai_panel" });
+        return;
+      }
+      sendCmd({ cmd: "run_ai_prompt", prompt: v });
+    }
+
+    function openAddBookmarkModal() {
+      document.getElementById("bm_title_inp").value = "";
+      document.getElementById("bm_url_inp").value = "";
+      document.getElementById("bm_modal").classList.add("open");
+    }
+    function closeAddBookmarkModal() {
+      document.getElementById("bm_modal").classList.remove("open");
+    }
+
+    // --- TODAY TASKS SYNCHRONIZATION (PHASE 4) ---
+    window.__tpSyncTasks = function(tasks) {
+      var arr = [];
+      if (Array.isArray(tasks)) arr = tasks;
+      else if (typeof tasks === "string") {
+        try { arr = JSON.parse(tasks); } catch (_) {}
+      }
+      var wrap = document.getElementById("nt_today_tasks_wrap");
+      var list = document.getElementById("nt_today_tasks_list");
+      if (!wrap || !list) return;
+      var activeTasks = arr.filter(function(t){ return t.status !== "done"; });
+      if (activeTasks.length === 0) {
+        wrap.style.display = "none";
+        return;
+      }
+      wrap.style.display = "block";
+      var html = "";
+      activeTasks.slice(0, 4).forEach(function(t){
+        var srcTag = t.source === "zalo" ? "Zalo" : (t.source === "messenger" ? "Messenger" : "Web");
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-card); border:1px solid var(--gold-line); border-radius:8px; padding:7px 10px; gap:8px;">' +
+          '<div style="display:flex; align-items:center; gap:8px; flex:1;">' +
+            '<input type="checkbox" onchange="sendCmd({cmd:\'complete_task\', id:\'' + escapeHtml(t.id) + '\'})" />' +
+            '<span style="font-size:12px; font-weight:600; color:var(--text-main);">' + escapeHtml(t.title) + '</span>' +
+            '<span style="font-size:9.5px; background:rgba(212,175,55,0.15); color:var(--gold-bright); border:1px solid var(--gold-line); padding:1px 6px; border-radius:999px;">' + srcTag + '</span>' +
+          '</div>' +
+          '<div style="display:flex; align-items:center; gap:6px;">' +
+            '<span style="font-size:10.5px; color:var(--text-muted);">⏰ ' + escapeHtml(t.due_text || "Hôm nay") + '</span>' +
+            '<button class="luxury-btn" style="padding:3px 8px; font-size:10px;" onclick="sendCmd({cmd:\'open_chat_channel\', channel:\'ai\'}); sendCmd({cmd:\'set_ai_mode\', mode:\'popup\'});">Làm ngay</button>' +
+          '</div>' +
+        '</div>';
+      });
+      list.innerHTML = html;
+    };
+    sendCmd({ cmd: "get_tasks" });
+    function saveNewBookmark() {
+      var t = document.getElementById("bm_title_inp").value.trim();
+      var u = document.getElementById("bm_url_inp").value.trim();
+      if (!t || !u) return;
+      if (!u.startsWith("http://") && !u.startsWith("https://")) u = "https://" + u;
+      currentBookmarks.push({ title: t, url: u });
+      renderBookmarks();
+      sendCmd({ cmd: "save_bookmarks", bookmarks_json: JSON.stringify(currentBookmarks) });
+      closeAddBookmarkModal();
+    }
+    function removeBookmark(idx) {
+      currentBookmarks.splice(idx, 1);
+      renderBookmarks();
+      sendCmd({ cmd: "save_bookmarks", bookmarks_json: JSON.stringify(currentBookmarks) });
+    }
+
+    function openGoogleModal() {
+      document.getElementById("google_modal").classList.add("open");
+    }
+    function closeGoogleModal() {
+      document.getElementById("google_modal").classList.remove("open");
+    }
+    function saveGoogleUser() {
+      var name = document.getElementById("g_user_inp").value.trim();
+      sendCmd({ cmd: "set_google_user", google_user: name });
+      closeGoogleModal();
+    }
+    function loginGoogleRealPage() {
+      var name = document.getElementById("g_user_inp").value.trim();
+      if (name) {
+        sendCmd({ cmd: "set_google_user", google_user: name });
+      }
+      closeGoogleModal();
+      sendCmd({ cmd: "navigate_active", url: "https://accounts.google.com" });
+    }
+
+    function updateOrbBadge(id, count) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var n = parseInt(count || 0, 10) || 0;
+      if (n > 0) {
+        el.textContent = n > 99 ? "99+" : String(n);
+        el.classList.add("show");
+      } else {
+        el.textContent = "";
+        el.classList.remove("show");
+      }
+    }
+
     window.__tpSyncNewTab = function (cfg) {
       if (!cfg) return;
+      if (cfg.logo_style) {
+        currentLogoStyle = cfg.logo_style === "arrow" ? "arrow" : "ribbon";
+      }
       if (cfg.ui_theme) {
-        setMode(cfg.ui_theme === "warm-paper" || cfg.ui_theme === "light" ? "light" : "dark", true);
+        setThemeMode(cfg.ui_theme, true);
+      } else {
+        syncNewTabBrand();
+      }
+      if (typeof cfg.floating_omnibox === "boolean") {
+        var omni = document.querySelector(".omnibox-wrap");
+        if (omni) omni.style.display = cfg.floating_omnibox ? "flex" : "none";
+      }
+      if (typeof cfg.adblock_enabled === "boolean") {
+        var pBadge = document.getElementById("nt_profile_badge");
+        if (pBadge) {
+          pBadge.textContent = cfg.adblock_enabled
+            ? "Profile: Chính (default) • uBlock Origin Lite + ABPVN"
+            : "Profile: Chính (default) • Khiên lọc quảng cáo đang tạm tắt";
+        }
       }
       if (Array.isArray(cfg.bookmarks) && cfg.bookmarks.length > 0) {
         currentBookmarks = cfg.bookmarks;
         renderBookmarks();
       }
+      if (cfg.google_user !== undefined) {
+        if (cfg.google_user) {
+          document.getElementById("nt_g_avatar").textContent = cfg.google_user.charAt(0).toUpperCase();
+          document.getElementById("nt_g_name").textContent = cfg.google_user;
+          document.getElementById("nt_g_sub").textContent = "Đã kết nối quản lý trình duyệt";
+          document.getElementById("g_user_inp").value = cfg.google_user;
+          document.getElementById("nt_greeting").textContent =
+            "Chào " + cfg.google_user + " — Không gian làm việc & trợ lý AI Cowork";
+        } else {
+          document.getElementById("nt_g_avatar").textContent = "G";
+          document.getElementById("nt_g_name").textContent = "Đăng nhập Google";
+          document.getElementById("nt_g_sub").textContent = "Bấm để quản lý trình duyệt";
+          document.getElementById("nt_greeting").textContent =
+            "Không gian làm việc cá nhân & trợ lý AI Cowork";
+        }
+      }
     };
+
+    window.addEventListener("tp_config_changed", function (ev) {
+      if (ev && ev.detail) {
+        window.__tpSyncNewTab(ev.detail);
+      }
+    });
+
+    if (window.Motion && typeof window.Motion.animate === "function") {
+      try {
+        window.Motion.animate(".clock-hero", { opacity: [0, 1], y: [10, 0] }, { duration: 0.38 });
+      } catch (_) {}
+    }
+    syncNewTabBrand();
+    sendCmd({ cmd: "ui_shell_ready", shell: "newtab" });
   </script>
 </body>
 </html>

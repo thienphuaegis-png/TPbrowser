@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>TPbrowser — Đối chiếu Đồng bộ Vàng Đồng & Bo Góc</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #F4F1EA;
+    color: #18130C;
+    padding: 16px;
+    line-height: 1.45;
+  }
+  .top-note {
+    background: #FFFFFF;
+    border: 1px solid #D6C39A;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .top-note h1 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #7D5512;
+  }
+  .mode-switch {
+    display: flex;
+    gap: 6px;
+    background: #EFE9DC;
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid #D6C39A;
+  }
+  .m-btn {
+    border: none;
+    background: transparent;
+    color: #4A3C28;
+    padding: 5px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .m-btn.active {
+    background: #9A6B16;
+    color: #FFFFFF;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+  }
+  .panel {
+    background: #FFFFFF;
+    border: 1px solid #D6C39A;
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .panel.rec {
+    border: 2px solid #9A6B16;
+  }
+  .badge-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .tag-bad { background: #FEE2E2; color: #991B1B; }
+  .tag-rec { background: #FEF3C7; color: #7D5512; }
+  .tag-alt { background: #EFE9DC; color: #4A3C28; }
+
+  .desc {
+    font-size: 12px;
+    color: #4A3C28;
+  }
+
+  /* Mock surfaces */
+  .sim {
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid #D4B46A;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sim.light {
+    background: #F6F2EA;
+    color: #18130C;
+  }
+  .sim.dark {
+    background: #0E1014;
+    color: #F5F2EB;
+    border-color: rgba(212, 175, 55, 0.45);
+  }
+
+  .sim-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(154, 107, 22, 0.28);
+  }
+  .sim.dark .sim-hdr {
+    border-bottom-color: rgba(212, 175, 55, 0.28);
+  }
+
+  /* CURRENT: inconsistent radii + bright champagne */
+  .cur-pill {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 999px;
+    border: 1px solid #CFA037;
+    background: #FFFFFF;
+  }
+  .sim.dark .cur-pill { background: #181B22; }
+  .cur-pill span {
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+  .cur-pill .on {
+    background: linear-gradient(135deg, #FFF4C2, #F1CF73, #CFA037);
+    color: #2A1C05;
+  }
+  .cur-rect-btn {
+    border-radius: 8px;
+    border: 1px solid #CFA037;
+    background: #FFFFFF;
+    color: #18130C;
+    padding: 5px 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .sim.dark .cur-rect-btn { background: #181B22; color: #F5F2EB; }
+  .cur-g-pill {
+    border-radius: 999px;
+    border: 1px solid #CFA037;
+    background: #FFFFFF;
+    padding: 3px 9px 3px 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sim.dark .cur-g-pill { background: #181B22; color: #F5F2EB; }
+  .cur-omni {
+    display: flex;
+    border: 1.5px solid #CFA037;
+    border-radius: 11px;
+    overflow: hidden;
+    background: #FFFFFF;
+  }
+  .sim.dark .cur-omni { background: #111318; }
+  .cur-omni .in { flex: 1; padding: 8px; font-size: 11px; color: #6C5D47; }
+  .cur-omni .cta {
+    padding: 8px 10px;
+    font-size: 10.5px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #FFF4C2, #F1CF73, #CFA037);
+    color: #2A1C05;
+    border-radius: 0;
+  }
+
+  /* OPTION A: Unified Concentric Rounded Rectangles + Bronze Gold */
+  .a-switch {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid rgba(154, 107, 22, 0.55);
+    background: #FFFFFF;
+  }
+  .sim.dark .a-switch {
+    background: #161920;
+    border-color: rgba(212, 175, 55, 0.48);
+  }
+  .a-switch span {
+    border-radius: 7px;
+    padding: 4px 9px;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+  .a-switch .on {
+    background: linear-gradient(135deg, #C79535, #9A6B16);
+    color: #FFFFFF;
+  }
+  .sim.dark .a-switch .on {
+    background: linear-gradient(135deg, #E2BE68, #B5872E);
+    color: #140F05;
+  }
+  .a-btn {
+    border-radius: 8px;
+    border: 1px solid rgba(154, 107, 22, 0.45);
+    background: #FFFFFF;
+    color: #18130C;
+    padding: 5px 9px;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .sim.dark .a-btn {
+    background: #161920;
+    color: #F5F2EB;
+    border-color: rgba(212, 175, 55, 0.4);
+  }
+  .a-g-rect {
+    border-radius: 8px;
+    border: 1px solid rgba(154, 107, 22, 0.55);
+    background: #FFFFFF;
+    padding: 3px 9px 3px 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sim.dark .a-g-rect {
+    background: #161920;
+    color: #F5F2EB;
+    border-color: rgba(212, 175, 55, 0.48);
+  }
+  .a-omni {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1.5px solid rgba(154, 107, 22, 0.65);
+    border-radius: 10px;
+    background: #FFFFFF;
+  }
+  .sim.dark .a-omni {
+    background: #111318;
+    border-color: rgba(212, 175, 55, 0.55);
+  }
+  .a-omni .in { flex: 1; padding: 6px 8px; font-size: 11px; color: #5F513E; }
+  .sim.dark .a-omni .in { color: #9C9383; }
+  .a-omni .cta {
+    padding: 6px 12px;
+    font-size: 10.5px;
+    font-weight: 700;
+    border-radius: 7px;
+    background: linear-gradient(135deg, #C79535, #9A6B16);
+    color: #FFFFFF;
+  }
+  .sim.dark .a-omni .cta {
+    background: linear-gradient(135deg, #E2BE68, #B5872E);
+    color: #140F05;
+  }
+
+  /* OPTION B: Unified Soft Pills + Bronze Gold */
+  .b-btn {
+    border-radius: 999px;
+    border: 1px solid rgba(154, 107, 22, 0.45);
+    background: #FFFFFF;
+    color: #18130C;
+    padding: 5px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .sim.dark .b-btn {
+    background: #161920;
+    color: #F5F2EB;
+    border-color: rgba(212, 175, 55, 0.4);
+  }
+  .b-omni {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1.5px solid rgba(154, 107, 22, 0.65);
+    border-radius: 999px;
+    background: #FFFFFF;
+  }
+  .sim.dark .b-omni {
+    background: #111318;
+    border-color: rgba(212, 175, 55, 0.55);
+  }
+  .b-omni .in { flex: 1; padding: 6px 12px; font-size: 11px; color: #5F513E; }
+  .sim.dark .b-omni .in { color: #9C9383; }
+  .b-omni .cta {
+    padding: 6px 13px;
+    font-size: 10.5px;
+    font-weight: 700;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #C79535, #9A6B16);
+    color: #FFFFFF;
+  }
+  .sim.dark .b-omni .cta {
+    background: linear-gradient(135deg, #E2BE68, #B5872E);
+    color: #140F05;
+  }
+
+  .clock-sample {
+    text-align: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 3px;
+  }
+  .bronze-text-light { color: #8A5E10; }
+  .bronze-text-dark { color: #E2BE68; }
+  .champ-text-light { color: #9C6E14; }
+  .champ-text-dark { color: #F7DF94; }
+
+  .chat-tabs-row {
+    display: flex;
+    gap: 5px;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    padding-top: 6px;
+    border-top: 1px solid rgba(154, 107, 22, 0.25);
+  }
+  .mini-chip { font-size: 10px; font-weight: 700; padding: 4px 8px; }
+  .note-list { font-size: 11.5px; color: #4A3C28; padding-left: 16px; }
+  .note-list li { margin-bottom: 3px; }
+</style>
+</head>
+<body>
+  <div class="top-note">
+    <div>
+      <h1>Đối chiếu Đồng bộ Vàng Đồng &amp; Hình khối Bo góc — TPbrowser</h1>
+      <div style="font-size:12px; color:#5F513E;">Bấm chuyển Sáng / Tối để đối chiếu bảng màu Vàng Đồng và sự đồng nhất giữa các nút.</div>
+    </div>
+    <div class="mode-switch">
+      <button class="m-btn active" id="btn_l" onclick="setSimMode('light')">Chế độ Sáng (Ngọc &amp; Vàng Đồng)</button>
+      <button class="m-btn" id="btn_d" onclick="setSimMode('dark')">Chế độ Tối (Đen &amp; Vàng Đồng)</button>
+    </div>
+  </div>
+
+  <div class="cols">
+    <!-- HIỆN TẠI -->
+    <div class="panel">
+      <div><span class="badge-tag tag-bad">HIỆN TẠI — Đang lệch bo góc &amp; vàng chói</span></div>
+      <div class="desc">Trong cùng 1 thanh trên vừa có viên thuốc bo tròn <code>999px</code>, vừa có nút chữ nhật <code>8px</code>, nút trong ô tìm kiếm vuông <code>0px</code>, header chat trộn <code>999px</code> với <code>6px</code>.</div>
+      <div class="sim light" data-sim>
+        <div class="sim-hdr">
+          <div class="cur-pill"><span class="on">Sáng</span><span>Tối</span></div>
+          <span class="cur-rect-btn">Tab Dọc / Ngang</span>
+          <span class="cur-g-pill"><span style="width:16px;height:16px;border-radius:50%;background:#CFA037;color:#2A1C05;display:inline-flex;align-items:center;justify-content:center;font-size:9px;">B</span>Bùi Thiên Phú</span>
+        </div>
+        <div class="clock-sample champ-text-light" data-clk="champ">12:24</div>
+        <div class="cur-omni">
+          <div class="in">Nhập địa chỉ web...</div>
+          <div class="cta">GIAO AI COWORK</div>
+        </div>
+        <div class="chat-tabs-row">
+          <div style="display:flex;gap:4px;">
+            <span class="mini-chip" style="border-radius:999px;background:#F1CF73;color:#2A1C05;">AI Cowork</span>
+            <span class="mini-chip" style="border-radius:999px;border:1px solid #CFA037;">Messenger</span>
+          </div>
+          <span class="mini-chip" style="border-radius:6px;border:1px solid #CFA037;">Ngăn phải</span>
+        </div>
+      </div>
+      <ul class="note-list">
+        <li>Lỗi 1: Viên thuốc <code>999px</code> đặt cạnh nút <code>8px</code> và <code>6px</code>.</li>
+        <li>Lỗi 2: Nút <code>GIAO AI COWORK</code> vuông góc <code>0px</code> bên trong khung <code>11px</code>.</li>
+        <li>Lỗi 3: Màu Champagne quá sáng chói trên nền trắng.</li>
+      </ul>
+    </div>
+
+    <!-- PHƯƠNG ÁN A -->
+    <div class="panel rec">
+      <div><span class="badge-tag tag-rec">PHƯƠNG ÁN A (Đề xuất) — Chữ nhật bo đồng tâm + Vàng Đồng</span></div>
+      <div class="desc">Đồng bộ 100% chữ nhật bo góc đồng tâm (<code>16px</code> khung lớn / <code>10px</code> thanh bao / <code>7px-8px</code> nút con bên trong), dùng màu <strong>Vàng Đồng Cổ Điển</strong> (<code>#9A6B16 → #C79535</code> Sáng, <code>#B5872E → #E2BE68</code> Tối).</div>
+      <div class="sim light" data-sim>
+        <div class="sim-hdr">
+          <div class="a-switch"><span class="on">Sáng</span><span>Tối</span></div>
+          <span class="a-btn">Tab Dọc / Ngang</span>
+          <span class="a-g-rect"><span style="width:18px;height:18px;border-radius:5px;background:#9A6B16;color:#FFF;display:inline-flex;align-items:center;justify-content:center;font-size:9px;">B</span>Bùi Thiên Phú</span>
+        </div>
+        <div class="clock-sample bronze-text-light" data-clk="bronze">12:24</div>
+        <div class="a-omni">
+          <div class="in">Nhập địa chỉ web...</div>
+          <div class="cta">GIAO AI COWORK</div>
+        </div>
+        <div class="chat-tabs-row">
+          <div style="display:flex;gap:4px;">
+            <span class="mini-chip" style="border-radius:7px;background:linear-gradient(135deg,#C79535,#9A6B16);color:#FFF;">AI Cowork</span>
+            <span class="mini-chip" style="border-radius:7px;border:1px solid rgba(154,107,22,0.5);">Messenger</span>
+          </div>
+          <span class="mini-chip" style="border-radius:7px;border:1px solid rgba(154,107,22,0.5);">Ngăn phải</span>
+        </div>
+      </div>
+      <ul class="note-list">
+        <li>Mọi nút, thẻ Google, tab Chat và ô tìm kiếm khớp cùng độ bo <code>7px–10px</code>.</li>
+        <li>Màu Vàng Đồng trầm ấm, chữ trắng (Sáng) / chữ đen mực (Tối) cực dễ đọc.</li>
+        <li>Riêng 3 bóng chat nổi góc dưới phải giữ hình tròn <code>50%</code>.</li>
+      </ul>
+    </div>
+
+    <!-- PHƯƠNG ÁN B -->
+    <div class="panel">
+      <div><span class="badge-tag tag-alt">PHƯƠNG ÁN B — Viên thuốc bo tròn 999px + Vàng Đồng</span></div>
+      <div class="desc">Đồng bộ toàn bộ nút điều khiển, thanh tìm kiếm, thẻ Google và tab Chat sang dạng viên thuốc tròn <code>999px</code>; giữ các thẻ bookmark và modal là chữ nhật bo <code>12px</code>.</div>
+      <div class="sim light" data-sim>
+        <div class="sim-hdr">
+          <div class="a-switch" style="border-radius:999px;"><span class="on" style="border-radius:999px;">Sáng</span><span style="border-radius:999px;">Tối</span></div>
+          <span class="b-btn">Tab Dọc / Ngang</span>
+          <span class="b-btn" style="padding:3px 9px 3px 4px;display:inline-flex;align-items:center;gap:5px;"><span style="width:18px;height:18px;border-radius:50%;background:#9A6B16;color:#FFF;display:inline-flex;align-items:center;justify-content:center;font-size:9px;">B</span>Bùi Thiên Phú</span>
+        </div>
+        <div class="clock-sample bronze-text-light" data-clk="bronze">12:24</div>
+        <div class="b-omni">
+          <div class="in">Nhập địa chỉ web...</div>
+          <div class="cta">GIAO AI COWORK</div>
+        </div>
+        <div class="chat-tabs-row">
+          <div style="display:flex;gap:4px;">
+            <span class="mini-chip" style="border-radius:999px;background:linear-gradient(135deg,#C79535,#9A6B16);color:#FFF;">AI Cowork</span>
+            <span class="mini-chip" style="border-radius:999px;border:1px solid rgba(154,107,22,0.5);">Messenger</span>
+          </div>
+          <span class="mini-chip" style="border-radius:999px;border:1px solid rgba(154,107,22,0.5);">Ngăn phải</span>
+        </div>
+      </div>
+      <ul class="note-list">
+        <li>Mọi nút điều khiển đồng nhất bo tròn mềm <code>999px</code>.</li>
+        <li>Cũng dùng bảng màu Vàng Đồng Cổ Điển rõ nét.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    function setSimMode(m) {
+      document.getElementById("btn_l").classList.toggle("active", m === "light");
+      document.getElementById("btn_d").classList.toggle("active", m === "dark");
+      document.querySelectorAll("[data-sim]").forEach(function (el) {
+        el.classList.remove("light", "dark");
+        el.classList.add(m);
+      });
+      document.querySelectorAll("[data-clk]").forEach(function (el) {
+        var kind = el.getAttribute("data-clk");
+        el.classList.remove("bronze-text-light", "bronze-text-dark", "champ-text-light", "champ-text-dark");
+        el.classList.add(kind + "-text-" + m);
+      });
+    }
+  </script>
+</body>
+</html>

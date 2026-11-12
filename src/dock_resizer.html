@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="obsidian-gold">
+<head>
+<meta charset="UTF-8" />
+<title>Dock Resizer</title>
+<style>
+  :root, html[data-theme="obsidian-gold"] {
+    --bar-bg: rgba(14, 16, 20, 0.95);
+    --line-idle: rgba(212, 175, 55, 0.30);
+    --line-hot: #E2BE68;
+  }
+  html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
+    --bar-bg: rgba(246, 242, 234, 0.96);
+    --line-idle: rgba(154, 107, 22, 0.35);
+    --line-hot: #8A5E10;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bar-bg);
+    cursor: ew-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .seam {
+    width: 2px;
+    height: 100%;
+    background: var(--line-idle);
+    transition: background 0.14s ease, width 0.14s ease;
+    position: relative;
+  }
+  body:hover .seam, body.dragging .seam {
+    width: 3px;
+    background: var(--line-hot);
+  }
+  .grip {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 44px;
+    border-radius: 999px;
+    background: var(--line-hot);
+    opacity: 0.45;
+    transition: opacity 0.14s ease;
+  }
+  body:hover .grip, body.dragging .grip {
+    opacity: 1;
+  }
+</style>
+</head>
+<body title="Kéo trái / phải để chỉnh độ rộng thanh bên phải (Nhấp đúp để đặt lại)">
+  <div class="seam"><div class="grip"></div></div>
+  <script>
+    function sendRust(payload) {
+      try {
+        if (window.ipc && typeof window.ipc.postMessage === "function") {
+          window.ipc.postMessage(JSON.stringify(payload));
+        }
+      } catch (_) {}
+    }
+
+    document.body.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      if (e.detail >= 2) {
+        sendRust({ cmd: "reset_dock_width" });
+      } else {
+        document.body.classList.add("dragging");
+        sendRust({ cmd: "start_dock_resize" });
+      }
+    });
+
+    window.addEventListener("mouseup", function () {
+      document.body.classList.remove("dragging");
+    });
+
+    window.__tpSyncDockResizer = function (st) {
+      if (!st) return;
+      if (st.ui_theme) {
+        document.documentElement.setAttribute("data-theme", st.ui_theme);
+      }
+      if (st.dragging === false) {
+        document.body.classList.remove("dragging");
+      }
+    };
+    sendRust({ cmd: "ui_shell_ready", shell: "dock_resizer" });
+  </script>
+</body>
+</html>

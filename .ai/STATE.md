@@ -1,46 +1,46 @@
 # STATE.md — TPbrowser (`D:\Projects_Hermes\TPbrowser`)
 
-**Checkpoint:** `v0.2.0-aurelia-ui` (2026-11-10)
-**Dự án:** `TPbrowser` — Trình duyệt cá nhân siêu nhẹ viết bằng Rust (`tao` + `wry` / WebView2 ~748 KB), giao diện **AURELIA (Tối Đen Vàng Gold & Sáng Ngọc Trắng)**, Tab Dọc/Ngang, AI Cowork tự học Skill và chặn quảng cáo `uBlock Origin Lite` MV3 + `ABPVN`.
+**Checkpoint:** `v0.5.4-settings-fix-and-startup-stability` (2026-11-12)
+**Dự án:** `TPbrowser` — Trình duyệt cá nhân Rust (`tao` + `wry` / WebView2), giao diện **AURELIA**, **Thanh trên Icon-First tích hợp Tab Ngang + URL ngắn**, **Favicon thật trên từng Tab**, **Kéo giãn Tab Dọc tự do**, **Cửa sổ Chat tối giản**, **Bộ Logo & App Icon**, **Universal MCP Server**, AI Cowork & `uBlock Origin Lite`.
 
 ---
 
 ## 1. Phiên Hiện Tại
 
-- **Giao diện AURELIA (Tối & Sáng) + Tinh tế tối giản (`src/newtab.html`, `src/tab_shell.html`, `src/ai_panel.html`)**:
-  - Dựng nguyên bản 2 thiết kế **AURELIA — THE ART OF MINIMALISM** (Đen Đá Cẩm Thạch & Vàng Gold / Ngọc Trắng Carrara & Vàng Champagne) với dải lụa 3D SVG, trục kim cương chia đôi và 3 bong bóng nổi Vàng Gold góc dưới phải (**Robot AI**, **Facebook Messenger**, **Zalo**).
-  - Thanh Tab Dọc/Ngang và Ngăn Trợ lý AI đồng bộ tông màu Đen + Vàng Gold (`obsidian-gold`) và Sáng (`warm-paper`, `airy-cloud`, `zen-sand`), áp dụng **Hover Reveal** (ẩn gọn nút phụ `← → ↻ ⌂ ★` và nút đóng tab `×` cho tới khi rê chuột vào).
-  - Bản sao lưu trước khi đổi giao diện: `src/*.bak_before_calm_ui`.
-- **Chặn quảng cáo toàn diện (`extensions/uBOLite.chromium` + `src/content_agent.js` + `src/main.rs`)**:
-  - Cài đặt Extension **`uBlock Origin Lite` (`v2026.1103.1743`, Manifest V3 `declarativeNetRequest`)** bật sẵn bộ lọc tiếng Việt **`vie-1` (`ABPVN List`)** và `annoyances-overlays` qua `with_browser_extensions_enabled(true)`.
-  - Kết hợp Bộ lọc 3 lớp nội tại: khóa `window.open` popunder cá cược, ép CSS `0px` chống Anti-Adblock trên `animevietsub.best`, và tự tua 16x + bấm Skip quảng cáo YouTube sau `< 0.25s`.
-- **Hệ thống Tự học Skill kép & Chuẩn hóa API Key (`src/ai_panel.html`, `src/content_agent.js`, `skills/skills.json`)**:
-  - Hỗ trợ cả **Dạy bằng lời trong chat** (`learn_skill`) lẫn nút **`Làm mẫu` (Record)** bắt thao tác click/input thực tế trên trang web, lọc theo tên miền (`Domain-Scoped Skills`).
-  - Tự động nối `/v1` trong `normalizeOpenAiBase()` và thêm nút `⚡ Test Key` kiểm tra trực tiếp cổng `127.0.0.1:8045/v1` (`gemini-3.8-flash`).
-- **Tách công cụ cũ**: Đổi tên `zen-rust-bsp` thành `D:\Projects_Hermes\shopee-scraper` để giữ riêng tính năng `F9` cào đơn Shopee.
+- **Sửa Toàn Diện Lỗi Nút Cài Đặt & Ổn Định Khởi Động (`src/main.rs`, `src/settings_modal.html`, `src/titlebar.html`, `src/tab_shell.html`, `src/newtab.html`, `src/history.html`, `src/chat_header.html`, `src/dock_resizer.html`, `src/sidebar_resizer.html`)**:
+  - **Giữ đúng Tab Cài Đặt đang mở**: `build_config_payload_json(None)` gửi `open_section: ""` thay vì luôn reset về `"look_feel"`; đồng bộ `set_settings_section`; bỏ hẳn `spawn_titlebar_hover_watcher` gây spam `sync_all_ui()`.
+  - **Bỏ `sw_compact_titlebar` & Thêm `startup_mode`**: Thanh trên luôn cố định `40px`; thêm lựa chọn `Khi mở TPbrowser (Khởi động)` trong Tab 2 (`Khôi phục Tab cũ` với đúng `active_idx` | `Mở Tab mới sạch`), parse JSON chuẩn bằng `parse_json()` cho `save_setting` và `save_ai_config`.
+  - **Sửa CSS Tab 4, Gemini URL & Mô tả Tab 1**: Style `.zs-input`, đổi `.pill-btn.primary` → `.pill-btn.cta`, `var(--border-col)` → `var(--gold-line)`, sửa `.setting-info > b`, giữ nguyên Base URL khi chọn `Gemini Direct`.
+  - **Khởi động đồng bộ 0-Flash**: Tính sẵn `compute_shell_layout` trước khi tạo WebView con, tiêm `ui_theme` + `window.__TP_BOOTSTRAP__` vào `titlebar.html` / `tab_shell.html` từ frame đầu tiên, bổ sung bắt tay `ui_shell_ready` + `boot_settle`, ẩn sạch WebView phụ lúc tạo.
+- **Tinh gọn Giao Diện Icon-First, Favicon Tab & Kéo Giãn Tab Dọc Tự Do (`v0.5.3`)**: Đã hoàn tất trước đó.
 
 ---
 
 ## 2. Bằng Chứng Kiểm Thử
 
-- **Rust Unit Tests (`cargo test`)**: `3 passed; 0 failed` (`test_vertical_left_with_right_ai_dock`, `test_horizontal_top_with_minimized_bubble`, `test_spiral_split_inside_content_area`).
-- **Build Release (`cargo build --release`)**: `0 errors, 0 warnings`, sinh thực thi `TPbrowser.exe` (`748 KB`).
-- **Kiểm tra Checkpoint Trio (`pytest -q tests/test_checkpoint_integrity.py`)**: Xác nhận đầy đủ `AGENTS.md`, `CLAUDE.md`, `STATE.md`, `MAP.html`, `PROJECT_STATE.json` và sơ đồ Archify.
-- **Kiểm chứng thị giác (`vision_analyze`)**: Đã kiểm tra ảnh chụp `aurelia_dark.png`, `aurelia_light.png`, `ai_panel_obsidian_gold_v2.png` và `tpbrowser_obsidian_gold_demo.png`.
+- **Rust Unit Tests (`cargo test`)**: `15 passed; 0 failed` (bao gồm `test_settings_modal_and_startup_stability`, `test_compact_icon_ui_and_sidebar_resizer`, `test_brand_logo_and_icon_assets`).
+- **Build Release (`cargo build --release`)**: `0 errors, 0 warnings`, đã deploy ra `TPbrowser.exe`.
+- **Kiểm chứng sống & thị giác (`TPbrowser.exe` + MCP `tp_eval_js` + `PrintWindow` + `vision_analyze`)**: Xác nhận trên bản chạy thật — Tab 2 (`startup_mode`, `sidebar_collapsed`), Tab 3, Tab 4 (`snap_settings_tab2.png`, `snap_settings_tab4.png`), Tab 5 đều giữ nguyên tab khi bấm nút và lưu trạng thái đúng; cold-startup render đủ theme, favicon, Google profile.
+- **Kiểm tra Checkpoint Trio (`pytest -q tests/test_checkpoint_integrity.py`)**: Đầy đủ `AGENTS.md`, `CLAUDE.md`, `STATE.md` (< 100 dòng), `MAP.html`, `PROJECT_STATE.json`.
 
 ---
 
 ## 3. Kiến Trúc Cốt Lõi
 
-- `src/main.rs`: Nhân Win32 & WebView2 (`tab_shell`, `tabs`, `ai_shell`), nạp Extension `uBOLite`, lọc popunder, IPC Router và lưu `config.json` / `session.json` / `skills/skills.json`.
+- `src/main.rs`: Nhân Win32 & Multi-WebView2 (`tab_shell`, `tabs`, `ai_shell`, `fb_shell`, `zalo_shell`, `titlebar_shell`, `dock_resizer_shell`, `settings_shell`), Win32 `FlashWindowEx`, timer nhắc việc 15s ngầm, quản lý `config.json` / `tasks.json` / `skills.json` / `session.json`.
 - `src/layout.rs`: Tính toán hình học 3 vùng (`TabOrientation`, `AiDisplayMode`, `ContentViewMode`).
-- `src/newtab.html`: Không gian bắt đầu AURELIA (Giao diện Tối & Sáng, 3 bong bóng Vàng Gold AI/Messenger/Zalo, Collections Bookmarks).
-- `src/tab_shell.html` & `src/ai_panel.html`: Thanh quản lý Tab Dọc/Ngang Hover-Reveal và Ngăn Trợ lý AI Cowork.
-- `src/content_agent.js`: Bong bóng AI nổi trên trang web, bộ ghi nhận thao tác Skill (`__tpRecordingSkill`) và Bộ lọc Quảng cáo 3 Lớp.
+- `src/settings_modal.html`: Bảng Cài Đặt Tập Trung 6 phân mục kiểu Zen Browser.
+- `src/ai_panel.html`: Không gian Kế Hoạch & Trò Chuyện Cowork kép, checklist phân vai AI/Bạn, phát nháp báo cáo Zalo.
+- `src/content_agent.js`: Thẻ nhắc việc nổi đa tầng, chuông báo Web Audio API và bắt việc nhanh từ mọi văn bản web.
+- `src/newtab.html`: Khay việc hôm nay tự động ẩn, đồng hồ serif và lưới bookmarks đồng bộ.
 
 ---
 
 ## 4. Việc Kế Tiếp
 
-- [ ] Thêm tùy chọn phím tắt mở nhanh ngăn `COLLECTIONS` (Bookmarks) từ mọi trang web.
+- [x] Hoàn tất triển khai kế hoạch **Zalo Cowork, Bảng Kế Hoạch Công Việc & Nhắc Việc Trực Tiếp** (`.ai/plans/2026-11-11-zalo-cowork-task-planner-reminders.md`).
+- [x] Chuẩn hóa bộ phím tắt trình duyệt + `Alt` kiểu Zen, thêm khay `Alt+B` Collections & sửa lỗi Trusted Types mất 3 nút trên YouTube.
+- [x] Tích hợp bộ Logo & App Icon (Bộ 1 Dải lụa + Bộ 2 Mũi tên, đổi trong Cài đặt & đổi icon Taskbar/Titlebar/NewTab theo theme).
+- [x] Tinh gọn giao diện Icon-First, Logo mở Cài đặt, URL ngắn + Tab Ngang trên thanh trên, Favicon website thật trên Tab, bỏ thanh chuyển kênh trên Chat nổi & kéo giãn Tab Dọc tự do.
+- [x] Sửa dứt điểm lỗi nút Cài Đặt giật về Tab 1, vỡ CSS Tab 4, thêm tùy chọn khởi động `startup_mode` và ổn định cold-startup `window.__TP_BOOTSTRAP__` + `ui_shell_ready`.
 - [ ] Bổ sung thêm các bộ Skill mẫu theo yêu cầu công việc hằng ngày của anh Phú.

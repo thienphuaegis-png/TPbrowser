@@ -44,6 +44,7 @@ impl TabOrientation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AiDisplayMode {
     RightDock,
+    FbPopup,
     BubbleMinimized,
 }
 
@@ -51,6 +52,7 @@ impl AiDisplayMode {
     pub fn as_str(self) -> &'static str {
         match self {
             AiDisplayMode::RightDock => "dock",
+            AiDisplayMode::FbPopup => "popup",
             AiDisplayMode::BubbleMinimized => "bubble",
         }
     }
@@ -58,6 +60,8 @@ impl AiDisplayMode {
     pub fn from_str(s: &str) -> Self {
         if s.eq_ignore_ascii_case("bubble") {
             AiDisplayMode::BubbleMinimized
+        } else if s.eq_ignore_ascii_case("popup") {
+            AiDisplayMode::FbPopup
         } else {
             AiDisplayMode::RightDock
         }
@@ -106,9 +110,11 @@ pub struct ShellLayout {
     pub ai_dock: Option<PaneRect>,
 }
 
-pub const LEFT_SIDEBAR_WIDTH: u32 = 228;
+#[allow(dead_code)]
+pub const DEFAULT_LEFT_SIDEBAR_WIDTH: u32 = 228;
 pub const LEFT_SIDEBAR_COLLAPSED_WIDTH: u32 = 54;
-pub const TOP_TABBAR_HEIGHT: u32 = 82;
+#[allow(dead_code)]
+pub const TOP_TABBAR_HEIGHT: u32 = 36;
 pub const RIGHT_AI_DOCK_WIDTH: u32 = 360;
 
 pub fn compute_shell_layout(
@@ -116,6 +122,7 @@ pub fn compute_shell_layout(
     window_h: u32,
     tab_orientation: TabOrientation,
     sidebar_collapsed: bool,
+    sidebar_width: u32,
     ai_mode: AiDisplayMode,
     ai_dock_width: u32,
 ) -> ShellLayout {
@@ -124,10 +131,11 @@ pub fn compute_shell_layout(
 
     let (tab_bar, rem_x, rem_y, rem_w, rem_h) = match tab_orientation {
         TabOrientation::VerticalLeft => {
+            let base_w = sidebar_width.clamp(140, 440);
             let side_w = if sidebar_collapsed {
                 LEFT_SIDEBAR_COLLAPSED_WIDTH
             } else {
-                LEFT_SIDEBAR_WIDTH
+                base_w
             };
             let side_w = side_w.min(safe_w / 2);
             (
@@ -143,26 +151,24 @@ pub fn compute_shell_layout(
                 safe_h,
             )
         }
-        TabOrientation::HorizontalTop => {
-            let top_h = TOP_TABBAR_HEIGHT.min(safe_h / 2);
-            (
-                PaneRect {
-                    x: 0,
-                    y: 0,
-                    width: safe_w,
-                    height: top_h,
-                },
-                0,
-                top_h as i32,
-                safe_w,
-                safe_h.saturating_sub(top_h),
-            )
-        }
+        TabOrientation::HorizontalTop => (
+            PaneRect {
+                x: 0,
+                y: 0,
+                width: safe_w,
+                height: 0,
+            },
+            0,
+            0,
+            safe_w,
+            safe_h,
+        ),
     };
 
     match ai_mode {
         AiDisplayMode::RightDock => {
-            let dock_w = ai_dock_width.clamp(260, 520).min(rem_w / 2);
+            let max_dock = ((rem_w * 3) / 4).max(260);
+            let dock_w = ai_dock_width.clamp(260, max_dock).min(rem_w.saturating_sub(180).max(260));
             let content_w = rem_w.saturating_sub(dock_w).max(100);
             let content_area = PaneRect {
                 x: rem_x,
@@ -182,7 +188,7 @@ pub fn compute_shell_layout(
                 ai_dock,
             }
         }
-        AiDisplayMode::BubbleMinimized => ShellLayout {
+        AiDisplayMode::FbPopup | AiDisplayMode::BubbleMinimized => ShellLayout {
             tab_bar,
             content_area: PaneRect {
                 x: rem_x,
@@ -193,6 +199,42 @@ pub fn compute_shell_layout(
             ai_dock: None,
         },
     }
+}
+
+pub const FB_CHAT_HEADER_HEIGHT: u32 = 28;
+
+/// Tính tọa độ cửa sổ chat nổi góc dưới bên phải kiểu Facebook (nằm ngay bên trái 3 nút tròn AI/FB/Zalo)
+pub fn compute_fb_chat_popup_rect_with_hdr(
+    window_w: u32,
+    window_h: u32,
+    hdr_h: u32,
+) -> (PaneRect, PaneRect) {
+    let safe_w = window_w.max(480);
+    let safe_h = window_h.max(360);
+    let box_w = 392.min(safe_w.saturating_sub(96)).max(280);
+    let box_h = 520.min(safe_h.saturating_sub(44)).max(260);
+    let box_x = (safe_w as i32) - (box_w as i32) - 82;
+    let box_y = (safe_h as i32) - (box_h as i32) - 18;
+    let clamped_hdr = hdr_h.min(box_h / 2);
+    (
+        PaneRect {
+            x: box_x.max(8),
+            y: box_y.max(8),
+            width: box_w,
+            height: clamped_hdr,
+        },
+        PaneRect {
+            x: box_x.max(8),
+            y: box_y.max(8) + clamped_hdr as i32,
+            width: box_w,
+            height: box_h.saturating_sub(clamped_hdr).max(160),
+        },
+    )
+}
+
+#[allow(dead_code)]
+pub fn compute_fb_chat_popup_rect(window_w: u32, window_h: u32) -> (PaneRect, PaneRect) {
+    compute_fb_chat_popup_rect_with_hdr(window_w, window_h, FB_CHAT_HEADER_HEIGHT)
 }
 
 /// Tính tọa độ cho các Tab bên trong `content_area` khi bật chế độ Chia khung BSP (Spiral hoặc Columns)
@@ -328,18 +370,19 @@ mod tests {
             900,
             TabOrientation::VerticalLeft,
             false,
+            DEFAULT_LEFT_SIDEBAR_WIDTH,
             AiDisplayMode::RightDock,
             RIGHT_AI_DOCK_WIDTH,
         );
         assert_eq!(layout.tab_bar.x, 0);
-        assert_eq!(layout.tab_bar.width, LEFT_SIDEBAR_WIDTH);
+        assert_eq!(layout.tab_bar.width, DEFAULT_LEFT_SIDEBAR_WIDTH);
         assert_eq!(layout.tab_bar.height, 900);
 
         let ai = layout.ai_dock.expect("AI dock should be present");
         assert_eq!(ai.width, RIGHT_AI_DOCK_WIDTH);
-        assert_eq!(layout.content_area.x, LEFT_SIDEBAR_WIDTH as i32);
+        assert_eq!(layout.content_area.x, DEFAULT_LEFT_SIDEBAR_WIDTH as i32);
         assert_eq!(
-            layout.content_area.width + LEFT_SIDEBAR_WIDTH + RIGHT_AI_DOCK_WIDTH,
+            layout.content_area.width + DEFAULT_LEFT_SIDEBAR_WIDTH + RIGHT_AI_DOCK_WIDTH,
             1440
         );
     }
@@ -351,18 +394,19 @@ mod tests {
             900,
             TabOrientation::HorizontalTop,
             false,
+            DEFAULT_LEFT_SIDEBAR_WIDTH,
             AiDisplayMode::BubbleMinimized,
             RIGHT_AI_DOCK_WIDTH,
         );
         assert_eq!(layout.tab_bar.x, 0);
         assert_eq!(layout.tab_bar.y, 0);
         assert_eq!(layout.tab_bar.width, 1440);
-        assert_eq!(layout.tab_bar.height, TOP_TABBAR_HEIGHT);
+        assert_eq!(layout.tab_bar.height, 0);
         assert!(layout.ai_dock.is_none());
         assert_eq!(layout.content_area.x, 0);
-        assert_eq!(layout.content_area.y, TOP_TABBAR_HEIGHT as i32);
+        assert_eq!(layout.content_area.y, 0);
         assert_eq!(layout.content_area.width, 1440);
-        assert_eq!(layout.content_area.height, 900 - TOP_TABBAR_HEIGHT);
+        assert_eq!(layout.content_area.height, 900);
     }
 
     #[test]
@@ -378,5 +422,14 @@ mod tests {
         assert_eq!(rects[0].x, 228);
         assert!(rects[1].x > rects[0].x);
         assert!(rects[2].y > rects[1].y);
+    }
+
+    #[test]
+    fn test_fb_chat_popup_rect_bounds() {
+        let (hdr, body) = compute_fb_chat_popup_rect(1480, 900);
+        assert_eq!(hdr.width, body.width);
+        assert_eq!(hdr.height, FB_CHAT_HEADER_HEIGHT);
+        assert_eq!(body.y, hdr.y + FB_CHAT_HEADER_HEIGHT as i32);
+        assert!(hdr.x + (hdr.width as i32) <= 1480 - 80);
     }
 }

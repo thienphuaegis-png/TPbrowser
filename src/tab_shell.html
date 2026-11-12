@@ -4,74 +4,45 @@
 <meta charset="UTF-8" />
 <title>TPbrowser Tab Shell</title>
 <style>
+/*__TP_FONT_FACE__*/
 
   :root, html[data-theme="obsidian-gold"] {
     color-scheme: dark;
-    --bg-main: #0E0F12;
-    --bg-side: #13151A;
+    --font-heading: "Cormorant Garamond Gnosis", "Cormorant Garamond", Georgia, serif;
+    --ease-ui: cubic-bezier(0.22, 1, 0.36, 1);
+    --bg-main: #0B0C0E;
+    --bg-side: #111318;
     --bg-card: #181B22;
     --bg-subtle: #222630;
-    --text-primary: #F3EFE6;
-    --text-secondary: #A8A296;
-    --text-muted: #6E6A61;
-    --accent: #D4AF37;
-    --accent-fg: #0E0F12;
-    --accent-soft: rgba(212, 175, 55, 0.14);
-    --accent-text: #E5C158;
-    --border-col: rgba(212, 175, 55, 0.18);
+    --text-primary: #F5F2EB;
+    --text-secondary: #C8C0B0;
+    --text-muted: #8E8779;
+    --accent: #C99B3B;
+    --accent-grad: linear-gradient(135deg, #E2BE68 0%, #B5872E 100%);
+    --accent-fg: #140F05;
+    --accent-soft: rgba(212, 175, 55, 0.16);
+    --accent-text: #E2BE68;
+    --border-col: rgba(212, 175, 55, 0.28);
     --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.45);
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.3);
   }
-  html[data-theme="warm-paper"] {
+  html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
     color-scheme: light;
-    --bg-main: #FAF8F5;
-    --bg-side: #F3EFEA;
+    --bg-main: #F6F2EA;
+    --bg-side: #EFE9DC;
     --bg-card: #FFFFFF;
-    --bg-subtle: #EAE4DC;
-    --text-primary: #2C302E;
-    --text-secondary: #6E7571;
-    --text-muted: #949B96;
-    --accent: #4A7C59;
+    --bg-subtle: #E5DCC9;
+    --text-primary: #18130C;
+    --text-secondary: #3D3222;
+    --text-muted: #61533E;
+    --accent: #9A6B16;
+    --accent-grad: linear-gradient(135deg, #C79535 0%, #9A6B16 100%);
     --accent-fg: #FFFFFF;
-    --accent-soft: #E8F0EB;
-    --accent-text: #2F573B;
-    --border-col: rgba(44, 48, 46, 0.08);
-    --shadow-card: 0 10px 32px rgba(44, 48, 46, 0.05);
-    --shadow-soft: 0 2px 10px rgba(44, 48, 46, 0.04);
-  }
-  html[data-theme="airy-cloud"] {
-    color-scheme: light;
-    --bg-main: #F8FAFC;
-    --bg-side: #F1F5F9;
-    --bg-card: #FFFFFF;
-    --bg-subtle: #E2E8F0;
-    --text-primary: #1E293B;
-    --text-secondary: #64748B;
-    --text-muted: #94A3B8;
-    --accent: #3B82F6;
-    --accent-fg: #FFFFFF;
-    --accent-soft: #EFF6FF;
-    --accent-text: #1D4ED8;
-    --border-col: rgba(15, 23, 42, 0.07);
-    --shadow-card: 0 10px 32px rgba(15, 23, 42, 0.04);
-    --shadow-soft: 0 2px 10px rgba(15, 23, 42, 0.03);
-  }
-  html[data-theme="zen-sand"] {
-    color-scheme: light;
-    --bg-main: #F5F2EB;
-    --bg-side: #EBE6DC;
-    --bg-card: #FAF8F3;
-    --bg-subtle: #E2DDD2;
-    --text-primary: #2D2A26;
-    --text-secondary: #6B655E;
-    --text-muted: #968F85;
-    --accent: #52796F;
-    --accent-fg: #FFFFFF;
-    --accent-soft: #E3ECE9;
-    --accent-text: #354F52;
-    --border-col: rgba(45, 42, 38, 0.09);
-    --shadow-card: 0 8px 28px rgba(45, 42, 38, 0.05);
-    --shadow-soft: 0 2px 8px rgba(45, 42, 38, 0.04);
+    --accent-soft: rgba(154, 107, 22, 0.14);
+    --accent-text: #8A5E10;
+    --border-col: rgba(154, 107, 22, 0.32);
+    --shadow-card: 0 10px 28px rgba(92, 61, 8, 0.08);
+    --shadow-soft: 0 2px 8px rgba(92, 61, 8, 0.06);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -119,38 +90,57 @@
   .brand-logo {
     width: 26px;
     height: 26px;
-    border-radius: 8px;
-    background: var(--accent);
+    border-radius: 10px;
+    background: var(--accent-grad, var(--accent));
     color: var(--accent-fg);
+    font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 11.5px;
+    font-size: 13px;
+    letter-spacing: 0.4px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
   .brand-title {
+    font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 13.5px;
+    font-size: 16.5px;
     color: var(--text-primary);
-    letter-spacing: -0.2px;
+    letter-spacing: 0.4px;
+  }
+  .ui-ico {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
   }
   .ghost-btn {
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-secondary);
-    padding: 4px 7px;
-    border-radius: 7px;
+    padding: 4px 9px;
+    border-radius: 999px;
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: background-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
     white-space: nowrap;
   }
   .ghost-btn:hover {
     background: var(--bg-subtle);
     color: var(--text-primary);
     border-color: var(--border-col);
+  }
+  .ghost-btn:active {
+    transform: scale(0.96);
   }
 
   /* Khối Thanh Địa Chỉ Chính + Khay Phụ Hover Reveal */
@@ -164,10 +154,10 @@
     align-items: center;
     border: 1px solid var(--border-col);
     background: var(--bg-card);
-    border-radius: 9px;
-    padding: 2px 8px;
+    border-radius: 999px;
+    padding: 3px 4px 3px 12px;
     box-shadow: var(--shadow-soft);
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s var(--ease-ui);
   }
   .url-form:focus-within {
     border-color: var(--accent);
@@ -220,15 +210,18 @@
     background: var(--bg-card);
     border: 1px solid var(--border-col);
     color: var(--text-secondary);
-    border-radius: 7px;
+    border-radius: 999px;
     padding: 4px 0;
     font-size: 11px;
     cursor: pointer;
-    transition: color 0.12s ease, border-color 0.12s ease;
+    transition: color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
   .nav-row button:hover {
     color: var(--text-primary);
     border-color: var(--accent);
+  }
+  .nav-row button:active {
+    transform: scale(0.96);
   }
   .mode-switch-row {
     display: grid;
@@ -239,17 +232,21 @@
     background: var(--bg-card);
     border: 1px solid var(--border-col);
     color: var(--text-secondary);
-    padding: 4px 6px;
-    border-radius: 7px;
+    padding: 4px 8px;
+    border-radius: 999px;
     font-size: 10.5px;
     font-weight: 500;
     cursor: pointer;
     text-align: center;
     white-space: nowrap;
+    transition: color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
   .small-pill-btn:hover {
     color: var(--text-primary);
     border-color: var(--accent);
+  }
+  .small-pill-btn:active {
+    transform: scale(0.96);
   }
   .small-pill-btn.on {
     background: var(--accent-soft);
@@ -271,13 +268,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 8px 10px;
-    border-radius: 9px;
+    padding: 8px 12px;
+    border-radius: 999px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: background-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui);
   }
   .v-tab-item:hover {
     background: var(--bg-subtle);
@@ -288,6 +285,13 @@
     color: var(--text-primary);
     border-color: var(--border-col);
     box-shadow: var(--shadow-soft);
+  }
+  .tab-fav {
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
+    object-fit: contain;
+    flex-shrink: 0;
   }
   .tab-dot {
     width: 7px;
@@ -331,6 +335,10 @@
     opacity: 0;
     transition: opacity 0.15s ease, color 0.15s ease;
   }
+  .v-tab-item.active .tab-close,
+  .h-tab-item.active .tab-close {
+    opacity: 0.65;
+  }
   .v-tab-item:hover .tab-close,
   .h-tab-item:hover .tab-close {
     opacity: 1;
@@ -351,13 +359,17 @@
     color: var(--text-secondary);
     font-size: 11.5px;
     font-weight: 500;
-    padding: 5px 8px;
-    border-radius: 7px;
+    padding: 5px 10px;
+    border-radius: 999px;
     cursor: pointer;
+    transition: background-color 0.14s var(--ease-ui), color 0.14s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
   .quiet-add-btn:hover {
     background: var(--bg-subtle);
     color: var(--text-primary);
+  }
+  .quiet-add-btn:active {
+    transform: scale(0.96);
   }
 
   .v-footer {
@@ -371,14 +383,18 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 8px;
-    border-radius: 9px;
+    padding: 5px 10px 5px 6px;
+    border-radius: 999px;
     background: var(--bg-card);
     border: 1px solid var(--border-col);
     cursor: pointer;
+    transition: border-color 0.14s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
   .google-card:hover {
     border-color: var(--accent);
+  }
+  .google-card:active {
+    transform: scale(0.98);
   }
   .g-Badge {
     width: 22px;
@@ -410,17 +426,21 @@
     background: var(--bg-card);
     border: 1px solid var(--border-col);
     color: var(--text-primary);
-    border-radius: 9px;
-    padding: 7px 10px;
+    border-radius: 999px;
+    padding: 7px 12px;
     font-size: 11.5px;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    transition: border-color 0.14s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
   .ai-toggle-btn:hover {
     border-color: var(--accent);
+  }
+  .ai-toggle-btn:active {
+    transform: scale(0.96);
   }
   .ai-toggle-btn.bubble-mode {
     background: var(--accent-soft);
@@ -438,13 +458,12 @@
     background: var(--bg-side);
   }
   .h-row-tabs {
-    height: 40px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 10px;
-    border-bottom: 1px solid var(--border-col);
-    gap: 8px;
+    padding: 0 8px;
+    gap: 6px;
   }
   .h-tabs-scroll {
     flex: 1;
@@ -458,12 +477,12 @@
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 5px 11px;
-    border-radius: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-secondary);
-    max-width: 190px;
+    max-width: 210px;
     min-width: 110px;
     cursor: pointer;
     flex-shrink: 0;
@@ -489,7 +508,7 @@
   .h-right-tools {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     flex-shrink: 0;
   }
   .h-row-nav {
@@ -515,8 +534,8 @@
     align-items: center;
     border: 1px solid var(--border-col);
     background: var(--bg-card);
-    border-radius: 9px;
-    padding: 2px 4px 2px 12px;
+    border-radius: 999px;
+    padding: 3px 4px 3px 14px;
   }
   .h-url-form input {
     flex: 1;
@@ -529,13 +548,13 @@
     user-select: text;
   }
   .h-url-form button {
-    background: var(--accent);
+    background: var(--accent-grad, var(--accent));
     color: var(--accent-fg);
     border: none;
-    border-radius: 7px;
-    padding: 5px 12px;
+    border-radius: 999px;
+    padding: 5px 14px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
   }
 </style>
@@ -545,101 +564,53 @@
   <div id="vertical_root">
     <div class="v-header">
       <div class="brand-box">
-        <div class="brand-logo" onclick="sendRust({cmd:'go_home'})" style="cursor:pointer;" title="Về Không gian bắt đầu">TP</div>
-        <span class="brand-title hide-when-collapsed">TPbrowser</span>
+        <span class="brand-title hide-when-collapsed" style="font-size:12px; letter-spacing:0.8px; color:var(--accent-text);">TABS</span>
       </div>
       <div style="display:flex; gap:3px;">
-        <button class="ghost-btn hide-when-collapsed" onclick="cycleThemeQuick()" title="Đổi nhanh tông màu Sáng Thư Giãn / Đen Vàng Gold">◐ Màu</button>
-        <button class="ghost-btn hide-when-collapsed" onclick="sendRust({cmd:'toggle_tab_orientation'})" title="Chuyển sang Thanh Tab Ngang">⇄</button>
-        <button class="ghost-btn" id="btn_collapse_side" onclick="sendRust({cmd:'toggle_sidebar_collapse'})" title="Thu gọn / Mở rộng thanh Tab dọc">«</button>
-      </div>
-    </div>
-
-    <div class="v-controls hide-when-collapsed">
-      <form class="url-form" onsubmit="submitUrlVertical(event)">
-        <input id="v_url_input" type="text" placeholder="Tìm kiếm hoặc nhập URL..." autocomplete="off" spellcheck="false" />
-        <span class="ublock-mini-tag" title="uBlock Origin Lite + Bộ lọc ABPVN đang bật">uBlock</span>
-      </form>
-
-      <!-- Khay nút phụ tự hiện nhẹ khi đưa chuột vào (Hover Reveal) -->
-      <div class="v-hover-drawer">
-        <div class="nav-row">
-          <button type="button" onclick="sendRust({cmd:'nav_back'})" title="Lùi (Alt+Z)">←</button>
-          <button type="button" onclick="sendRust({cmd:'nav_forward'})" title="Tiến (Alt+X)">→</button>
-          <button type="button" onclick="sendRust({cmd:'reload'})" title="Tải lại (F5)">↻</button>
-          <button type="button" onclick="sendRust({cmd:'go_home'})" title="Không gian bắt đầu">⌂</button>
-          <button type="button" onclick="sendRust({cmd:'bookmark_active'})" title="Ghim trang này">★</button>
-        </div>
-        <div class="mode-switch-row">
-          <button type="button" id="v_view_mode_btn" class="small-pill-btn" onclick="sendRust({cmd:'cycle_view_mode'})">Khung: 1 Tab</button>
-          <button type="button" class="small-pill-btn" onclick="sendRust({cmd:'open_ai_settings'})">⚙ API Key</button>
-        </div>
+        <button class="ghost-btn hide-when-collapsed" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:false})" title="Tab mới (Ctrl+T)">
+          <svg class="ui-ico" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
+        </button>
+        <button class="ghost-btn hide-when-collapsed" onclick="sendRust({cmd:'toggle_tab_orientation'})" title="Chuyển sang Tab Ngang (Alt+T)">
+          <svg class="ui-ico" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1.6"/><path d="M2 6h12"/></svg>
+        </button>
+        <button class="ghost-btn" id="btn_collapse_side" onclick="sendRust({cmd:'toggle_sidebar_collapse'})" title="Thu gọn / Mở rộng thanh Tab (Alt+S)">«</button>
       </div>
     </div>
 
     <div id="v_tab_list" class="v-tab-list"></div>
 
-    <div class="v-newtab-actions hide-when-collapsed">
-      <button class="quiet-add-btn" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:false})">+ Mở trang mới</button>
-      <button class="quiet-add-btn" style="color:var(--accent-text);" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:true})" title="Mở Tab với Profile tài khoản riêng">+ Profile</button>
-    </div>
-
     <div class="v-footer">
-      <div class="google-card" onclick="sendRust({cmd:'open_google_login'})" title="Tài khoản Google quản lý trình duyệt">
-        <div class="g-Badge" id="v_g_avatar">P</div>
+      <div class="google-card" onclick="sendRust({cmd:'open_google_login'})" title="Tài khoản Google">
+        <div class="g-Badge" id="v_g_avatar">G</div>
         <div class="g-info hide-when-collapsed">
-          <div class="g-name" id="v_g_name">Bùi Thiên Phú</div>
-          <div class="g-status" id="v_g_status">Đã đồng bộ Google</div>
+          <div class="g-name" id="v_g_name">Đăng nhập Google</div>
+          <div class="g-status" id="v_g_status">Bấm để kết nối</div>
         </div>
       </div>
-
-      <button id="v_ai_btn" class="ai-toggle-btn" onclick="sendRust({cmd:'toggle_ai_mode'})" title="Bật/tắt Ngăn AI hoặc thu thành Bong bóng (Alt+A)">
-        <span class="hide-when-collapsed" id="v_ai_label">Trợ lý AI</span>
-        <span style="color:var(--accent-text); font-size:11px;">●</span>
-      </button>
     </div>
   </div>
 
-  <!-- GIAO DIỆN TAB NGANG PHÍA TRÊN -->
-  <div id="horizontal_root">
-    <div class="h-row-tabs">
-      <div class="brand-box">
-        <div class="brand-logo" onclick="sendRust({cmd:'go_home'})" style="cursor:pointer;">TP</div>
-        <button class="ghost-btn" onclick="sendRust({cmd:'toggle_tab_orientation'})">⬅ Tab Dọc</button>
-      </div>
-
-      <div id="h_tab_list" class="h-tabs-scroll"></div>
-
-      <div class="h-right-tools">
-        <button class="ghost-btn" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:false})">+ Tab</button>
-        <button class="ghost-btn" style="color:var(--accent-text);" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:true})">+ Profile</button>
-        <button class="ghost-btn" onclick="cycleThemeQuick()">◐ Màu</button>
-        <button id="h_view_mode_btn" class="ghost-btn" onclick="sendRust({cmd:'cycle_view_mode'})">Khung: 1 Tab</button>
-        <button id="h_google_btn" class="ghost-btn" onclick="sendRust({cmd:'open_google_login'})">G: Bùi Thiên Phú</button>
-        <button id="h_ai_btn" class="ghost-btn" style="color:var(--accent-text);" onclick="sendRust({cmd:'toggle_ai_mode'})">Trợ lý AI</button>
-      </div>
-    </div>
-
-    <div class="h-row-nav">
-      <div class="h-nav-btns">
-        <button class="ghost-btn" onclick="sendRust({cmd:'nav_back'})">←</button>
-        <button class="ghost-btn" onclick="sendRust({cmd:'nav_forward'})">→</button>
-        <button class="ghost-btn" onclick="sendRust({cmd:'reload'})">↻</button>
-        <button class="ghost-btn" onclick="sendRust({cmd:'go_home'})">⌂</button>
-      </div>
-
-      <form class="h-url-form" onsubmit="submitUrlHorizontal(event)">
-        <input id="h_url_input" type="text" placeholder="Tìm kiếm nhẹ nhàng, nhập địa chỉ web hoặc gõ @ai..." autocomplete="off" spellcheck="false" />
-        <button type="submit">Đi tới</button>
-      </form>
-
-      <button class="ghost-btn" onclick="sendRust({cmd:'bookmark_active'})" title="Ghim trang">★</button>
-    </div>
-  </div>
+  <script>/*__TP_MOTION_JS__*/</script>
+  <script>/*__TP_BRAND_ASSETS_JS__*/</script>
 
   <script>
-    var currentTheme = "obsidian-gold";
-    var themeOrder = ["obsidian-gold", "warm-paper", "airy-cloud", "zen-sand"];
+    var currentTheme = document.documentElement.getAttribute("data-theme") || "obsidian-gold";
+    var currentLogoStyle = "ribbon";
+
+    function resolveTabFavicon(t) {
+      if (!t) return "";
+      if (t.url === "tp://newtab" || t.url === "tp://history") {
+        return window.__tpResolveBrandAsset ? window.__tpResolveBrandAsset("app", currentLogoStyle, currentTheme) : "";
+      }
+      if (t.favicon) return t.favicon;
+      try {
+        if (t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) {
+          var host = new URL(t.url).hostname;
+          if (host) return "https://www.google.com/s2/favicons?sz=32&domain=" + encodeURIComponent(host);
+        }
+      } catch (_) {}
+      return "";
+    }
 
     function sendRust(payload) {
       try {
@@ -650,8 +621,7 @@
     }
 
     function cycleThemeQuick() {
-      var idx = themeOrder.indexOf(currentTheme);
-      var next = themeOrder[(idx + 1) % themeOrder.length];
+      var next = (currentTheme === "obsidian-gold") ? "carrara-light" : "obsidian-gold";
       currentTheme = next;
       document.documentElement.setAttribute("data-theme", next);
       sendRust({ cmd: "set_ui_theme", theme: next });
@@ -693,6 +663,9 @@
         currentTheme = state.ui_theme;
         document.documentElement.setAttribute("data-theme", state.ui_theme);
       }
+      if (state.logo_style) {
+        currentLogoStyle = state.logo_style;
+      }
       var body = document.body;
       if (state.orientation === "horizontal") {
         body.classList.remove("mode-vertical");
@@ -713,76 +686,77 @@
       var tabs = state.tabs || [];
       var activeIdx = state.active_idx || 0;
 
-      var activeTab = tabs[activeIdx];
-      if (activeTab) {
-        var displayUrl = activeTab.url === "tp://newtab" ? "" : activeTab.url;
-        var vInp = document.getElementById("v_url_input");
-        var hInp = document.getElementById("h_url_input");
-        if (document.activeElement !== vInp) vInp.value = displayUrl;
-        if (document.activeElement !== hInp) hInp.value = displayUrl;
-      }
-
-      var viewLabel = "Khung: 1 Tab";
-      if (state.view_mode === "spiral") viewLabel = "Khung: Xoắn Ốc";
-      else if (state.view_mode === "columns") viewLabel = "Khung: Chia Cột";
-      var vViewBtn = document.getElementById("v_view_mode_btn");
-      var hViewBtn = document.getElementById("h_view_mode_btn");
-      vViewBtn.textContent = viewLabel;
-      hViewBtn.textContent = viewLabel;
-      vViewBtn.classList.toggle("on", state.view_mode !== "single");
-
-      var vAiBtn = document.getElementById("v_ai_btn");
-      var vAiLbl = document.getElementById("v_ai_label");
-      var hAiBtn = document.getElementById("h_ai_btn");
-      if (state.ai_mode === "bubble") {
-        vAiBtn.classList.add("bubble-mode");
-        vAiLbl.textContent = state.ai_working ? "AI đang chạy..." : "AI: Bong bóng";
-        hAiBtn.textContent = state.ai_working ? "AI đang chạy" : "AI: Bong bóng";
-      } else {
-        vAiBtn.classList.remove("bubble-mode");
-        vAiLbl.textContent = "Trợ lý AI";
-        hAiBtn.textContent = "Trợ lý AI";
-      }
-
       var gUser = state.google_user || "";
       if (gUser) {
         document.getElementById("v_g_avatar").textContent = gUser.charAt(0).toUpperCase();
         document.getElementById("v_g_name").textContent = gUser;
         document.getElementById("v_g_status").textContent = "Đã đồng bộ Google";
-        document.getElementById("h_google_btn").textContent = gUser;
+      } else {
+        document.getElementById("v_g_avatar").textContent = "G";
+        document.getElementById("v_g_name").textContent = "Đăng nhập Google";
+        document.getElementById("v_g_status").textContent = "Bấm để kết nối";
       }
 
-      var vHtml = "";
-      var hHtml = "";
+      var vListEl = document.getElementById("v_tab_list");
+      vListEl.innerHTML = "";
       for (var i = 0; i < tabs.length; i++) {
-        var t = tabs[i];
-        var isAct = i === activeIdx;
-        var title = t.title || (t.url === "tp://newtab" ? "Không gian bắt đầu" : t.url);
-        if (title === "Trang Bắt Đầu Trắng") title = "Không gian bắt đầu";
+        (function(idx, t) {
+          var isAct = idx === activeIdx;
+          var title = t.title || (t.url === "tp://newtab" ? "Không gian bắt đầu" : t.url);
+          if (title === "Trang Bắt Đầu Trắng") title = "Không gian bắt đầu";
+          var favUrl = resolveTabFavicon(t);
 
-        vHtml +=
-          '<div class="v-tab-item ' + (isAct ? "active" : "") + '" onclick="sendRust({cmd:\'focus_index\', index:' + i + '})">' +
-            '<div class="tab-dot"></div>' +
-            '<div class="tab-meta hide-when-collapsed">' +
-              '<div class="tab-title">' + escapeHtml(title) + '</div>' +
-            '</div>' +
-            (tabs.length > 1
-              ? '<button class="tab-close hide-when-collapsed" onclick="event.stopPropagation(); sendRust({cmd:\'close_index\', index:' + i + '})" title="Đóng tab">×</button>'
-              : '') +
-          '</div>';
+          var row = document.createElement("div");
+          row.className = "v-tab-item " + (isAct ? "active" : "");
+          row.title = title;
+          row.onclick = function() { sendRust({ cmd: "focus_index", index: idx }); };
 
-        hHtml +=
-          '<div class="h-tab-item ' + (isAct ? "active" : "") + '" onclick="sendRust({cmd:\'focus_index\', index:' + i + '})">' +
-            '<div class="tab-dot"></div>' +
-            '<div class="h-tab-title">' + escapeHtml(title) + '</div>' +
-            (tabs.length > 1
-              ? '<button class="tab-close" onclick="event.stopPropagation(); sendRust({cmd:\'close_index\', index:' + i + '})">×</button>'
-              : '') +
-          '</div>';
+          if (favUrl) {
+            var img = document.createElement("img");
+            img.className = "tab-fav";
+            img.src = favUrl;
+            img.alt = "";
+            img.onerror = function() {
+              var dot = document.createElement("span");
+              dot.className = "tab-dot";
+              if (img.parentNode) img.parentNode.replaceChild(dot, img);
+            };
+            row.appendChild(img);
+          } else {
+            var dot = document.createElement("span");
+            dot.className = "tab-dot";
+            row.appendChild(dot);
+          }
+
+          var meta = document.createElement("div");
+          meta.className = "tab-meta hide-when-collapsed";
+          var tDiv = document.createElement("div");
+          tDiv.className = "tab-title";
+          tDiv.textContent = title;
+          meta.appendChild(tDiv);
+          row.appendChild(meta);
+
+          if (tabs.length > 1) {
+            var cls = document.createElement("button");
+            cls.className = "tab-close hide-when-collapsed";
+            cls.textContent = "×";
+            cls.title = "Đóng tab";
+            cls.onclick = function(ev) {
+              ev.stopPropagation();
+              sendRust({ cmd: "close_index", index: idx });
+            };
+            row.appendChild(cls);
+          }
+          vListEl.appendChild(row);
+        })(i, tabs[i]);
       }
-      document.getElementById("v_tab_list").innerHTML = vHtml;
-      document.getElementById("h_tab_list").innerHTML = hHtml;
     };
+
+    /*__TP_BOOTSTRAP_JS__*/
+    if (window.__TP_BOOTSTRAP__ && window.__tpSyncShellState) {
+      window.__tpSyncShellState(window.__TP_BOOTSTRAP__);
+    }
+    sendRust({ cmd: "ui_shell_ready", shell: "tab_shell" });
   </script>
 </body>
 </html>

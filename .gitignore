@@ -12,3 +12,6 @@ WebView2Loader.dll
 *.bak*
 .pytest_cache/
 __pycache__/
+tasks/
+history.json
+.ai/checkpoints/bak_*/

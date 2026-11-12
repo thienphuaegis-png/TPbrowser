@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="obsidian-gold">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TPbrowser — Bảng Cài Đặt Tập Trung (Zen Settings)</title>
+<style>
+/*__TP_FONT_FACE__*/
+  :root, html[data-theme="obsidian-gold"] {
+    color-scheme: dark;
+    --font-heading: "Cormorant Garamond Gnosis", "Cormorant Garamond", Georgia, serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    --ease-ui: cubic-bezier(0.22, 1, 0.36, 1);
+    --backdrop-bg: rgba(8, 9, 12, 0.72);
+    --bg-frame: #13161E;
+    --bg-sidebar: #181C26;
+    --bg-group: #1B1F2B;
+    --bg-input: #0D0F14;
+    --bg-hover: rgba(226, 190, 104, 0.09);
+    --gold-bright: #E2BE68;
+    --gold-main: #C99B3B;
+    --gold-line: rgba(212, 175, 55, 0.28);
+    --gold-line-strong: rgba(226, 190, 104, 0.68);
+    --text-main: #F5F2EB;
+    --text-sub: #C8C0B0;
+    --text-muted: #8E8779;
+    --cta-bg: linear-gradient(135deg, #E2BE68 0%, #B5872E 100%);
+    --cta-fg: #140F05;
+    --cta-shine: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 3px 12px rgba(181, 135, 46, 0.28);
+    --switch-off: #252936;
+    --switch-knob-off: #F5F2EB;
+    --switch-knob-on: #140F05;
+    --frame-shadow: 0 24px 64px rgba(0, 0, 0, 0.68), 0 0 0 1px rgba(226, 190, 104, 0.16);
+  }
+
+  html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
+    color-scheme: light;
+    --backdrop-bg: rgba(24, 19, 12, 0.44);
+    --bg-frame: #FAF6EE;
+    --bg-sidebar: #EFE9DC;
+    --bg-group: #FFFFFF;
+    --bg-input: #F5EFE3;
+    --bg-hover: rgba(154, 107, 22, 0.08);
+    --gold-bright: #8A5E10;
+    --gold-main: #A6731A;
+    --gold-line: rgba(154, 107, 22, 0.28);
+    --gold-line-strong: rgba(138, 94, 16, 0.68);
+    --text-main: #18130C;
+    --text-sub: #3D3222;
+    --text-muted: #665740;
+    --cta-bg: linear-gradient(135deg, #C79535 0%, #9A6B16 100%);
+    --cta-fg: #FFFFFF;
+    --cta-shine: inset 0 1px 0 rgba(255, 255, 255, 0.30), 0 3px 12px rgba(154, 107, 22, 0.22);
+    --switch-off: #DED4C1;
+    --switch-knob-off: #FFFFFF;
+    --switch-knob-on: #FFFFFF;
+    --frame-shadow: 0 22px 56px rgba(58, 39, 6, 0.24), 0 0 0 1px rgba(138, 94, 16, 0.18);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body {
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background: transparent;
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-size: 12.5px;
+  }
+
+  .zs-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--backdrop-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 1;
+    transition: opacity 0.16s var(--ease-ui);
+  }
+  .zs-backdrop.closing {
+    opacity: 0;
+  }
+
+  .zen-settings-frame {
+    width: min(880px, 94vw);
+    height: min(600px, 88vh);
+    background: var(--bg-frame);
+    border: 1.5px solid var(--gold-line-strong);
+    border-radius: 16px;
+    box-shadow: var(--frame-shadow);
+    display: grid;
+    grid-template-columns: 226px 1fr;
+    overflow: hidden;
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    transition: transform 0.18s var(--ease-ui), opacity 0.16s var(--ease-ui), background-color 0.22s ease;
+  }
+  .zs-backdrop.closing .zen-settings-frame {
+    transform: scale(0.96) translateY(6px);
+    opacity: 0;
+  }
+
+  /* CỘT TRÁI: SIDEBAR 6 MỤC CHUẨN ZEN BROWSER */
+  .zs-sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--gold-line);
+    padding: 16px 12px 14px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .zs-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 2px 8px 12px 8px;
+    border-bottom: 1px solid var(--gold-line);
+    margin-bottom: 6px;
+  }
+  .zs-monogram {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+  }
+  .zs-monogram img {
+    width: 30px;
+    height: 30px;
+    display: block;
+    object-fit: contain;
+    border-radius: 50%;
+  }
+  .zs-brand-txt {
+    min-width: 0;
+  }
+  .zs-brand-title {
+    font-family: var(--font-heading);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--gold-bright);
+    text-transform: uppercase;
+  }
+  .zs-brand-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .zs-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .ui-ico {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+  .zs-tab-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-sub);
+    padding: 8px 13px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    transition: background-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .zs-tab-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-main);
+  }
+  .zs-tab-btn:active {
+    transform: scale(0.97);
+  }
+  .zs-tab-btn.active {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    box-shadow: var(--cta-shine);
+    font-weight: 700;
+  }
+
+  .zs-sidebar-foot {
+    padding: 10px 8px 2px 8px;
+    border-top: 1px solid var(--gold-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: var(--text-muted);
+  }
+  .zs-saved-pill {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--gold-bright);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .zs-saved-pill.show {
+    opacity: 1;
+  }
+
+  /* CỘT PHẢI: NỘI DUNG CHI TIẾT */
+  .zs-main {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .zs-topbar {
+    padding: 16px 22px 12px 24px;
+    border-bottom: 1px solid var(--gold-line);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .zs-sec-title {
+    font-family: var(--font-heading);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gold-bright);
+    letter-spacing: 0.4px;
+    line-height: 1.15;
+    margin-bottom: 3px;
+  }
+  .zs-sec-desc {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .zs-close-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid var(--gold-line);
+    background: var(--bg-group);
+    color: var(--text-sub);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background-color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .zs-close-btn:hover {
+    border-color: var(--gold-line-strong);
+    color: var(--gold-bright);
+    background: var(--bg-hover);
+  }
+  .zs-close-btn:active {
+    transform: scale(0.94);
+  }
+
+  .zs-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 24px 22px 24px;
+  }
+
+  .zs-pane {
+    display: none;
+    flex-direction: column;
+    gap: 13px;
+  }
+  .zs-pane.active {
+    display: flex;
+  }
+
+  .setting-group {
+    background: var(--bg-group);
+    border: 1px solid var(--gold-line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+  }
+  .setting-divider {
+    height: 1px;
+    background: var(--gold-line);
+    opacity: 0.55;
+  }
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+  .setting-row.col-stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .setting-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .setting-info > b {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 2px;
+  }
+  .setting-info span {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.42;
+  }
+
+  /* CONTROLS: PILL 999PX, SWITCH, INPUT */
+  .pill-segmented {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-input);
+    border: 1px solid var(--gold-line);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .pill-seg-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-sub);
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: background-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .pill-seg-btn:hover {
+    color: var(--text-main);
+  }
+  .pill-seg-btn:active {
+    transform: scale(0.96);
+  }
+  .pill-seg-btn.active {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    box-shadow: var(--cta-shine);
+    font-weight: 700;
+  }
+
+  .pill-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    background: var(--switch-off);
+    border: 1px solid var(--gold-line);
+    border-radius: 999px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.18s var(--ease-ui), border-color 0.18s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .pill-switch:active {
+    transform: scale(0.95);
+  }
+  .pill-switch.checked {
+    background: var(--gold-main);
+    border-color: var(--gold-bright);
+  }
+  .pill-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--switch-knob-off);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+    transition: transform 0.18s var(--ease-ui), background-color 0.18s var(--ease-ui);
+  }
+  .pill-switch.checked::after {
+    transform: translateX(20px);
+    background: var(--switch-knob-on);
+  }
+
+  .pill-input-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .pill-input, .zs-input {
+    flex: 1;
+    border: 1px solid var(--gold-line);
+    background: var(--bg-input);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    outline: none;
+    user-select: text;
+    transition: border-color 0.15s var(--ease-ui);
+    min-width: 0;
+  }
+  .zs-input {
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 11.5px;
+  }
+  .pill-input:focus, .zs-input:focus {
+    border-color: var(--gold-bright);
+  }
+  .pill-btn {
+    border: 1px solid var(--gold-line);
+    background: var(--bg-input);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    transition: border-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .pill-btn:hover {
+    border-color: var(--gold-line-strong);
+    color: var(--gold-bright);
+  }
+  .pill-btn:active {
+    transform: scale(0.96);
+  }
+  .pill-btn.cta {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    border-color: transparent;
+    box-shadow: var(--cta-shine);
+    font-weight: 700;
+  }
+
+  .preset-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 2px;
+  }
+  .preset-chip {
+    border: 1px solid var(--gold-line);
+    background: var(--bg-input);
+    color: var(--text-sub);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.14s ease, color 0.14s ease;
+  }
+  .preset-chip:hover {
+    border-color: var(--gold-line-strong);
+    color: var(--gold-bright);
+  }
+
+  .g-profile-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+  .g-avatar-lg {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    font-weight: 800;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .range-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .range-wrap input[type="range"] {
+    flex: 1;
+    accent-color: #C99B3B;
+    cursor: pointer;
+  }
+  .px-pill {
+    min-width: 68px;
+    text-align: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--gold-line);
+    background: var(--bg-input);
+    color: var(--gold-bright);
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  .kbd-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--gold-line-strong);
+    background: var(--bg-input);
+    color: var(--gold-bright);
+    font-family: Consolas, "SFMono-Regular", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .status-banner {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--gold-bright);
+  }
+</style>
+</head>
+<body>
+  <div class="zs-backdrop" id="zs_backdrop" onclick="onBackdropClick(event)">
+    <div class="zen-settings-frame" role="dialog" aria-modal="true" aria-labelledby="zs_title">
+      <!-- SIDEBAR 6 NHÓM CÀI ĐẶT -->
+      <aside class="zs-sidebar">
+        <div>
+          <div class="zs-brand">
+            <div class="zs-monogram"><img id="zs_brand_icon" alt="TPbrowser" /></div>
+            <div class="zs-brand-txt">
+              <div class="zs-brand-title">Cài Đặt TPbrowser</div>
+              <div class="zs-brand-sub">Chuẩn Zen • Vàng Đồng</div>
+            </div>
+          </div>
+
+          <nav class="zs-nav">
+            <button type="button" class="zs-tab-btn active" data-tab="look_feel" onclick="switchTab('look_feel')">
+              <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 0 1 0 11Z" fill="currentColor" stroke="none"/></svg>
+              <span>Giao Diện (Look &amp; Feel)</span>
+            </button>
+            <button type="button" class="zs-tab-btn" data-tab="tabs" onclick="switchTab('tabs')">
+              <svg class="ui-ico" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M6 2.5v11"/></svg>
+              <span>Tab &amp; Khung Hình</span>
+            </button>
+            <button type="button" class="zs-tab-btn" data-tab="ai_cowork" onclick="switchTab('ai_cowork')">
+              <svg class="ui-ico" viewBox="0 0 16 16"><rect x="3" y="4.5" width="10" height="8.5" rx="2.5"/><path d="M8 2v2.5M6 8.2h.01M10 8.2h.01M6 10.8h4"/></svg>
+              <span>Trợ Lý AI Cowork</span>
+            </button>
+            <button type="button" class="zs-tab-btn" data-tab="side_panels" onclick="switchTab('side_panels')">
+              <svg class="ui-ico" viewBox="0 0 16 16"><path d="M3 3.5h10a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H6l-3.2 2v-2H3A1.5 1.5 0 0 1 1.5 11V5A1.5 1.5 0 0 1 3 3.5Z"/></svg>
+              <span>Chat &amp; Ngăn Ứng Dụng</span>
+            </button>
+            <button type="button" class="zs-tab-btn" data-tab="privacy" onclick="switchTab('privacy')">
+              <svg class="ui-ico" viewBox="0 0 16 16"><path d="M8 2L3 4.2v3.6c0 3.2 2.1 5.4 5 6.4 2.9-1 5-3.2 5-6.4V4.2L8 2Z"/><path d="M5.8 8.1l1.5 1.5 3-3.1"/></svg>
+              <span>Bảo Mật &amp; uBlock</span>
+            </button>
+            <button type="button" class="zs-tab-btn" data-tab="shortcuts" onclick="switchTab('shortcuts')">
+              <svg class="ui-ico" viewBox="0 0 16 16"><rect x="1.5" y="4" width="13" height="8.5" rx="2"/><path d="M4.5 7h1M7.5 7h1M10.5 7h1M4.5 10h7"/></svg>
+              <span>Phím Tắt (Shortcuts)</span>
+            </button>
+          </nav>
+        </div>
+
+        <div class="zs-sidebar-foot">
+          <span>Esc / Alt+, để đóng</span>
+          <span class="zs-saved-pill" id="zs_saved_pill">Đã lưu tự động</span>
+        </div>
+      </aside>
+
+      <!-- KHUNG NỘI DUNG CHÍNH -->
+      <section class="zs-main">
+        <header class="zs-topbar">
+          <div>
+            <h2 class="zs-sec-title" id="zs_title">Giao Diện &amp; Thẩm Mỹ (Look &amp; Feel)</h2>
+            <p class="zs-sec-desc" id="zs_desc">Tùy biến bảng màu Vàng Đồng Cổ Điển, thanh địa chỉ nổi và chế độ tự ẩn thanh tiêu đề kiểu Zen Browser.</p>
+          </div>
+          <button type="button" class="zs-close-btn" onclick="requestCloseModal()" title="Đóng Cài Đặt (Esc)">
+            <svg class="ui-ico" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
+        </header>
+
+        <div class="zs-body">
+          <!-- 1. LOOK & FEEL -->
+          <div class="zs-pane active" id="pane_look_feel">
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Tông màu giao diện (AURELIA Theme)</b>
+                  <span>Đồng bộ tức thì giữa Đen Đá Cẩm Thạch &amp; Vàng Đồng và Ngọc Trắng Carrara &amp; Vàng Đồng trên mọi khung hình.</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn active" id="seg_theme_dark" onclick="applySetting('ui_theme', 'obsidian-gold')">
+                    <svg class="ui-ico" viewBox="0 0 16 16"><path d="M13.5 9.8A5.5 5.5 0 0 1 6.2 2.5a5.5 5.5 0 1 0 7.3 7.3Z"/></svg>
+                    <span>Đen &amp; Vàng Đồng</span>
+                  </button>
+                  <button type="button" class="pill-seg-btn" id="seg_theme_light" onclick="applySetting('ui_theme', 'carrara-light')">
+                    <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.2"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6"/></svg>
+                    <span>Ngọc Trắng &amp; Đồng</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Phong cách Logo &amp; Biểu tượng TPbrowser</b>
+                  <span>Đổi qua lại giữa Bộ 1 (Dải Lụa 3D mềm mại) và Bộ 2 (Mũi Tên Góc Cạnh sắc nét) trên thanh trên, Trang Bắt Đầu &amp; thanh tác vụ.</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn active" id="seg_logo_ribbon" onclick="applySetting('logo_style', 'ribbon')">
+                    <span>Dải Lụa 3D (Bộ 1)</span>
+                  </button>
+                  <button type="button" class="pill-seg-btn" id="seg_logo_arrow" onclick="applySetting('logo_style', 'arrow')">
+                    <span>Mũi Tên (Bộ 2)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Thanh địa chỉ nổi (Floating Omnibox)</b>
+                  <span>Hiển thị thanh tìm kiếm và giao việc nhanh <code>@ai</code> nổi tại trung tâm Trang Bắt Đầu (<code>tp://newtab</code>).</span>
+                </div>
+                <button type="button" class="pill-switch checked" id="sw_floating_omnibox" onclick="toggleBoolSetting('floating_omnibox')" aria-label="Floating Omnibox"></button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. TABS & LAYOUT -->
+          <div class="zs-pane" id="pane_tabs">
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Khi mở TPbrowser (Khởi động)</b>
+                  <span>Chọn khôi phục toàn bộ các Tab từ phiên làm việc trước hoặc luôn mở một Trang Bắt Đầu mới tinh.</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn active" id="seg_startup_restore" onclick="applySetting('startup_mode', 'restore')">Khôi phục Tab cũ</button>
+                  <button type="button" class="pill-seg-btn" id="seg_startup_newtab" onclick="applySetting('startup_mode', 'newtab')">Mở Tab mới sạch</button>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Hướng hiển thị Thanh Quản Lý Tab</b>
+                  <span>Đặt dọc bên trái kiểu Zen Browser để quản lý nhiều Tab dễ đọc, hoặc chuyển sang thanh ngang phía trên.</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn active" id="seg_tab_vert" onclick="applySetting('tab_orientation', 'vertical')">Tab Dọc (Trái)</button>
+                  <button type="button" class="pill-seg-btn" id="seg_tab_horiz" onclick="applySetting('tab_orientation', 'horizontal')">Tab Ngang (Trên)</button>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Kích thước Cột Tab Dọc (Độ rộng Sidebar)</b>
+                  <span>Tùy chỉnh độ rộng cột tab bên trái để hiển thị tiêu đề tab vừa vặn theo ý anh.</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn" id="seg_sbw_180" onclick="applySetting('sidebar_width', '180')">Nhỏ (180px)</button>
+                  <button type="button" class="pill-seg-btn active" id="seg_sbw_228" onclick="applySetting('sidebar_width', '228')">Chuẩn (228px)</button>
+                  <button type="button" class="pill-seg-btn" id="seg_sbw_280" onclick="applySetting('sidebar_width', '280')">Rộng (280px)</button>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Thu gọn Thanh Tab Dọc về dạng Icon (54px)</b>
+                  <span>Giữ danh sách Tab dọc siêu gọn ở cạnh trái màn hình khi anh cần không gian bảng tính rộng.</span>
+                </div>
+                <button type="button" class="pill-switch" id="sw_sidebar_collapsed" onclick="toggleBoolSetting('sidebar_collapsed')" aria-label="Thu gọn Sidebar"></button>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Chế độ Chia Khung Đa Màn Hình (Split Views / BSP)</b>
+                  <span>Xem 1 Tab toàn vùng hoặc chia khung song song để đối chiếu tài liệu và Zalo cùng lúc (Alt+M).</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn active" id="seg_view_single" onclick="applySetting('view_mode', 'single')">1 Tab Đơn</button>
+                  <button type="button" class="pill-seg-btn" id="seg_view_spiral" onclick="applySetting('view_mode', 'spiral')">Xoắn Ốc BSP</button>
+                  <button type="button" class="pill-seg-btn" id="seg_view_columns" onclick="applySetting('view_mode', 'columns')">Chia Cột</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-row col-stack">
+                <div class="g-profile-card">
+                  <div class="g-avatar-lg" id="g_avatar_preview">P</div>
+                  <div class="setting-info">
+                    <b>Hồ Sơ Tài Khoản Google Quản Lý Trình Duyệt</b>
+                    <span>Đồng bộ lời chào cá nhân và phiên đăng nhập Gmail, Google Sheets, Drive, YouTube trên Profile chính.</span>
+                  </div>
+                </div>
+                <div class="pill-input-row">
+                  <input id="inp_google_user" class="pill-input" type="text" placeholder="Ví dụ: Bùi Thiên Phú (thienphu@gmail.com)" />
+                  <button type="button" class="pill-btn" onclick="openGoogleSignInFromModal()">Đăng nhập Google</button>
+                  <button type="button" class="pill-btn cta" onclick="saveGoogleProfileFromModal()">Lưu Hồ Sơ</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. AI COWORK -->
+          <div class="zs-pane" id="pane_ai_cowork">
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Nhà cung cấp mô hình AI (LLM Provider)</b>
+                  <span>Kết nối cổng OpenAI / 9Router nội bộ hoặc gọi trực tiếp Google Gemini API.</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn active" id="seg_prov_openai" onclick="selectAiProvider('openai')">OpenAI / 9Router</button>
+                  <button type="button" class="pill-seg-btn" id="seg_prov_gemini" onclick="selectAiProvider('gemini')">Gemini Direct</button>
+                </div>
+              </div>
+
+              <div class="setting-row col-stack" id="row_ai_base_url">
+                <div class="setting-info">
+                  <b>Endpoint Base URL (Tự động chuẩn hóa hậu tố <code>/v1</code>)</b>
+                </div>
+                <div class="pill-input-row">
+                  <input id="inp_ai_base_url" class="pill-input" type="text" placeholder="http://127.0.0.1:8045/v1" />
+                </div>
+              </div>
+
+              <div class="setting-row col-stack">
+                <div class="setting-info">
+                  <b>API Key Cá Nhân (Lưu cục bộ trong <code>config.json</code>)</b>
+                </div>
+                <div class="pill-input-row">
+                  <input id="inp_ai_api_key" class="pill-input" type="password" placeholder="Nhập API Key của anh..." />
+                  <button type="button" class="pill-btn" id="btn_toggle_key" onclick="toggleMaskKey()">Hiện</button>
+                </div>
+              </div>
+
+              <div class="setting-row col-stack">
+                <div class="setting-info">
+                  <b>Tên Model AI Sử Dụng</b>
+                </div>
+                <div class="pill-input-row">
+                  <input id="inp_ai_model" class="pill-input" type="text" placeholder="gemini-3.8-flash-high" />
+                </div>
+                <div class="preset-chips">
+                  <button type="button" class="preset-chip" onclick="pickModelPreset('gemini-3.8-flash-high')">gemini-3.8-flash-high</button>
+                  <button type="button" class="preset-chip" onclick="pickModelPreset('gemini-3.8-flash')">gemini-3.8-flash</button>
+                  <button type="button" class="preset-chip" onclick="pickModelPreset('gemini-2.5-flash')">gemini-2.5-flash</button>
+                  <button type="button" class="preset-chip" onclick="pickModelPreset('gpt-4o-mini')">gpt-4o-mini</button>
+                </div>
+              </div>
+
+              <div class="setting-row" style="padding-top:2px;">
+                <span class="status-banner" id="ai_test_status">Sẵn sàng lưu hoặc kiểm tra kết nối AI</span>
+                <div style="display:flex; gap:7px;">
+                  <button type="button" class="pill-btn" onclick="testAiConnectionInModal()">Test Key</button>
+                  <button type="button" class="pill-btn cta" onclick="saveAiSettingsFromModal()">Lưu Cấu Hình AI</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Tự thu nhỏ khung Chat khi bắt đầu làm việc</b>
+                  <span>Khi anh giao việc cho AI Cowork hoặc ghi mẫu Skill, cửa sổ chat tự thu thành Bong bóng nhỏ để không che trang web.</span>
+                </div>
+                <button type="button" class="pill-switch checked" id="sw_auto_min" onclick="toggleBoolSetting('auto_minimize_on_task')" aria-label="Auto minimize AI"></button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. SIDE PANELS & CHAT -->
+          <div class="zs-pane" id="pane_side_panels">
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Kiểu hiển thị Cửa sổ Chat 3 Kênh (AI • Messenger • Zalo)</b>
+                  <span>Chọn giữa Cửa sổ nổi góc dưới kiểu Facebook, Ngăn cố định bên phải (Right Dock) hoặc Thu gọn thành 3 bóng tròn.</span>
+                </div>
+                <div class="pill-segmented">
+                  <button type="button" class="pill-seg-btn" id="seg_ai_popup" onclick="applySetting('ai_mode', 'popup')">Cửa Sổ FB</button>
+                  <button type="button" class="pill-seg-btn" id="seg_ai_dock" onclick="applySetting('ai_mode', 'dock')">Ngăn Phải</button>
+                  <button type="button" class="pill-seg-btn active" id="seg_ai_bubble" onclick="applySetting('ai_mode', 'bubble')">Bong Bóng</button>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Hiển thị số tin nhắn chưa đọc, nhấp nháy AI &amp; chuông nhẹ</b>
+                  <span>Theo dõi số thông báo từ Messenger, Zalo Web và AI rồi gắn huy hiệu đỏ trên viền tròn, nhấp nháy khi AI làm xong kèm chuông dịu.</span>
+                </div>
+                <button type="button" class="pill-switch checked" id="sw_unread_badges" onclick="toggleBoolSetting('show_unread_badges')" aria-label="Show unread badges"></button>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Luôn hiển thị cụm Bong Bóng góc phải trên mọi trang</b>
+                  <span>Giữ cụm nút nhanh góc dưới bên phải luôn xuất hiện trên mọi trang web (kể cả Trang chủ NewTab).</span>
+                </div>
+                <button type="button" class="pill-switch checked" id="sw_always_show_orbs" onclick="toggleBoolSetting('always_show_floating_orbs')" aria-label="Always show floating orbs"></button>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row col-stack">
+                <div class="setting-info">
+                  <b>Tùy chỉnh Bong Bóng Góc Phải (Bật/Tắt &amp; Thêm App tùy thích)</b>
+                  <span>Bật/tắt AI, Messenger, Zalo hoặc thêm app mới (Telegram, Gemini, ChatGPT, Google Sheets...) mở dưới dạng Cửa sổ nổi hay Tab mới.</span>
+                </div>
+                <div id="orb_manager_list" style="display:flex; flex-direction:column; gap:7px; width:100%;"></div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">
+                  <button type="button" class="pill-btn" onclick="quickAddOrbPreset('TG','Telegram','https://web.telegram.org','#38BDF8','popup')">+ Telegram</button>
+                  <button type="button" class="pill-btn" onclick="quickAddOrbPreset('GM','Gemini','https://gemini.google.com','#A78BFA','popup')">+ Gemini</button>
+                  <button type="button" class="pill-btn" onclick="quickAddOrbPreset('GPT','ChatGPT','https://chatgpt.com','#34D399','tab')">+ ChatGPT</button>
+                  <button type="button" class="pill-btn" onclick="quickAddOrbPreset('GS','Sheets','https://docs.google.com/spreadsheets','#10B981','tab')">+ Google Sheets</button>
+                </div>
+                <div style="display:grid; grid-template-columns: 76px 1fr 1.4fr 118px 82px; gap:6px; width:100%; align-items:center; margin-top:4px;">
+                  <input id="new_orb_label" class="zs-input" type="text" maxlength="4" placeholder="Ký hiệu" />
+                  <input id="new_orb_title" class="zs-input" type="text" placeholder="Tên app (vd: Notion)" />
+                  <input id="new_orb_url" class="zs-input" type="text" placeholder="https://..." />
+                  <select id="new_orb_kind" class="zs-input" style="padding:7px 8px;">
+                    <option value="popup">Cửa sổ nổi</option>
+                    <option value="tab">Mở Tab mới</option>
+                  </select>
+                  <button type="button" class="pill-btn cta" onclick="addCustomOrbFromModal()">+ Thêm</button>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row col-stack">
+                <div class="setting-info">
+                  <b>Độ rộng Ngăn Phải (Right Dock Width: 260px – 1200px)</b>
+                  <span>Áp dụng khi mở kênh AI / Messenger / Zalo ở chế độ Ngăn Phải (cũng có thể nắm thanh kéo 6px để chỉnh trực tiếp).</span>
+                </div>
+                <div class="range-wrap">
+                  <input id="rng_dock_width" type="range" min="260" max="1000" step="8" value="360" oninput="onDockSliderInput(this.value)" onchange="commitDockWidth(this.value)" />
+                  <span class="px-pill" id="lbl_dock_width">360 px</span>
+                  <button type="button" class="pill-btn" onclick="commitDockWidth(360)">Mặc định</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. PRIVACY & UBLOCK -->
+          <div class="zs-pane" id="pane_privacy">
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Khiên Chặn Quảng Cáo Đa Lớp &amp; Bộ Lọc ABPVN</b>
+                  <span>Kích hoạt đồng thời tiện ích <b>uBlock Origin Lite (MV3)</b> với danh sách <b>ABPVN (Tiếng Việt)</b>, khóa cửa sổ nhảy popunder và tự tua nhanh 16x quảng cáo video YouTube.</span>
+                </div>
+                <button type="button" class="pill-switch checked" id="sw_adblock" onclick="toggleBoolSetting('adblock_enabled')" aria-label="Adblock enabled"></button>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Trạng thái các lớp bảo vệ nội tại</b>
+                  <span id="lbl_adblock_detail">Đang bật: uBlock Origin Lite MV3 • ABPVN List (vie-1) • Anti-Popunder Shield • YouTube Auto-Skip</span>
+                </div>
+                <span class="kbd-badge" id="bdg_adblock_state">ĐANG BẢO VỆ</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. SHORTCUTS -->
+          <div class="zs-pane" id="pane_shortcuts">
+            <div class="setting-group">
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-bright);">Phím Tắt Chuẩn Trình Duyệt (Chrome • Edge • Firefox)</div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Mở Tab mới</b><span>Tạo nhanh một Tab trống mới</span></div>
+                <span class="kbd-badge">Ctrl + T</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Đóng Tab hiện tại</b><span>Đóng nhanh Tab đang chọn</span></div>
+                <span class="kbd-badge">Ctrl + W / Ctrl + F4</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Mở lại Tab vừa đóng gần nhất</b><span>Khôi phục trang vừa tắt</span></div>
+                <span class="kbd-badge">Ctrl + Shift + T</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Chuyển Tab kế tiếp / trước đó</b><span>Xoay vòng qua các Tab đang mở</span></div>
+                <span class="kbd-badge">Ctrl + Tab / Ctrl + Shift + Tab</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Nhảy tới Tab 1–8 &amp; Tab cuối</b><span>Chọn trực tiếp theo thứ tự Tab</span></div>
+                <span class="kbd-badge">Ctrl + 1..8 / Ctrl + 9</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Tải lại trang / Bỏ qua Cache</b><span>Làm mới nội dung trang hiện tại</span></div>
+                <span class="kbd-badge">Ctrl + R / F5 • Ctrl + Shift + R</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Focus Thanh Địa Chỉ (URL)</b><span>Bôi đen nhanh ô địa chỉ để gõ</span></div>
+                <span class="kbd-badge">Ctrl + L / Alt + D / F6</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Ghim trang vào Bookmarks</b><span>Lưu hoặc bỏ lưu trang hiện tại</span></div>
+                <span class="kbd-badge">Ctrl + D</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Tìm chữ trong trang (Find bar)</b><span>Bật thanh tìm kiếm nổi hoặc tìm tiếp</span></div>
+                <span class="kbd-badge">Ctrl + F / F3</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Mở Lịch sử duyệt web</b><span>Xem trang đã truy cập &amp; tab đã đóng</span></div>
+                <span class="kbd-badge">Ctrl + H</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Thu phóng trang web</b><span>Phóng to / Thu nhỏ / Đặt lại 100%</span></div>
+                <span class="kbd-badge">Ctrl + = / - / 0</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Điều hướng Lùi / Tiến / Trang chủ</b><span>Lịch sử trong Tab hiện tại (giữ nguyên Ctrl+A bôi đen, Ctrl+P in trang)</span></div>
+                <span class="kbd-badge">Alt + ← / → / Home</span>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-bright);">Phím Tắt Riêng TPbrowser &amp; Zen Browser (Nhóm Alt)</div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Mở / Đóng Bảng Cài Đặt Tập Trung</b><span>Hộp thoại Zen Settings từ mọi trang web</span></div>
+                <span class="kbd-badge">Alt + ,</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Bật / Tắt Cửa sổ Trợ lý AI Cowork</b><span>Mở hoặc thu gọn kênh AI</span></div>
+                <span class="kbd-badge">Alt + A</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Bật / Tắt Cửa sổ Zalo Web nổi</b><span>Mở nhanh Zalo chat góc dưới phải</span></div>
+                <span class="kbd-badge">Alt + Z</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Bật / Tắt Cửa sổ FB Messenger nổi</b><span>Mở nhanh Messenger chat góc dưới phải</span></div>
+                <span class="kbd-badge">Alt + F</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Đổi chế độ Chia Khung BSP</b><span>1 Tab Đơn → Xoắn Ốc BSP → Chia Cột</span></div>
+                <span class="kbd-badge">Alt + M</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Đổi Thanh Tab Dọc (Zen) ↔ Ngang</b><span>Chuyển đổi hướng hiển thị danh sách Tab</span></div>
+                <span class="kbd-badge">Alt + T</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Thu gọn / Mở rộng Thanh Tab Dọc</b><span>Sidebar Collapse kiểu Zen Browser</span></div>
+                <span class="kbd-badge">Alt + S</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Mở nhanh khay Bookmarks / Collections</b><span>Tìm và mở nhanh trang đã ghim từ mọi web</span></div>
+                <span class="kbd-badge">Alt + B</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Mở Tab với Profile độc lập</b><span>Tách phiên đăng nhập tài khoản riêng</span></div>
+                <span class="kbd-badge">Alt + P</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>/*__TP_MOTION_JS__*/</script>
+  <script>/*__TP_BRAND_ASSETS_JS__*/</script>
+  <script>
+    var TAB_META = {
+      look_feel: {
+        title: "Giao Diện & Thẩm Mỹ (Look & Feel)",
+        desc: "Tùy biến bảng màu Vàng Đồng Cổ Điển, thanh địa chỉ nổi và chế độ tự ẩn thanh tiêu đề kiểu Zen Browser."
+      },
+      tabs: {
+        title: "Quản Lý Tab, Khung Hình & Hồ Sơ",
+        desc: "Điều chỉnh hướng Thanh Tab, chia khung đa màn hình BSP và tài khoản Google quản lý trình duyệt."
+      },
+      ai_cowork: {
+        title: "Trợ Lý AI & Cowork Tự Động",
+        desc: "Cấu hình tập trung Endpoint LLM, API Key, Model và quy tắc tự thu gọn khi giao việc."
+      },
+      side_panels: {
+        title: "Kênh Chat & Ngăn Ứng Dụng (Side Panels)",
+        desc: "Tùy chỉnh kiểu hiển thị khung chat AI / Messenger / Zalo, huy hiệu tin chưa đọc và độ rộng ngăn phải."
+      },
+      privacy: {
+        title: "Bảo Mật & Chặn Quảng Cáo (uBlock + ABPVN)",
+        desc: "Quản lý bộ lọc uBlock Origin Lite MV3, danh sách tiếng Việt ABPVN và khiên chặn quảng cáo 3 lớp."
+      },
+      shortcuts: {
+        title: "Phím Tắt Điều Khiển Nhanh (Shortcuts)",
+        desc: "Hệ thống phím tắt bàn phím đồng nhất trên toàn trình duyệt giúp thao tác không gián đoạn."
+      }
+    };
+
+    var DEFAULT_ORBS = [
+      { id: "ai", label: "AI", title: "AI Cowork", color: "#E2BE68", kind: "channel", channel: "ai", url: "", enabled: true },
+      { id: "fb", label: "FB", title: "Facebook Messenger", color: "#38BDF8", kind: "channel", channel: "fb", url: "https://www.messenger.com", enabled: true },
+      { id: "zalo", label: "Zalo", title: "Zalo Web", color: "#60A5FA", kind: "channel", channel: "zalo", url: "https://chat.zalo.me", enabled: true }
+    ];
+
+    var modalState = {
+      ui_theme: "obsidian-gold",
+      logo_style: "ribbon",
+      floating_omnibox: true,
+      startup_mode: "restore",
+      tab_orientation: "vertical",
+      sidebar_collapsed: false,
+      view_mode: "single",
+      ai_provider: "openai",
+      ai_api_key: "",
+      ai_model: "gemini-3.8-flash-high",
+      ai_base_url: "http://127.0.0.1:8045/v1",
+      auto_minimize_on_task: true,
+      ai_mode: "popup",
+      show_unread_badges: true,
+      always_show_floating_orbs: true,
+      floating_orbs: DEFAULT_ORBS.slice(),
+      ai_dock_width: 360,
+      adblock_enabled: true,
+      google_user: ""
+    };
+
+    var savedTimer = null;
+    var isClosing = false;
+
+    function sendRust(payload) {
+      try {
+        if (window.ipc && typeof window.ipc.postMessage === "function") {
+          window.ipc.postMessage(JSON.stringify(payload));
+        }
+      } catch (_) {}
+    }
+
+    function flashSavedIndicator() {
+      var pill = document.getElementById("zs_saved_pill");
+      if (!pill) return;
+      pill.classList.add("show");
+      if (savedTimer) clearTimeout(savedTimer);
+      savedTimer = setTimeout(function () {
+        pill.classList.remove("show");
+      }, 1500);
+    }
+
+    function switchTab(tabId, fromUser) {
+      if (!TAB_META[tabId]) tabId = "look_feel";
+      var btns = document.querySelectorAll(".zs-tab-btn");
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle("active", btns[i].getAttribute("data-tab") === tabId);
+      }
+      var panes = document.querySelectorAll(".zs-pane");
+      for (var j = 0; j < panes.length; j++) {
+        panes[j].classList.toggle("active", panes[j].id === "pane_" + tabId);
+      }
+      if (window.Motion && typeof window.Motion.animate === "function") {
+        try {
+          window.Motion.animate("#pane_" + tabId, { opacity: [0, 1], y: [8, 0] }, { duration: 0.22 });
+        } catch (_) {}
+      }
+      document.getElementById("zs_title").textContent = TAB_META[tabId].title;
+      document.getElementById("zs_desc").textContent = TAB_META[tabId].desc;
+      if (fromUser !== false) {
+        sendRust({ cmd: "set_settings_section", section: tabId });
+      }
+    }
+
+    function normalizeOpenAiBase(raw) {
+      var u = String(raw || "http://127.0.0.1:8045/v1").trim().replace(/\/+$/, "");
+      if (u.endsWith("/chat/completions")) {
+        u = u.slice(0, -"/chat/completions".length);
+      }
+      if (!/\/v\d+$/i.test(u)) {
+        u = u + "/v1";
+      }
+      return u;
+    }
+
+    function renderModalControls() {
+      var isLight = modalState.ui_theme === "carrara-light";
+      document.documentElement.setAttribute("data-theme", isLight ? "carrara-light" : "obsidian-gold");
+
+      document.getElementById("seg_theme_dark").classList.toggle("active", !isLight);
+      document.getElementById("seg_theme_light").classList.toggle("active", isLight);
+
+      var logoStyle = modalState.logo_style === "arrow" ? "arrow" : "ribbon";
+      var segRibbon = document.getElementById("seg_logo_ribbon");
+      var segArrow = document.getElementById("seg_logo_arrow");
+      if (segRibbon) segRibbon.classList.toggle("active", logoStyle === "ribbon");
+      if (segArrow) segArrow.classList.toggle("active", logoStyle === "arrow");
+
+      var brandImg = document.getElementById("zs_brand_icon");
+      if (brandImg && window.__tpResolveBrandAsset) {
+        var bSrc = window.__tpResolveBrandAsset("app", logoStyle, modalState.ui_theme);
+        if (bSrc && brandImg.getAttribute("src") !== bSrc) brandImg.src = bSrc;
+      }
+
+      var swFloat = document.getElementById("sw_floating_omnibox");
+      if (swFloat) swFloat.classList.toggle("checked", !!modalState.floating_omnibox);
+
+      var sm = modalState.startup_mode === "newtab" ? "newtab" : "restore";
+      var segRest = document.getElementById("seg_startup_restore");
+      var segNew = document.getElementById("seg_startup_newtab");
+      if (segRest) segRest.classList.toggle("active", sm === "restore");
+      if (segNew) segNew.classList.toggle("active", sm === "newtab");
+
+      var isHoriz = modalState.tab_orientation === "horizontal";
+      document.getElementById("seg_tab_vert").classList.toggle("active", !isHoriz);
+      document.getElementById("seg_tab_horiz").classList.toggle("active", isHoriz);
+      document.getElementById("sw_sidebar_collapsed").classList.toggle("checked", !!modalState.sidebar_collapsed);
+
+      var sbw = parseInt(modalState.sidebar_width || 228, 10);
+      var btn180 = document.getElementById("seg_sbw_180");
+      var btn228 = document.getElementById("seg_sbw_228");
+      var btn280 = document.getElementById("seg_sbw_280");
+      if (btn180) btn180.classList.toggle("active", sbw <= 190);
+      if (btn228) btn228.classList.toggle("active", sbw > 190 && sbw < 260);
+      if (btn280) btn280.classList.toggle("active", sbw >= 260);
+
+      var vm = modalState.view_mode || "single";
+      document.getElementById("seg_view_single").classList.toggle("active", vm === "single");
+      document.getElementById("seg_view_spiral").classList.toggle("active", vm === "spiral");
+      document.getElementById("seg_view_columns").classList.toggle("active", vm === "columns");
+
+      var gName = modalState.google_user || "";
+      document.getElementById("g_avatar_preview").textContent = gName ? gName.charAt(0).toUpperCase() : "G";
+      var gInp = document.getElementById("inp_google_user");
+      if (document.activeElement !== gInp) gInp.value = gName;
+
+      var prov = modalState.ai_provider === "gemini" ? "gemini" : "openai";
+      document.getElementById("seg_prov_openai").classList.toggle("active", prov === "openai");
+      document.getElementById("seg_prov_gemini").classList.toggle("active", prov === "gemini");
+      document.getElementById("row_ai_base_url").style.display = prov === "openai" ? "flex" : "none";
+
+      var baseInp = document.getElementById("inp_ai_base_url");
+      var keyInp = document.getElementById("inp_ai_api_key");
+      var modelInp = document.getElementById("inp_ai_model");
+      if (document.activeElement !== baseInp) baseInp.value = modalState.ai_base_url || "http://127.0.0.1:8045/v1";
+      if (document.activeElement !== keyInp) keyInp.value = modalState.ai_api_key || "";
+      if (document.activeElement !== modelInp) modelInp.value = modalState.ai_model || "gemini-3.8-flash-high";
+
+      document.getElementById("sw_auto_min").classList.toggle("checked", !!modalState.auto_minimize_on_task);
+
+      var am = modalState.ai_mode || "popup";
+      document.getElementById("seg_ai_popup").classList.toggle("active", am === "popup");
+      document.getElementById("seg_ai_dock").classList.toggle("active", am === "dock");
+      document.getElementById("seg_ai_bubble").classList.toggle("active", am === "bubble");
+
+      document.getElementById("sw_unread_badges").classList.toggle("checked", !!modalState.show_unread_badges);
+      var swAlways = document.getElementById("sw_always_show_orbs");
+      if (swAlways) swAlways.classList.toggle("checked", modalState.always_show_floating_orbs !== false);
+      renderOrbManager();
+
+      var dw = parseInt(modalState.ai_dock_width || 360, 10) || 360;
+      document.getElementById("rng_dock_width").value = String(Math.min(1000, Math.max(260, dw)));
+      document.getElementById("lbl_dock_width").textContent = dw + " px";
+
+      var adOn = modalState.adblock_enabled !== false;
+      document.getElementById("sw_adblock").classList.toggle("checked", adOn);
+      document.getElementById("bdg_adblock_state").textContent = adOn ? "ĐANG BẢO VỆ" : "TẠM TẮT";
+      document.getElementById("lbl_adblock_detail").textContent = adOn
+        ? "Đang bật: uBlock Origin Lite MV3 • ABPVN List (vie-1) • Anti-Popunder Shield • YouTube Auto-Skip"
+        : "Khiên lọc DOM & Auto-Skip đang tạm tắt theo lựa chọn của anh (bấm công tắc để bật lại ngay).";
+    }
+
+    function escapeOrbHtml(s) {
+      return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    function getOrbList() {
+      if (Array.isArray(modalState.floating_orbs) && modalState.floating_orbs.length > 0) {
+        return modalState.floating_orbs;
+      }
+      return DEFAULT_ORBS.slice();
+    }
+
+    function commitOrbList(list) {
+      modalState.floating_orbs = list;
+      renderOrbManager();
+      flashSavedIndicator();
+      sendRust({ cmd: "save_floating_orbs", orbs_json: JSON.stringify(list) });
+    }
+
+    function renderOrbManager() {
+      var host = document.getElementById("orb_manager_list");
+      if (!host) return;
+      var list = getOrbList();
+      var html = "";
+      for (var i = 0; i < list.length; i++) {
+        var o = list[i];
+        var isBuiltin = o.kind === "channel";
+        var sub = isBuiltin ? ("Kênh nội bộ (" + (o.channel || o.id) + ")") : (o.url || "");
+        var kindToggle = isBuiltin
+          ? '<span class="kbd-badge">Cửa sổ nổi</span>'
+          : '<select class="zs-input" style="width:118px; padding:4px 8px; font-size:11px;" onchange="changeOrbKind(' + i + ', this.value)">' +
+              '<option value="popup"' + (o.kind === "popup" ? " selected" : "") + '>Cửa sổ nổi</option>' +
+              '<option value="tab"' + (o.kind === "tab" ? " selected" : "") + '>Mở Tab mới</option>' +
+            '</select>';
+        var delBtn = isBuiltin ? "" : '<button type="button" class="pill-btn" style="padding:4px 9px; color:#EF4444;" onclick="removeOrbItem(' + i + ')" title="Xóa nút này">✕</button>';
+        html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--gold-line); border-radius:10px; background:var(--bg-main);">' +
+          '<div style="display:flex; align-items:center; gap:9px; min-width:0; flex:1;">' +
+            '<span style="width:30px; height:30px; border-radius:50%; border:1.5px solid ' + escapeOrbHtml(o.color || "#E2BE68") + '; color:' + escapeOrbHtml(o.color || "#E2BE68") + '; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; flex-shrink:0;">' + escapeOrbHtml(o.label || o.id) + '</span>' +
+            '<div style="min-width:0; flex:1;">' +
+              '<div style="font-size:12px; font-weight:700; color:var(--text-main);">' + escapeOrbHtml(o.title || o.label) + '</div>' +
+              '<div style="font-size:10.5px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeOrbHtml(sub) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">' +
+            kindToggle +
+            delBtn +
+            '<button type="button" class="pill-switch ' + (o.enabled !== false ? "checked" : "") + '" onclick="toggleOrbItem(' + i + ')" aria-label="Toggle orb"></button>' +
+          '</div>' +
+        '</div>';
+      }
+      host.innerHTML = html;
+    }
+
+    function toggleOrbItem(idx) {
+      var list = getOrbList().slice();
+      if (!list[idx]) return;
+      list[idx].enabled = list[idx].enabled === false;
+      commitOrbList(list);
+    }
+
+    function changeOrbKind(idx, kind) {
+      var list = getOrbList().slice();
+      if (!list[idx]) return;
+      list[idx].kind = (kind === "tab") ? "tab" : "popup";
+      commitOrbList(list);
+    }
+
+    function removeOrbItem(idx) {
+      var list = getOrbList().slice();
+      if (!list[idx] || list[idx].kind === "channel") return;
+      list.splice(idx, 1);
+      commitOrbList(list);
+    }
+
+    function quickAddOrbPreset(label, title, url, color, kind) {
+      var list = getOrbList().slice();
+      if (list.some(function(x){ return x.url === url && x.title === title; })) {
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].url === url) list[i].enabled = true;
+        }
+        commitOrbList(list);
+        return;
+      }
+      list.push({
+        id: "custom_" + Date.now(),
+        label: label,
+        title: title,
+        color: color,
+        kind: kind || "popup",
+        channel: "",
+        url: url,
+        enabled: true
+      });
+      commitOrbList(list);
+    }
+
+    function addCustomOrbFromModal() {
+      var lblEl = document.getElementById("new_orb_label");
+      var titEl = document.getElementById("new_orb_title");
+      var urlEl = document.getElementById("new_orb_url");
+      var kndEl = document.getElementById("new_orb_kind");
+      var lbl = (lblEl.value || "").trim().slice(0, 4);
+      var title = (titEl.value || "").trim();
+      var url = (urlEl.value || "").trim();
+      if (!url) return;
+      if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+      if (!title) title = url.replace(/^https?:\/\//i, "").split("/")[0];
+      if (!lbl) lbl = title.slice(0, 2).toUpperCase();
+      var kind = kndEl ? kndEl.value : "popup";
+      var list = getOrbList().slice();
+      list.push({
+        id: "custom_" + Date.now(),
+        label: lbl,
+        title: title,
+        color: "#38BDF8",
+        kind: kind === "tab" ? "tab" : "popup",
+        channel: "",
+        url: url,
+        enabled: true
+      });
+      lblEl.value = "";
+      titEl.value = "";
+      urlEl.value = "";
+      commitOrbList(list);
+    }
+
+    function applySetting(key, val) {
+      modalState[key] = val;
+      renderModalControls();
+      flashSavedIndicator();
+      sendRust({ cmd: "save_setting", key: key, value: String(val) });
+    }
+
+    function toggleBoolSetting(key) {
+      var next = !modalState[key];
+      modalState[key] = next;
+      renderModalControls();
+      flashSavedIndicator();
+      sendRust({ cmd: "save_setting", key: key, value: next ? "true" : "false" });
+    }
+
+    function selectAiProvider(prov) {
+      modalState.ai_provider = prov;
+      renderModalControls();
+      saveAiSettingsFromModal(true);
+    }
+
+    function pickModelPreset(m) {
+      document.getElementById("inp_ai_model").value = m;
+      modalState.ai_model = m;
+      saveAiSettingsFromModal(true);
+    }
+
+    function toggleMaskKey() {
+      var inp = document.getElementById("inp_ai_api_key");
+      var btn = document.getElementById("btn_toggle_key");
+      if (inp.type === "password") {
+        inp.type = "text";
+        btn.textContent = "Ẩn";
+      } else {
+        inp.type = "password";
+        btn.textContent = "Hiện";
+      }
+    }
+
+    function saveAiSettingsFromModal(silent) {
+      modalState.ai_api_key = document.getElementById("inp_ai_api_key").value.trim();
+      modalState.ai_model = document.getElementById("inp_ai_model").value.trim() || "gemini-3.8-flash-high";
+      var rawBase = document.getElementById("inp_ai_base_url").value.trim();
+      if (modalState.ai_provider === "openai") {
+        modalState.ai_base_url = normalizeOpenAiBase(rawBase);
+        document.getElementById("inp_ai_base_url").value = modalState.ai_base_url;
+      } else if (rawBase) {
+        modalState.ai_base_url = rawBase;
+      }
+
+      sendRust({
+        cmd: "save_ai_config",
+        provider: modalState.ai_provider,
+        api_key: modalState.ai_api_key,
+        model: modalState.ai_model,
+        base_url: modalState.ai_base_url,
+        auto_minimize_on_task: !!modalState.auto_minimize_on_task
+      });
+      flashSavedIndicator();
+      if (!silent) {
+        document.getElementById("ai_test_status").textContent = "Đã lưu cấu hình AI vào config.json";
+      }
+    }
+
+    async function testAiConnectionInModal() {
+      saveAiSettingsFromModal(true);
+      var lbl = document.getElementById("ai_test_status");
+      lbl.textContent = "Đang kiểm tra kết nối tới " + modalState.ai_model + "...";
+      var t0 = Date.now();
+      try {
+        if (modalState.ai_provider === "gemini") {
+          if (!modalState.ai_api_key) throw new Error("Chưa nhập Gemini API Key");
+          var ep =
+            "https://generativelanguage.googleapis.com/v1beta/models/" +
+            encodeURIComponent(modalState.ai_model) +
+            ":generateContent?key=" +
+            encodeURIComponent(modalState.ai_api_key);
+          var r = await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "ping" }] }] })
+          });
+          if (!r.ok) throw new Error("HTTP " + r.status);
+        } else {
+          var headers = { "Content-Type": "application/json" };
+          if (modalState.ai_api_key) headers["Authorization"] = "Bearer " + modalState.ai_api_key;
+          var r2 = await fetch(modalState.ai_base_url + "/chat/completions", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+              model: modalState.ai_model,
+              messages: [{ role: "user", content: "Trả lời ngắn: OK" }],
+              max_tokens: 16
+            })
+          });
+          if (!r2.ok) throw new Error("HTTP " + r2.status);
+        }
+        var dt = Date.now() - t0;
+        lbl.textContent = "Kết nối thành công (" + modalState.ai_model + " • " + dt + "ms)";
+      } catch (err) {
+        lbl.textContent = "Chưa kết nối được: " + (err && err.message ? err.message : String(err));
+      }
+    }
+
+    function onDockSliderInput(val) {
+      var n = parseInt(val || 360, 10) || 360;
+      document.getElementById("lbl_dock_width").textContent = n + " px";
+    }
+
+    function commitDockWidth(val) {
+      var n = Math.min(1200, Math.max(260, parseInt(val || 360, 10) || 360));
+      modalState.ai_dock_width = n;
+      renderModalControls();
+      flashSavedIndicator();
+      sendRust({ cmd: "save_setting", key: "ai_dock_width", value: String(n) });
+    }
+
+    function saveGoogleProfileFromModal() {
+      var val = document.getElementById("inp_google_user").value.trim();
+      modalState.google_user = val;
+      renderModalControls();
+      flashSavedIndicator();
+      sendRust({ cmd: "save_setting", key: "google_user", value: val });
+    }
+
+    function openGoogleSignInFromModal() {
+      saveGoogleProfileFromModal();
+      sendRust({ cmd: "open_google_login" });
+      requestCloseModal();
+    }
+
+    function onBackdropClick(e) {
+      if (e.target && e.target.id === "zs_backdrop") {
+        requestCloseModal();
+      }
+    }
+
+    function requestCloseModal() {
+      if (isClosing) return;
+      isClosing = true;
+      var bd = document.getElementById("zs_backdrop");
+      bd.classList.add("closing");
+      setTimeout(function () {
+        isClosing = false;
+        sendRust({ cmd: "close_settings_modal" });
+      }, 150);
+    }
+
+    window.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        requestCloseModal();
+      } else if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "Comma") {
+        e.preventDefault();
+        requestCloseModal();
+      }
+    });
+
+    window.__tpSyncSettingsModal = function (cfg) {
+      if (!cfg) return;
+      isClosing = false;
+      document.getElementById("zs_backdrop").classList.remove("closing");
+      Object.assign(modalState, cfg);
+      if (cfg.open_section) {
+        switchTab(cfg.open_section, false);
+      }
+      renderModalControls();
+    };
+
+    window.addEventListener("tp_config_changed", function (ev) {
+      if (ev && ev.detail) {
+        Object.assign(modalState, ev.detail);
+        renderModalControls();
+      }
+    });
+
+    // Hỗ trợ tham số URL (?theme=light&tab=ai_cowork) để kiểm chứng thị giác độc lập bằng Edge Headless
+    (function initFromQuery() {
+      var q = window.location.search || "";
+      if (q.indexOf("theme=light") !== -1) {
+        modalState.ui_theme = "carrara-light";
+      }
+      var m = q.match(/[?&]tab=([a-z_]+)/i);
+      if (m && m[1]) {
+        switchTab(m[1], false);
+      }
+      renderModalControls();
+      sendRust({ cmd: "settings_modal_ready" });
+    })();
+  </script>
+</body>
+</html>

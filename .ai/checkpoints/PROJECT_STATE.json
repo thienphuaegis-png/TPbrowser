@@ -1,8 +1,8 @@
 {
   "project": "TPbrowser",
   "version": "0.1.0",
-  "git_commit": "15ac8cb",
-  "updated_at": "2026-11-10 23:41:55",
+  "git_commit": "b5996c4",
+  "updated_at": "2026-11-12 14:52:54",
   "codegraph_ast": {
     "files": 5,
     "nodes": 130,
@@ -20,16 +20,20 @@
         "src/main.rs",
         "src/layout.rs"
       ],
-      "responsibility": "Win32 window management (tao), 3-region WebView2 layout (tab_shell, content tabs, ai_shell), MV3 uBlock Origin Lite extension loader, popunder blocker, and JSON IPC router."
+      "responsibility": "Win32 borderless window management (tao), multi-WebView2 layout (tab_shell, content tabs, ai_shell, fb_shell, zalo_shell, titlebar_shell, dock_resizer_shell, settings_shell), MV3 uBlock Origin Lite extension loader, popunder blocker, and centralized JSON IPC + tp_config_changed broadcaster."
     },
     {
-      "layer": "2. AURELIA Minimalist & Calm UI Surfaces",
+      "layer": "2. AURELIA Minimalist Surfaces & Zen Settings Modal",
       "files": [
+        "src/settings_modal.html",
         "src/newtab.html",
         "src/tab_shell.html",
-        "src/ai_panel.html"
+        "src/ai_panel.html",
+        "src/chat_header.html",
+        "src/titlebar.html",
+        "src/dock_resizer.html"
       ],
-      "responsibility": "AURELIA Dark (Obsidian Marble & Gold) & Light (Carrara Marble & Champagne Gold) start page with 3 floating orbs (AI, Messenger, Zalo), Hover-Reveal tab bar, and AI Cowork panel."
+      "responsibility": "Classic Bronze-Gold AURELIA Dark (obsidian-gold) & Light (carrara-light) UI surfaces, 999px pill controls, 1.75px stroke SVGs, 6-tab Zen Settings Modal (Alt+,), auto-hide custom titlebar, and Hover-Reveal tab bar."
     },
     {
       "layer": "3. Content Agent, Skill Recorder & 3-Layer Ad Shield",
@@ -38,7 +42,7 @@
         "skills/skills.json",
         "extensions/uBOLite.chromium/manifest.json"
       ],
-      "responsibility": "DOM context extraction, 3-tier element locator, live user interaction recorder (__tpRecordingSkill), anti-adblock 0px CSS shield, and YouTube 16x auto-skipper."
+      "responsibility": "DOM context extraction, 3-tier element locator, live user interaction recorder (__tpRecordingSkill), unread badge orbs, anti-adblock 0px CSS shield, and YouTube 16x auto-skipper."
     }
   ],
   "guided_tour": [
@@ -46,28 +50,34 @@
       "step": 1,
       "file": "src/layout.rs",
       "symbol": "compute_shell_layout",
-      "note": "Computes exact rectangles for Vertical/Horizontal tabs, BSP split views, and Right AI Dock vs Bubble mode."
+      "note": "Computes exact rectangles for Vertical/Horizontal tabs, BSP split views, and Right AI Dock vs Popup/Bubble mode."
     },
     {
       "step": 2,
       "file": "src/main.rs",
-      "symbol": "TpBrowserApp::handle_cmd",
-      "note": "Central IPC command dispatcher linking tab_shell, newtab, ai_panel, and content tabs."
+      "symbol": "TpBrowserApp::execute",
+      "note": "Central command dispatcher, config.json persistence, and tp_config_changed broadcaster across all child WebViews."
     },
     {
       "step": 3,
-      "file": "src/newtab.html",
-      "symbol": "__tpSyncNewTab",
-      "note": "AURELIA Dark & Light luxury minimalist start page with 3D gold silk SVG and floating AI/Messenger/Zalo orbs."
+      "file": "src/settings_modal.html",
+      "symbol": "__tpSyncSettingsModal",
+      "note": "6-tab Zen-style centralized Settings Modal with live AI Key testing, Dock Width slider, and zero-reload config sync."
     },
     {
       "step": 4,
+      "file": "src/newtab.html",
+      "symbol": "__tpSyncNewTab",
+      "note": "AURELIA Dark & Light luxury minimalist start page with floating omnibox and 3 floating AI/Messenger/Zalo orbs."
+    },
+    {
+      "step": 5,
       "file": "src/ai_panel.html",
       "symbol": "triggerCoworkTask",
       "note": "Executes AI Cowork tasks with domain-scoped skills and auto-minimizes into floating bubble."
     },
     {
-      "step": 5,
+      "step": 6,
       "file": "src/content_agent.js",
       "symbol": "runActiveAdCleanerAndSkipper",
       "note": "3-layer ad shield for movie streaming sites and YouTube video ads."

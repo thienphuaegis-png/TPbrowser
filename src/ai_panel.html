@@ -4,74 +4,45 @@
 <meta charset="UTF-8" />
 <title>TPbrowser AI Cowork Panel</title>
 <style>
+/*__TP_FONT_FACE__*/
 
   :root, html[data-theme="obsidian-gold"] {
     color-scheme: dark;
-    --bg-main: #0E0F12;
-    --bg-side: #13151A;
+    --font-heading: "Cormorant Garamond Gnosis", "Cormorant Garamond", Georgia, serif;
+    --ease-ui: cubic-bezier(0.22, 1, 0.36, 1);
+    --bg-main: #0B0C0E;
+    --bg-side: #111318;
     --bg-card: #181B22;
     --bg-subtle: #222630;
-    --text-primary: #F3EFE6;
-    --text-secondary: #A8A296;
-    --text-muted: #6E6A61;
-    --accent: #D4AF37;
-    --accent-fg: #0E0F12;
-    --accent-soft: rgba(212, 175, 55, 0.14);
-    --accent-text: #E5C158;
-    --border-col: rgba(212, 175, 55, 0.18);
+    --text-primary: #F5F2EB;
+    --text-secondary: #C8C0B0;
+    --text-muted: #8E8779;
+    --accent: #C99B3B;
+    --accent-grad: linear-gradient(135deg, #E2BE68 0%, #B5872E 100%);
+    --accent-fg: #140F05;
+    --accent-soft: rgba(212, 175, 55, 0.16);
+    --accent-text: #E2BE68;
+    --border-col: rgba(212, 175, 55, 0.28);
     --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.45);
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.3);
   }
-  html[data-theme="warm-paper"] {
+  html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
     color-scheme: light;
-    --bg-main: #FAF8F5;
-    --bg-side: #F3EFEA;
+    --bg-main: #F6F2EA;
+    --bg-side: #EFE9DC;
     --bg-card: #FFFFFF;
-    --bg-subtle: #EAE4DC;
-    --text-primary: #2C302E;
-    --text-secondary: #6E7571;
-    --text-muted: #949B96;
-    --accent: #4A7C59;
+    --bg-subtle: #E5DCC9;
+    --text-primary: #18130C;
+    --text-secondary: #3D3222;
+    --text-muted: #61533E;
+    --accent: #9A6B16;
+    --accent-grad: linear-gradient(135deg, #C79535 0%, #9A6B16 100%);
     --accent-fg: #FFFFFF;
-    --accent-soft: #E8F0EB;
-    --accent-text: #2F573B;
-    --border-col: rgba(44, 48, 46, 0.08);
-    --shadow-card: 0 10px 32px rgba(44, 48, 46, 0.05);
-    --shadow-soft: 0 2px 10px rgba(44, 48, 46, 0.04);
-  }
-  html[data-theme="airy-cloud"] {
-    color-scheme: light;
-    --bg-main: #F8FAFC;
-    --bg-side: #F1F5F9;
-    --bg-card: #FFFFFF;
-    --bg-subtle: #E2E8F0;
-    --text-primary: #1E293B;
-    --text-secondary: #64748B;
-    --text-muted: #94A3B8;
-    --accent: #3B82F6;
-    --accent-fg: #FFFFFF;
-    --accent-soft: #EFF6FF;
-    --accent-text: #1D4ED8;
-    --border-col: rgba(15, 23, 42, 0.07);
-    --shadow-card: 0 10px 32px rgba(15, 23, 42, 0.04);
-    --shadow-soft: 0 2px 10px rgba(15, 23, 42, 0.03);
-  }
-  html[data-theme="zen-sand"] {
-    color-scheme: light;
-    --bg-main: #F5F2EB;
-    --bg-side: #EBE6DC;
-    --bg-card: #FAF8F3;
-    --bg-subtle: #E2DDD2;
-    --text-primary: #2D2A26;
-    --text-secondary: #6B655E;
-    --text-muted: #968F85;
-    --accent: #52796F;
-    --accent-fg: #FFFFFF;
-    --accent-soft: #E3ECE9;
-    --accent-text: #354F52;
-    --border-col: rgba(45, 42, 38, 0.09);
-    --shadow-card: 0 8px 28px rgba(45, 42, 38, 0.05);
-    --shadow-soft: 0 2px 8px rgba(45, 42, 38, 0.04);
+    --accent-soft: rgba(154, 107, 22, 0.14);
+    --accent-text: #8A5E10;
+    --border-col: rgba(154, 107, 22, 0.32);
+    --shadow-card: 0 10px 28px rgba(92, 61, 8, 0.08);
+    --shadow-soft: 0 2px 8px rgba(92, 61, 8, 0.06);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -84,7 +55,10 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     font-size: 12px;
+    border-top: 1px solid var(--border-col);
     border-left: 1px solid var(--border-col);
+    border-right: 1px solid var(--border-col);
+    border-bottom: 1px solid var(--border-col);
     display: flex;
     flex-direction: column;
     transition: background 0.2s ease, color 0.2s ease;
@@ -116,10 +90,11 @@
     background: #f59e0b;
   }
   .ai-title {
+    font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 12px;
+    font-size: 15.5px;
     color: var(--accent-text);
-    letter-spacing: -0.2px;
+    letter-spacing: 0.3px;
     white-space: nowrap;
   }
   .hdr-btns {
@@ -127,21 +102,52 @@
     gap: 4px;
     flex-wrap: nowrap;
   }
+  .ui-ico {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
   .hdr-btn {
     background: var(--bg-card);
     border: 1px solid var(--border-col);
     color: var(--text-secondary);
-    padding: 3px 7px;
+    padding: 4px 8px;
     border-radius: 999px;
     font-size: 10px;
     font-weight: 600;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     white-space: nowrap;
-    transition: color 0.15s ease, border-color 0.15s ease;
+    transition: color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .hdr-btn.ico-only {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+  }
+  .hdr-btn.ico-badge {
+    height: 26px;
+    padding: 0 7px;
+  }
+  .hdr-mini-cnt {
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--accent-text);
   }
   .hdr-btn:hover {
     color: var(--text-primary);
     border-color: var(--accent);
+  }
+  .hdr-btn:active {
+    transform: scale(0.96);
   }
   .hdr-btn.bubble-btn {
     background: var(--accent-soft);
@@ -168,8 +174,8 @@
   .skill-card {
     background: var(--bg-main);
     border: 1px solid var(--border-col);
-    border-radius: 9px;
-    padding: 8px 10px;
+    border-radius: 12px;
+    padding: 9px 11px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -213,8 +219,8 @@
     border: 1px solid var(--border-col);
     background: var(--bg-main);
     color: var(--text-primary);
-    border-radius: 8px;
-    padding: 6px 9px;
+    border-radius: 999px;
+    padding: 6px 12px;
     font-size: 11.5px;
     outline: none;
   }
@@ -270,11 +276,17 @@
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
   }
   .q-chip:hover {
     color: var(--text-primary);
     border-color: var(--accent);
+  }
+  .q-chip:active {
+    transform: scale(0.96);
   }
 
   /* Chat Stream */
@@ -328,8 +340,8 @@
     gap: 6px;
     background: var(--bg-card);
     border: 1px solid var(--border-col);
-    border-radius: 11px;
-    padding: 4px 5px 4px 11px;
+    border-radius: 999px;
+    padding: 4px 4px 4px 14px;
     align-items: center;
   }
   .prompt-form:focus-within {
@@ -348,14 +360,219 @@
     color: var(--text-muted);
   }
   .prompt-form button {
-    background: var(--accent);
+    background: var(--accent-grad, var(--accent));
     color: var(--accent-fg);
     border: none;
-    border-radius: 8px;
-    padding: 6px 13px;
+    border-radius: 999px;
+    padding: 6px 15px;
     font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.14s var(--ease-ui), transform 0.14s var(--ease-ui);
+  }
+  .prompt-form button:active {
+    transform: scale(0.96);
+  }
+
+  /* --- PLANNER & ACTIVE COWORK UI --- */
+  .ai-view-switch {
+    display: flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 3px;
+    margin: 6px 10px 2px;
+    flex-shrink: 0;
+  }
+  .ai-view-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: background-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), transform 0.14s var(--ease-ui);
+    white-space: nowrap;
+  }
+  .ai-view-tab.active {
+    background: var(--accent-grad, var(--accent));
+    color: var(--accent-fg);
+    font-weight: 700;
+  }
+  .ai-view-tab:active {
+    transform: scale(0.96);
+  }
+  .planner-badge {
+    min-width: 15px;
+    height: 15px;
+    line-height: 15px;
+    border-radius: 999px;
+    background: #EF4444;
+    color: #FFF;
+    font-size: 9px;
+    font-weight: 800;
+    text-align: center;
+    padding: 0 4px;
+    display: none;
+  }
+  .planner-badge.show {
+    display: inline-block;
+  }
+
+  #planner_view {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .planner-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .planner-filter-pills {
+    display: inline-flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    border-radius: 999px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .pf-pill {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .pf-pill.active {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  .task-creator-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .task-creator-box input, .task-creator-box select {
+    border: 1px solid var(--border-col);
+    background: var(--bg-main);
+    color: var(--text-primary);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 11px;
+    outline: none;
+  }
+  .task-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-col);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .task-card.active-cowork {
+    border-color: var(--gold-bright);
+    box-shadow: 0 0 0 2px rgba(226, 190, 104, 0.28);
+  }
+  .task-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .task-card-title {
+    font-family: var(--font-heading);
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.25;
+  }
+  .task-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 10.5px;
+  }
+  .task-tag {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border: 1px solid var(--border-col);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-weight: 600;
+    font-size: 10px;
+  }
+  .task-steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .task-step-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-main);
+    border: 1px solid rgba(212, 175, 55, 0.12);
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .task-step-row.done {
+    opacity: 0.55;
+  }
+  .task-step-row.done .task-step-text {
+    text-decoration: line-through;
+  }
+  .task-step-actor {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  .actor-ai {
+    background: rgba(59, 130, 246, 0.18);
+    color: #60A5FA;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+  }
+  .actor-user {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34D399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+  }
+  .task-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 5px;
+    border-top: 1px solid var(--border-col);
+    padding-top: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
   }
 </style>
 </head>
@@ -363,25 +580,37 @@
   <div class="ai-header">
     <div class="ai-title-box">
       <div class="ai-dot" id="ai_status_dot"></div>
-      <span class="ai-title">Trợ lý AI</span>
+      <span class="ai-title">AI Cowork</span>
     </div>
     <div class="hdr-btns">
-      <button class="hdr-btn rec-btn" id="btn_record_skill" onclick="toggleSkillRecording()" title="Bấm để tự thao tác mẫu 1 lần trên trang web cho AI học thành Skill">Làm mẫu</button>
-      <button class="hdr-btn skill-btn" id="btn_skills_drawer" onclick="toggleSkillsDrawer()" title="Danh sách các Skill AI đã học">Skills (0)</button>
-      <button class="hdr-btn" onclick="toggleSettingsDrawer()" title="Tự thêm API Key của người dùng">Key</button>
-      <button class="hdr-btn bubble-btn" onclick="sendRust({cmd:'set_ai_mode', mode:'bubble'})" title="Thu nhỏ thành Bong bóng chat nổi (vẫn hoạt động ngầm)">Thu gọn</button>
+      <button class="hdr-btn ico-only rec-btn" id="btn_record_skill" onclick="toggleSkillRecording()" title="Làm mẫu 1 lần (Record thao tác web thành Skill)">
+        <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button class="hdr-btn ico-badge skill-btn" id="btn_skills_drawer" onclick="toggleSkillsDrawer()" title="Sổ tay Skills đã học">
+        <svg class="ui-ico" viewBox="0 0 16 16"><path d="M3 3.5h4.5a1.5 1.5 0 0 1 1.5 1.5v8.5a1 1 0 0 0-1-1H3V3.5ZM13 3.5H8.5A1.5 1.5 0 0 0 7 5v8.5a1 1 0 0 1 1-1H13V3.5Z"/></svg>
+        <span class="hdr-mini-cnt" id="skills_count_badge">0</span>
+      </button>
+      <button class="hdr-btn ico-only" id="btn_ai_dock_toggle" onclick="sendRust({cmd:'toggle_chat_dock_style'})" title="Gắn Ngăn Phải / Thả Cửa Sổ Nổi">
+        <svg class="ui-ico" viewBox="0 0 16 16"><path d="M3 8h10M5.5 5.5L3 8l2.5 2.5M10.5 5.5L13 8l-2.5 2.5"/></svg>
+      </button>
+      <button class="hdr-btn ico-only" onclick="sendRust({cmd:'open_settings_modal', section:'ai_cowork'})" title="Cài Đặt AI &amp; Cowork (Alt+,)">
+        <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v1.5M8 12.7v1.5M1.8 8h1.5M12.7 8h1.5M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg>
+      </button>
+      <button class="hdr-btn ico-only bubble-btn" onclick="sendRust({cmd:'set_ai_mode', mode:'bubble'})" title="Thu gọn thành Bong bóng chat nổi">
+        <svg class="ui-ico" viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>
+      </button>
     </div>
   </div>
 
   <!-- NGĂN QUẢN LÝ & LƯU SKILL (DẠY BẰNG LỜI + LÀM MẪU RECORD) -->
   <div id="skills_drawer">
     <div style="display:flex; justify-content:space-between; align-items:center;">
-      <b style="font-size:12px;">📚 SỔ TAY KỸ NĂNG (SKILLS ĐÃ HỌC)</b>
+      <b style="font-family:var(--font-heading); font-size:14.5px; letter-spacing:0.6px; color:var(--accent-text);">SỔ TAY KỸ NĂNG (SKILLS ĐÃ HỌC)</b>
       <button class="hdr-btn" onclick="openNewSkillForm()">+ Dạy Skill mới</button>
     </div>
 
-    <div id="skill_editor_box" style="display:none; background:var(--bg-main); border:1px solid var(--border-col); border-radius:10px; padding:10px; flex-direction:column; gap:6px;">
-      <div style="font-weight:800; font-size:11.5px; color:#b91c1c;" id="skill_editor_title">Lưu Kỹ Năng Mới</div>
+    <div id="skill_editor_box" style="display:none; background:var(--bg-main); border:1px solid var(--border-col); border-radius:12px; padding:10px; flex-direction:column; gap:6px;">
+      <div style="font-family:var(--font-heading); font-weight:700; font-size:14px; color:var(--accent-text);" id="skill_editor_title">Lưu Kỹ Năng Mới</div>
       <div class="st-row">
         <label>Tên kỹ năng (Gợi nhớ để gọi nhanh)</label>
         <input id="sk_name_inp" type="text" placeholder="Ví dụ: Lọc đơn Hôm nay trên Shopee" />
@@ -400,7 +629,7 @@
       </div>
       <div style="display:flex; justify-content:flex-end; gap:6px;">
         <button type="button" class="hdr-btn" onclick="closeSkillEditor()">Hủy</button>
-        <button type="button" class="hdr-btn" style="background:#0f172a; color:#fff;" onclick="saveSkillFromEditor()">💾 Lưu Thành Skill</button>
+        <button type="button" class="hdr-btn" style="background:var(--accent-grad, var(--accent)); color:var(--accent-fg); border-color:transparent;" onclick="saveSkillFromEditor()">Lưu Thành Skill</button>
       </div>
     </div>
 
@@ -438,29 +667,89 @@
     <div class="st-actions">
       <span class="key-status" id="cfg_status_lbl">Chưa lưu Key</span>
       <div style="display:flex; gap:5px;">
-        <button type="button" class="hdr-btn" style="border-color:#10b981; color:#047857;" onclick="testAiKeyNow()">⚡ Test Key</button>
+        <button type="button" class="hdr-btn" style="border-color:var(--accent); color:var(--accent-text);" onclick="testAiKeyNow()">Test Key</button>
         <button type="button" class="hdr-btn" onclick="toggleSettingsDrawer()">Đóng</button>
-        <button type="button" class="hdr-btn" style="background:#0f172a; color:#fff;" onclick="saveAiConfig()">Lưu Cài Đặt</button>
+        <button type="button" class="hdr-btn" style="background:var(--accent-grad, var(--accent)); color:var(--accent-fg); border-color:transparent;" onclick="saveAiConfig()">Lưu Cài Đặt</button>
       </div>
     </div>
   </div>
 
-  <div class="context-bar">
-    <div class="ctx-line" id="ctx_active_page">Đang nhìn: <b>Không gian bắt đầu</b></div>
-    <div class="quick-chips">
-      <button class="q-chip" onclick="triggerCoworkTask('Tóm tắt ngắn gọn nội dung trang đang mở')">📄 Tóm tắt trang này</button>
-      <button class="q-chip" onclick="triggerCoworkTask('Đọc và tổng hợp tất cả các Tab đang mở')">📑 Tổng hợp mọi Tab</button>
-      <button class="q-chip" onclick="toggleSkillRecording()">Làm mẫu 1 lần (Record)</button>
-      <button class="q-chip" onclick="toggleSkillsDrawer(true)">📚 Xem & Chạy Skill</button>
+  <div class="ai-view-switch">
+    <button class="ai-view-tab active" id="tab_mode_cowork" onclick="setAiViewMode('cowork')" title="Trò chuyện &amp; Cowork">
+      <svg class="ui-ico" viewBox="0 0 16 16"><path d="M2.5 4.5A2 2 0 0 1 4.5 2.5h7a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-4l-3 2.5v-2.5h-.5a2 2 0 0 1-2-2v-5Z"/></svg>
+      <span>Chat</span>
+    </button>
+    <button class="ai-view-tab" id="tab_mode_planner" onclick="setAiViewMode('planner')" title="Kế Hoạch &amp; Nhắc Việc">
+      <svg class="ui-ico" viewBox="0 0 16 16"><path d="M3.5 2.5h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z"/><path d="M6 2.5v2M10 2.5v2M5.5 6.5h5M5.5 9.5h5M5.5 12.5h3"/></svg>
+      <span>Kế Hoạch</span>
+      <span class="planner-badge" id="planner_task_count">0</span>
+    </button>
+  </div>
+
+  <div class="context-bar" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+    <div class="ctx-line" id="ctx_active_page" style="flex:1; min-width:0;"><b>Không gian bắt đầu</b></div>
+    <div class="quick-chips" style="margin-top:0; flex-wrap:nowrap;">
+      <button class="q-chip" style="padding:4px 7px;" onclick="triggerCoworkTask('Tóm tắt ngắn gọn nội dung trang đang mở')" title="Tóm tắt trang này">
+        <svg class="ui-ico" viewBox="0 0 16 16"><path d="M4 2.5h5.5L12.5 5.5v8a1 1 0 0 1-1 1h-7.5a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z"/><path d="M9.5 2.5v3h3M5.5 8.5h5M5.5 11h3.5"/></svg>
+      </button>
+      <button class="q-chip" style="padding:4px 7px;" onclick="triggerCoworkTask('Đọc và tổng hợp tất cả các Tab đang mở')" title="Tổng hợp mọi Tab">
+        <svg class="ui-ico" viewBox="0 0 16 16"><rect x="2.5" y="4" width="8.5" height="9.5" rx="1.5"/><path d="M5.5 2.5h7a1 1 0 0 1 1 1v7.5"/></svg>
+      </button>
+      <button class="q-chip" style="padding:4px 7px;" onclick="toggleSkillRecording()" title="Làm mẫu 1 lần (Record Skill)">
+        <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button class="q-chip" style="padding:4px 7px;" onclick="toggleSkillsDrawer(true)" title="Xem &amp; Chạy Skill đã học">
+        <svg class="ui-ico" viewBox="0 0 16 16"><path d="M3 3.5h4.5a1.5 1.5 0 0 1 1.5 1.5v8.5a1 1 0 0 0-1-1H3V3.5ZM13 3.5H8.5A1.5 1.5 0 0 0 7 5v8.5a1 1 0 0 1 1-1H13V3.5Z"/></svg>
+      </button>
     </div>
   </div>
 
   <div id="chat_stream">
     <div class="msg ai">
-      <b>Chào anh Phú!</b> AI trên <b>TPbrowser</b> hỗ trợ học Skill theo cả 2 cách anh chọn:<br/>
-      1. <b>Dạy bằng lời trong lúc chat:</b> Anh nhắn <i>"Nhớ quy tắc cho trang này: ... và lưu thành skill nhé"</i> — AI sẽ tự lưu vào <b>Skills</b>.<br/>
-      2. <b>Làm mẫu 1 lần (Làm mẫu):</b> Anh bấm nút <b>Làm mẫu</b>, cửa sổ chat tự thu gọn thành bong bóng để anh tự tay click/gõ trên trang web 1 lần, bấm <b>⏹ Lưu Skill</b> là lần sau AI làm y hệt!
+      <b>AI Cowork sẵn sàng</b> — Nhắn việc cần làm hoặc rê chuột lên các biểu tượng phía trên để xem chức năng (Tóm tắt trang, Tổng hợp Tab, Làm mẫu Skill).
     </div>
+  </div>
+
+  <!-- BẢNG KẾ HOẠCH & NHẮC VIỆC COWORK (PHASE 3) -->
+  <div id="planner_view" style="display:none;">
+    <div class="planner-bar">
+      <div class="planner-filter-pills">
+        <button class="pf-pill active" id="pf_all" onclick="setPlannerFilter('all')">Tất Cả</button>
+        <button class="pf-pill" id="pf_todo" onclick="setPlannerFilter('todo')">Đang Làm</button>
+        <button class="pf-pill" id="pf_done" onclick="setPlannerFilter('done')">Đã Xong</button>
+      </div>
+      <button class="hdr-btn" onclick="toggleTaskCreatorBox()">+ Việc mới</button>
+    </div>
+
+    <!-- HỘP TẠO VIỆC NHANH / TỰ ĐỘNG TỪ ZALO -->
+    <div id="task_creator_box" class="task-creator-box" style="display:none;">
+      <b style="font-size:12px; color:var(--accent-text);">Tạo Đầu Việc Mới / Giao Việc AI</b>
+      <input id="new_task_title" type="text" placeholder="Tiêu đề việc (vd: Gửi báo cáo doanh thu tuần...)" />
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+        <select id="new_task_source">
+          <option value="zalo">Nguồn: Zalo Web</option>
+          <option value="messenger">Nguồn: Messenger</option>
+          <option value="web">Nguồn: Trang Web</option>
+          <option value="manual">Nguồn: Tự thêm</option>
+        </select>
+        <input id="new_task_contact" type="text" placeholder="Người giao (vd: Anh Bùi...)" />
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+        <select id="new_task_due_preset" onchange="applyDuePreset(this.value)">
+          <option value="today_17">Hạn: Hôm nay 17:00</option>
+          <option value="plus_1h">Hạn: +1 tiếng nữa</option>
+          <option value="plus_3h">Hạn: +3 tiếng nữa</option>
+          <option value="tomorrow_09">Hạn: Sáng mai 09:00</option>
+        </select>
+        <input id="new_task_steps_raw" type="text" placeholder="Checklist (phân cách bằng dấu phẩy)" value="Thu thập số liệu [AI], Duyệt báo cáo [Bạn], Gửi Zalo [AI]" />
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:4px;">
+        <button type="button" class="hdr-btn" onclick="toggleTaskCreatorBox(false)">Hủy</button>
+        <button type="button" class="hdr-btn" style="background:var(--accent-grad, var(--accent)); color:var(--accent-fg); border-color:transparent;" onclick="createTaskFromForm()">Lưu Kế Hoạch</button>
+      </div>
+    </div>
+
+    <div id="tasks_list_container" style="display:flex; flex-direction:column; gap:8px;"></div>
   </div>
 
   <div class="ai-footer">
@@ -508,6 +797,298 @@
       } catch (_) {}
     }
 
+    // --- TASK PLANNER & ACTIVE COWORK LOGIC (PHASE 3) ---
+    var currentPlannerTasks = [];
+    var plannerFilter = "all";
+    var activeCoworkTaskId = null;
+
+    function setAiViewMode(mode) {
+      var isPlanner = (mode === "planner");
+      document.getElementById("tab_mode_cowork").classList.toggle("active", !isPlanner);
+      document.getElementById("tab_mode_planner").classList.toggle("active", isPlanner);
+      document.getElementById("chat_stream").style.display = isPlanner ? "none" : "flex";
+      document.querySelector(".context-bar").style.display = isPlanner ? "none" : "flex";
+      document.querySelector(".ai-footer").style.display = isPlanner ? "none" : "block";
+      document.getElementById("planner_view").style.display = isPlanner ? "flex" : "none";
+      if (isPlanner) {
+        renderPlannerTasks();
+      }
+    }
+
+    function setPlannerFilter(filter) {
+      plannerFilter = filter;
+      document.getElementById("pf_all").classList.toggle("active", filter === "all");
+      document.getElementById("pf_todo").classList.toggle("active", filter === "todo");
+      document.getElementById("pf_done").classList.toggle("active", filter === "done");
+      renderPlannerTasks();
+    }
+
+    function toggleTaskCreatorBox(force) {
+      var box = document.getElementById("task_creator_box");
+      if (!box) return;
+      var show = (force !== undefined) ? force : (box.style.display === "none");
+      box.style.display = show ? "flex" : "none";
+      if (show) document.getElementById("new_task_title").focus();
+    }
+
+    function applyDuePreset(val) {
+      // helper if needed
+    }
+
+    function saveTasksToRust() {
+      sendRust({ cmd: "save_tasks_json", tasks_json: JSON.stringify(currentPlannerTasks) });
+      renderPlannerTasks();
+    }
+
+    function createTaskFromForm() {
+      var title = (document.getElementById("new_task_title").value || "").trim();
+      if (!title) return;
+      var source = document.getElementById("new_task_source").value || "manual";
+      var contact = (document.getElementById("new_task_contact").value || "").trim();
+      var duePreset = document.getElementById("new_task_due_preset").value;
+      var nowEpoch = Math.floor(Date.now() / 1000);
+      var dueEpoch = nowEpoch + 3600;
+      var dueText = "+1 tiếng nữa";
+
+      if (duePreset === "today_17") {
+        var d = new Date(); d.setHours(17, 0, 0, 0);
+        dueEpoch = Math.floor(d.getTime() / 1000);
+        dueText = "Hôm nay 17:00";
+      } else if (duePreset === "plus_3h") {
+        dueEpoch = nowEpoch + 10800;
+        dueText = "+3 tiếng nữa";
+      } else if (duePreset === "tomorrow_09") {
+        var tm = new Date(); tm.setDate(tm.getDate() + 1); tm.setHours(9, 0, 0, 0);
+        dueEpoch = Math.floor(tm.getTime() / 1000);
+        dueText = "Sáng mai 09:00";
+      }
+
+      var rawSteps = (document.getElementById("new_task_steps_raw").value || "").split(",");
+      var steps = [];
+      for (var i = 0; i < rawSteps.length; i++) {
+        var st = rawSteps[i].trim();
+        if (st) {
+          var isAi = /\[ai\]/i.test(st);
+          var cleanText = st.replace(/\[(ai|bạn|user)\]/gi, "").trim();
+          steps.push({
+            id: "s_" + (i + 1),
+            text: cleanText,
+            done: false,
+            actor: isAi ? "ai" : "user"
+          });
+        }
+      }
+      if (steps.length === 0) {
+        steps.push({ id: "s_1", text: title, done: false, actor: "ai" });
+      }
+
+      var newTask = {
+        id: "task_" + Date.now(),
+        title: title,
+        source: source,
+        source_contact: contact,
+        created_at_epoch: nowEpoch,
+        due_at_epoch: dueEpoch,
+        due_text: dueText,
+        remind_at_epoch: dueEpoch - 900,
+        reminded: false,
+        status: "todo",
+        steps: steps
+      };
+
+      currentPlannerTasks.unshift(newTask);
+      saveTasksToRust();
+      toggleTaskCreatorBox(false);
+      document.getElementById("new_task_title").value = "";
+      document.getElementById("new_task_contact").value = "";
+    }
+
+    function toggleTaskStep(taskId, stepId) {
+      for (var i = 0; i < currentPlannerTasks.length; i++) {
+        var t = currentPlannerTasks[i];
+        if (t.id === taskId && t.steps) {
+          for (var j = 0; j < t.steps.length; j++) {
+            if (t.steps[j].id === stepId) {
+              t.steps[j].done = !t.steps[j].done;
+              break;
+            }
+          }
+          // If all steps done, mark task done
+          var allDone = t.steps.every(function(s){ return s.done; });
+          if (allDone) t.status = "done";
+          else if (t.status === "done") t.status = "todo";
+          break;
+        }
+      }
+      saveTasksToRust();
+    }
+
+    function completeTask(taskId) {
+      for (var i = 0; i < currentPlannerTasks.length; i++) {
+        if (currentPlannerTasks[i].id === taskId) {
+          currentPlannerTasks[i].status = "done";
+          if (currentPlannerTasks[i].steps) {
+            currentPlannerTasks[i].steps.forEach(function(s){ s.done = true; });
+          }
+          break;
+        }
+      }
+      if (activeCoworkTaskId === taskId) activeCoworkTaskId = null;
+      saveTasksToRust();
+    }
+
+    function deleteTask(taskId) {
+      currentPlannerTasks = currentPlannerTasks.filter(function(t){ return t.id !== taskId; });
+      if (activeCoworkTaskId === taskId) activeCoworkTaskId = null;
+      saveTasksToRust();
+    }
+
+    function startActiveCowork(taskId) {
+      activeCoworkTaskId = taskId;
+      var task = currentPlannerTasks.find(function(t){ return t.id === taskId; });
+      if (!task) return;
+      var pendingStep = (task.steps || []).find(function(s){ return !s.done; });
+      var stepText = pendingStep ? pendingStep.text : task.title;
+      // Broadcast active status
+      sendRust({
+        cmd: "sync_bubble_status",
+        working: true,
+        recording: false,
+        status_text: "Cowork: " + stepText,
+        last_reply: "Đang cùng làm: " + task.title
+      });
+      // Switch back to chat view and trigger assistant focus
+      setAiViewMode("cowork");
+      appendMessage("user", "Bắt đầu làm việc cho kế hoạch: " + task.title + " (Bước: " + stepText + ")");
+      triggerCoworkTask("Tôi đang thực hiện đầu việc: " + task.title + ". Hãy hỗ trợ tôi bước: " + stepText);
+    }
+
+    function runAiStepDirect(taskId, stepText) {
+      setAiViewMode("cowork");
+      appendMessage("user", "AI hãy làm bước này: " + stepText);
+      triggerCoworkTask("AI hãy làm bước này trong kế hoạch: " + stepText);
+    }
+
+    function draftZaloReport(taskId) {
+      var task = currentPlannerTasks.find(function(t){ return t.id === taskId; });
+      if (!task) return;
+      var doneSteps = (task.steps || []).filter(function(s){ return s.done; }).length;
+      var totalSteps = (task.steps || []).length;
+      var reportMsg = "Dạ anh " + (task.source_contact || "Phú") + ", em cập nhật tiến độ công việc [" + task.title + "]: đã hoàn thành (" + doneSteps + "/" + totalSteps + " bước). ";
+      if (doneSteps === totalSteps) {
+        reportMsg += "Đầu việc đã hoàn tất 100% rồi ạ!";
+      } else {
+        reportMsg += "Hiện em đang tiếp tục triển khai các bước tiếp theo.";
+      }
+      sendRust({ cmd: "paste_to_chat", channel: task.source || "zalo", text: reportMsg });
+    }
+
+    function renderPlannerTasks() {
+      var container = document.getElementById("tasks_list_container");
+      if (!container) return;
+      container.innerHTML = "";
+
+      var todoCount = currentPlannerTasks.filter(function(t){ return t.status !== "done"; }).length;
+      var badge = document.getElementById("planner_task_count");
+      if (badge) {
+        badge.textContent = todoCount;
+        badge.classList.toggle("show", todoCount > 0);
+      }
+
+      var filtered = currentPlannerTasks.filter(function(t){
+        if (plannerFilter === "todo") return t.status !== "done";
+        if (plannerFilter === "done") return t.status === "done";
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = "<div style='text-align:center; padding:24px 10px; color:var(--text-muted); font-size:11.5px;'>✨ " + (plannerFilter === "done" ? "Chưa có việc nào hoàn thành." : "Không có đầu việc nào. Bấm '+ Việc mới' hoặc bôi đen tin nhắn Zalo để tạo!") + "</div>";
+        return;
+      }
+
+      filtered.forEach(function(t){
+        var card = document.createElement("div");
+        card.className = "task-card" + (activeCoworkTaskId === t.id ? " active-cowork" : "");
+        var sourceLabel = t.source === "zalo" ? "Zalo" : (t.source === "messenger" ? "Messenger" : (t.source === "web" ? "Web" : "Cá nhân"));
+        var contactStr = t.source_contact ? (" • Từ: " + escapeHtml(t.source_contact)) : "";
+
+        var stepsHtml = "";
+        if (t.steps && t.steps.length > 0) {
+          stepsHtml = "<div class='task-steps-list'>";
+          t.steps.forEach(function(s){
+            var isAi = s.actor === "ai";
+            stepsHtml += "<div class='task-step-row" + (s.done ? " done" : "") + "'>" +
+              "<input type='checkbox'" + (s.done ? " checked" : "") + " onchange='toggleTaskStep(\"" + t.id + "\", \"" + s.id + "\")' />" +
+              "<span class='task-step-actor " + (isAi ? "actor-ai" : "actor-user") + "'>" + (isAi ? "🤖 AI" : "👤 Bạn") + "</span>" +
+              "<span class='task-step-text' style='flex:1;'>" + escapeHtml(s.text) + "</span>" +
+              (isAi && !s.done ? ("<button class='hdr-btn' style='font-size:9.5px; padding:2px 7px;' onclick='runAiStepDirect(\"" + t.id + "\", \"" + escapeHtml(s.text) + "\")'>⚡ Chạy</button>") : "") +
+              "</div>";
+          });
+          stepsHtml += "</div>";
+        }
+
+        card.innerHTML =
+          "<div class='task-card-header'>" +
+            "<div style='flex:1;'>" +
+              "<div class='task-card-title'>" + escapeHtml(t.title) + "</div>" +
+              "<div class='task-card-meta'>" +
+                "<span class='task-tag'>" + sourceLabel + contactStr + "</span>" +
+                "<span style='color:var(--text-muted);'>⏰ " + escapeHtml(t.due_text || "Hôm nay") + "</span>" +
+              "</div>" +
+            "</div>" +
+            (t.status === "done" ? "<span style='color:#34D399; font-weight:700; font-size:11px;'>✅ Đã xong</span>" : "") +
+          "</div>" +
+          stepsHtml +
+          "<div class='task-card-actions'>" +
+            (t.status !== "done" ? "<button class='hdr-btn' style='background:var(--accent-grad, var(--accent)); color:var(--accent-fg); border-color:transparent;' onclick='startActiveCowork(\"" + t.id + "\")'>🚀 Cùng Làm (Cowork)</button>" : "") +
+            "<button class='hdr-btn' onclick='draftZaloReport(\"" + t.id + "\")' title='Soạn nhanh tiến độ và điền vào ô chat'>📝 Báo Cáo Zalo</button>" +
+            (t.status !== "done" ? "<button class='hdr-btn' onclick='completeTask(\"" + t.id + "\")'>✅ Đã xong</button>" : "") +
+            "<button class='hdr-btn' style='color:#EF4444;' onclick='deleteTask(\"" + t.id + "\")'>🗑️</button>" +
+          "</div>";
+        container.appendChild(card);
+      });
+    }
+
+    // --- RUST SYNC HANDLERS ---
+    window.__tpSyncTasks = function(tasks) {
+      if (Array.isArray(tasks)) {
+        currentPlannerTasks = tasks;
+      } else if (typeof tasks === "string") {
+        try { currentPlannerTasks = JSON.parse(tasks); } catch (_) {}
+      }
+      renderPlannerTasks();
+    };
+
+    window.__tpReceiveTaskFromSelection = function(data) {
+      if (!data) return;
+      setAiViewMode("planner");
+      toggleTaskCreatorBox(true);
+      var text = (data.text || "").trim();
+      var cleanTitle = text.split("\n")[0].substring(0, 80);
+      document.getElementById("new_task_title").value = cleanTitle;
+      document.getElementById("new_task_source").value = data.source || "zalo";
+      document.getElementById("new_task_contact").value = data.contact || "";
+
+      // Auto breakdown steps
+      var suggestedSteps = "Đọc & phân tích yêu cầu [AI], Thực hiện xử lý [AI], Báo cáo lại cho " + (data.contact || "Zalo") + " [Bạn]";
+      document.getElementById("new_task_steps_raw").value = suggestedSteps;
+    };
+
+    window.__tpSnoozeTaskLocal = function(taskId, nextEpoch) {
+      for (var i = 0; i < currentPlannerTasks.length; i++) {
+        if (currentPlannerTasks[i].id === taskId) {
+          currentPlannerTasks[i].remind_at_epoch = nextEpoch;
+          currentPlannerTasks[i].reminded = false;
+          break;
+        }
+      }
+      saveTasksToRust();
+    };
+
+    window.__tpCompleteTaskLocal = function(taskId) {
+      completeTask(taskId);
+    };
+
     function escapeHtml(s) {
       return String(s || "")
         .replace(/&/g, "&amp;")
@@ -549,8 +1130,8 @@
     }
 
     function renderSkillsList() {
-      var btn = document.getElementById("btn_skills_drawer");
-      if (btn) btn.textContent = "Skills (" + learnedSkills.length + ")";
+      var badge = document.getElementById("skills_count_badge");
+      if (badge) badge.textContent = String(learnedSkills.length);
       var box = document.getElementById("skills_list_box");
       if (!box) return;
       if (learnedSkills.length === 0) {
@@ -592,8 +1173,10 @@
       isRecording = true;
       recordedSteps = [];
       var btn = document.getElementById("btn_record_skill");
-      btn.classList.add("active");
-      btn.textContent = "⏹ Lưu Mẫu (0)";
+      if (btn) {
+        btn.classList.add("active");
+        btn.title = "Đang ghi mẫu (0 bước) — bấm để dừng & lưu";
+      }
 
       sendRust({ cmd: "set_ai_mode", mode: "bubble" });
       sendRust({
@@ -609,7 +1192,8 @@
       if (!isRecording || !stepObj) return;
       recordedSteps.push(stepObj);
       var n = recordedSteps.length;
-      document.getElementById("btn_record_skill").textContent = "⏹ Lưu Mẫu (" + n + ")";
+      var recBtn = document.getElementById("btn_record_skill");
+      if (recBtn) recBtn.title = "Đang ghi mẫu (" + n + " bước) — bấm để lưu";
       var desc = (stepObj.type || "step").toUpperCase() + " '" + (stepObj.label || stepObj.selector || "") + "'";
       sendRust({
         cmd: "sync_bubble_status",
@@ -623,16 +1207,18 @@
     window.__tpStopSkillRecordingFromRust = function () {
       isRecording = false;
       var btn = document.getElementById("btn_record_skill");
-      btn.classList.remove("active");
-      btn.textContent = "Làm mẫu";
+      if (btn) {
+        btn.classList.remove("active");
+        btn.title = "Làm mẫu 1 lần (Record thao tác web thành Skill)";
+      }
 
-      sendRust({ cmd: "set_ai_mode", mode: "dock" });
+      sendRust({ cmd: "open_chat_channel", channel: "ai" });
       sendRust({
         cmd: "sync_bubble_status",
         working: false,
         recording: false,
         status_text: "✅ Đã dừng ghi mẫu (" + recordedSteps.length + " bước)",
-        last_reply: "Mở ngăn phải để lưu Skill."
+        last_reply: "Mở cửa sổ chat để lưu Skill."
       });
 
       toggleSkillsDrawer(true);
@@ -1169,6 +1755,21 @@
         setTimeout(testAiKeyNow, 300);
       }
     };
+
+    window.addEventListener("tp_config_changed", function (ev) {
+      if (!ev || !ev.detail) return;
+      var d = ev.detail;
+      if (d.ui_theme) document.documentElement.setAttribute("data-theme", d.ui_theme);
+      if (d.ai_provider) aiConfig.provider = d.ai_provider;
+      if (d.ai_api_key !== undefined) aiConfig.api_key = d.ai_api_key;
+      if (d.ai_model) aiConfig.model = d.ai_model;
+      if (d.ai_base_url) aiConfig.base_url = normalizeOpenAiBase(d.ai_base_url);
+      if (typeof d.auto_minimize_on_task === "boolean") {
+        aiConfig.auto_minimize_on_task = d.auto_minimize_on_task;
+        document.getElementById("cfg_auto_min").checked = d.auto_minimize_on_task;
+        document.getElementById("quick_auto_min").checked = d.auto_minimize_on_task;
+      }
+    });
 
     window.addEventListener("DOMContentLoaded", function () {
       sendRust({ cmd: "ai_panel_ready" });
