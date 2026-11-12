@@ -146,8 +146,9 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
 
     function parseVn(s) {
       if (!s) return 0;
-      var t = String(s).trim().toLowerCase().replace(/[^\d.,-]/g, "");
-      if (!t) return 0;
+      var m0 = String(s).match(/([\d]+(?:[.,]\d+)*)/);
+      if (!m0) return 0;
+      var t = m0[1];
       if (t.indexOf(".") !== -1 && t.indexOf(",") !== -1) {
         t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
       } else if (t.indexOf(",") !== -1) {
@@ -172,8 +173,7 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
           var cTxt = card.innerText || "";
           var parts = cTxt.split(/so với/i);
           if (parts.length === 2) {
-            var lines = parts[0].split(/
-?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+            var lines = parts[0].split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
             for (var j = 0; j < lines.length; j++) {
               var mm = lines[j].match(/^([\d]+(?:[.,]\d+)*)/);
               if (mm) {
@@ -202,6 +202,54 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
       return bTxt.indexOf("so với ngày hôm trước") !== -1 || bTxt.indexOf("so với ngày") !== -1;
     }
 
+    function collectVirtualTableSlots(map) {
+      var vt = document.querySelector("[class*=campaign-list-table]");
+      if (!vt) return false;
+      [].slice.call(vt.querySelectorAll('[slot^="cell-"]')).forEach(function (el) {
+        var s = el.getAttribute("slot") || "";
+        var m = s.match(/^cell-([^_]+)_(.+)$/);
+        if (!m) return;
+        var cid = m[1];
+        var col = m[2];
+        var txt = (el.innerText || "").trim().replace(/\s+/g, " ");
+        if (!map[cid]) map[cid] = { id: cid };
+        if (txt || !map[cid][col]) map[cid][col] = txt;
+      });
+      return true;
+    }
+
+    function finalizeAndSend(costAds, skuOrders, cpaAds, grossRev, roi, campaigns, inps, bodyTxt) {
+      if (grossRev === 0 && costAds > 0 && roi > 0) grossRev = Math.round(costAds * roi);
+      if (roi === 0 && costAds > 0 && grossRev > 0) roi = Number((grossRev / costAds).toFixed(2));
+      if (campaigns.length === 0 && (costAds > 0 || skuOrders > 0)) {
+        campaigns.push({
+          name: "GMV Max Toàn Cửa Hàng",
+          status: "Đang hoạt động",
+          budget: 0,
+          cost: costAds,
+          orders: skuOrders,
+          sales: grossRev,
+          roas: roi
+        });
+      }
+      var payload = {
+        ts: new Date().toLocaleTimeString("vi-VN"),
+        logged_in: true,
+        captcha_active: false,
+        period_label: "Hôm nay (" + (inps[0] ? inps[0].value.trim() : "") + ")",
+        orders_ads: skuOrders,
+        cpa_ads: cpaAds,
+        sales_ads: grossRev,
+        cost_ads: costAds,
+        roas_ads: roi,
+        campaigns: campaigns,
+        live_streaming: /đang live|live now/i.test(bodyTxt)
+      };
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify(payload) }));
+      }
+    }
+
     var retryCount = 0;
     function extractAndSend() {
       var bodyTxt = (document.body && document.body.innerText) || "";
@@ -213,9 +261,50 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
       var grossRev = fromOverviewCard(function (t) { return t.indexOf("doanh thu gộp") === 0 || t.indexOf("doanh thu") === 0; });
       var roi = fromOverviewCard(function (t) { return t === "roi" || t.indexOf("roi ") === 0; });
 
-      if ((!isToday || (costAds === 0 && skuOrders === 0)) && retryCount < 4) {
+      var vtReady = !document.querySelector("[class*=campaign-list-table]") || document.querySelectorAll('[slot^="cell-"]').length > 0;
+      if ((!isToday || (costAds === 0 && skuOrders === 0) || (!vtReady && retryCount < 4)) && retryCount < 5) {
         retryCount++;
         setTimeout(extractAndSend, 1100);
+        return;
+      }
+
+      var vt = document.querySelector("[class*=campaign-list-table]");
+      var scroller = vt && vt.shadowRoot ? vt.shadowRoot.querySelector(".table__wrapper") : null;
+      if (vt && scroller) {
+        var slotMap = {};
+        var positions = [0, 1200, 2200, 3200];
+        var stepIdx = 0;
+        function sweepNext() {
+          collectVirtualTableSlots(slotMap);
+          if (stepIdx < positions.length) {
+            scroller.scrollLeft = positions[stepIdx++];
+            setTimeout(sweepNext, 220);
+            return;
+          }
+          scroller.scrollLeft = 0;
+          var campaigns = Object.keys(slotMap).map(function (cid) {
+            var r = slotMap[cid];
+            var rawName = (r.campaign_name || "").replace(/\s+(Phân tích|Chỉnh sửa)(\s+Chỉnh sửa)?$/i, "").trim();
+            var rawStatus = (r["campaign_primary_status-derived"] || r.campaign_primary_status || "Đang hoạt động").trim();
+            var budget = parseVn(r["campaign_target_roi_budget-derived"] || r.campaign_target_roi_budget || "0");
+            var cost = parseVn(r.cost || "0");
+            var orders = parseVn(r.onsite_roi2_shopping_sku || r.sku_orders || r.orders || "0");
+            var sales = parseVn(r.onsite_roi2_shopping_value || r.gross_revenue || r.revenue || "0");
+            var roas = parseVn(r.onsite_roi2_shopping_roi || r.roi || "0");
+            if (!roas && cost > 0 && sales > 0) roas = Number((sales / cost).toFixed(2));
+            return {
+              name: rawName || ("Chiến dịch " + cid),
+              status: rawStatus,
+              budget: budget,
+              cost: cost,
+              orders: orders,
+              sales: sales,
+              roas: roas
+            };
+          }).filter(function (c) { return !!c.name; });
+          finalizeAndSend(costAds, skuOrders, cpaAds, grossRev, roi, campaigns, inps, bodyTxt);
+        }
+        sweepNext();
         return;
       }
 
@@ -257,43 +346,44 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
           }
         });
       }
-      if (grossRev === 0 && costAds > 0 && roi > 0) grossRev = Math.round(costAds * roi);
-      if (roi === 0 && costAds > 0 && grossRev > 0) roi = Number((grossRev / costAds).toFixed(2));
-      var payload = {
-        ts: new Date().toLocaleTimeString("vi-VN"),
-        logged_in: true,
-        captcha_active: false,
-        period_label: "Hôm nay (" + (inps[0] ? inps[0].value.trim() : "") + ")",
-        orders_ads: skuOrders,
-        cpa_ads: cpaAds,
-        sales_ads: grossRev,
-        cost_ads: costAds,
-        roas_ads: roi,
-        campaigns: campaigns,
-        live_streaming: /đang live|live now/i.test(bodyTxt)
-      };
-      if (window.ipc && typeof window.ipc.postMessage === "function") {
-        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify(payload) }));
-      }
+      finalizeAndSend(costAds, skuOrders, cpaAds, grossRev, roi, campaigns, inps, bodyTxt);
     }
 
     if (!isTodaySelected()) {
       var inps = getDateInputs();
-      var targetInp = inps[0] || document.querySelector(".dashboard-date-picker-F08X input") || document.querySelector(".dashboard-date-picker-F08X");
+      var targetInp = inps[0] || document.querySelector(".theme-m4b-date-picker-range input") || document.querySelector(".theme-arco-picker-range input") || document.querySelector(".dashboard-date-picker-F08X input");
       if (targetInp) {
         targetInp.click();
         setTimeout(function () {
           var el = [].slice.call(document.querySelectorAll("*")).find(function (e) {
             return e.children.length <= 1 && (e.innerText || "").trim() === "Hôm nay";
           });
-          if (el) el.click();
+          if (el) {
+            var cur = el;
+            var clicked = false;
+            for (var i = 0; i < 6 && cur; i++) {
+              if (cur.tagName === "BUTTON" || cur.getAttribute("role") === "button" || cur.onclick || (cur.className && String(cur.className).indexOf("preset") !== -1)) {
+                cur.click();
+                clicked = true;
+                break;
+              }
+              cur = cur.parentElement;
+            }
+            if (!clicked) el.click();
+          }
           setTimeout(extractAndSend, 2400);
         }, 800);
         return;
       }
     }
     extractAndSend();
-  } catch (_) {}
+  } catch (err) {
+    try {
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify({ logged_in: true, error: String(err), ts: new Date().toLocaleTimeString("vi-VN"), campaigns: [] }) }));
+      }
+    } catch (_) {}
+  }
 })();"##;
 
 const SHELL_SHORTCUTS_JS: &str = r##"(function(){
@@ -5615,6 +5705,8 @@ mod tests {
         assert!(ECOM_AGENTS_JS.contains("__tpRunShopeeScan"));
         assert!(ECOM_AGENTS_JS.contains("search_order_list_index"));
         assert!(TIKTOK_PASSIVE_SCAN_JS.contains("update_platform_data"));
+        assert!(TIKTOK_PASSIVE_SCAN_JS.contains("split(\"\\n\")"));
+        assert!(TIKTOK_PASSIVE_SCAN_JS.contains("onsite_roi2_shopping_value"));
         assert!(TITLEBAR_HTML.contains("open_workspace"));
         assert!(TITLEBAR_HTML.contains("tb-worker-badge"));
         assert!(TAB_SHELL_HTML.contains("tab-worker-badge"));

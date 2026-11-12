@@ -13,7 +13,7 @@
     - Thêm `worker_kind: Option<String>` vào `BrowserTab` (`BOT` / `AI`), gán nhãn huy hiệu trên cả Tab Dọc lẫn Tab Ngang.
     - Worker Tab chạy ở lớp nền (`HWND_BOTTOM`) với kích thước thật `1366x860` + `MemoryUsageLevel::Normal` để SPA/API chạy mượt mà mà **không đổi `active_idx`**, **không gọi `webview.focus()`** và **không chiếm con trỏ chuột Windows**.
   - **AI Cowork tự mở Worker Tab riêng**: Thêm tùy chọn `quick_worker_tab` (mặc định BẬT) giúp AI Cowork tự tạo/dùng Tab ngầm `AI` để duyệt web, tìm kiếm và thao tác DOM mà không đè lên Tab người dùng đang xem.
-  - **An toàn TikTok `SecSDK` & Sửa lỗi 2FA TikTok (`extensions/uBOLite.chromium`, `src/main.rs`, `src/content_agent.js`)**: Thêm rule ưu tiên `priority: 100` (`99001`/`99002`) mở khóa `/ttwid/check/`, `mssdk`, `byteoversea`, `tiktokv` cho TikTok trong `uBOLite`, bỏ ép User-Agent `Chrome/131` cũ trên `add_tab_internal` để dùng đúng `Edge/157` đồng bộ `Sec-CH-UA`, và guard `tiktok.com` trong `content_agent.js` (`zeroXhrCount: 0`, 43/43 endpoint trả HTTP 200).
+  - **TikTok Seller Center (`TIKTOK_PASSIVE_SCAN_JS`)**: Sửa lỗi ngắt dòng RegExp (`split("\n")`), hỗ trợ quét bảng ảo Shadow DOM `<ks-virtual-table>` (quét ngang `.table__wrapper` thu đủ slot `[slot^="cell-"]`: ngân sách, chi phí, `onsite_roi2_shopping_sku`, `onsite_roi2_shopping_value`, ROI), tự bấm lọc `"Hôm nay"` trên Arco Picker (kiểm chứng thực tế khớp `5.285.934đ`, `371` đơn, `25.168.872đ`, `ROI 4.76`, đủ 10/10 chiến dịch).
   - **Kho xuất & báo cáo**: Tự lưu cache `exports/*.json`, xuất file CSV `exports/shopee_don_hang.csv` chuẩn Excel tiếng Việt (UTF-8 BOM), nút Copy báo cáo chuẩn định dạng Zalo.
 - **Sửa Lỗi Nút Cài Đặt & Khởi Động Ổn Định (`v0.5.4`)**: Đã hoàn tất trước đó.
 
