@@ -753,7 +753,11 @@
   </div>
 
   <div class="ai-footer">
-    <div class="auto-min-bar">
+    <div class="auto-min-bar" style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+      <label class="chk-row" style="font-size:11px;" title="AI tự mở Tab riêng có nhãn AI để thao tác, không đụng vào Tab anh đang xem">
+        <input id="quick_worker_tab" type="checkbox" checked />
+        <span>Chạy trên Tab ngầm AI (không chiếm Tab chính)</span>
+      </label>
       <label class="chk-row" style="font-size:11px;">
         <input id="quick_auto_min" type="checkbox" checked onchange="syncAutoMinCheckbox(this.checked)" />
         <span>Giao việc xong tự thu gọn thành Bong bóng</span>
@@ -778,6 +782,7 @@
     var recordedSteps = [];
     var currentActiveUrl = "";
     var pendingPrompt = "";
+    var currentAiTargetTabId = null;
     var isWorking = false;
 
     function extractDomain(url) {
@@ -1497,24 +1502,28 @@
         sendRust({ cmd: "set_ai_mode", mode: "bubble" });
       }
 
-      updateBubbleAndStatus(true, "⚡ AI đang đọc nội dung trang đang mở...", "Đang xử lý: " + pendingPrompt);
+      var useWorker = true;
+      var wChk = document.getElementById("quick_worker_tab");
+      if (wChk) useWorker = !!wChk.checked;
+      updateBubbleAndStatus(true, useWorker ? "⚡ AI đang chuẩn bị Tab ngầm riêng..." : "⚡ AI đang đọc nội dung trang đang mở...", "Đang xử lý: " + pendingPrompt);
 
-      // Yêu cầu Rust lấy toàn bộ ngữ cảnh DOM của Tab đang mở và danh sách các Tab
-      sendRust({ cmd: "request_dom_context_for_ai" });
+      // Yêu cầu Rust lấy ngữ cảnh DOM (trên Tab ngầm AI riêng hoặc Tab đang mở)
+      sendRust({ cmd: "request_dom_context_for_ai", use_worker: useWorker, prompt: pendingPrompt });
     };
 
-    // Rust gọi hàm này khi đã thu thập xong DOM của trang đang mở
+    // Rust gọi hàm này khi đã thu thập xong DOM của trang mục tiêu
     window.__tpReceiveDomContext = async function (ctx) {
       var prompt = pendingPrompt || "Tóm tắt trang này";
       var activeUrl = (ctx && ctx.url) || "";
       currentActiveUrl = activeUrl;
+      currentAiTargetTabId = (ctx && ctx.target_tab_id) ? ctx.target_tab_id : null;
       var activeTitle = (ctx && ctx.title) || "";
       var visibleText = (ctx && ctx.visible_text) || "";
       var elements = (ctx && ctx.elements) || [];
       var allTabs = (ctx && ctx.all_tabs) || [];
 
       document.getElementById("ctx_active_page").innerHTML =
-        "Đang nhìn: <b>" + escapeHtml(activeTitle || activeUrl || "Trang hiện tại") + "</b> (" + allTabs.length + " tab)";
+        (ctx && ctx.is_worker ? "Tab ngầm AI: <b>" : "Đang nhìn: <b>") + escapeHtml(activeTitle || activeUrl || "Trang hiện tại") + "</b> (" + allTabs.length + " tab)";
 
       updateBubbleAndStatus(true, "🔵 AI đang phân tích & áp dụng Skill...", "Đang phân tích trang: " + activeTitle);
 
@@ -1535,6 +1544,7 @@
             appendMessage("system", "⚡ Thực thi trên trang: <b>" + escapeHtml(JSON.stringify(act)) + "</b>");
             sendRust({
               cmd: "execute_dom_action",
+              target_tab_id: currentAiTargetTabId,
               action_json: JSON.stringify(act)
             });
             await new Promise(function (r) { setTimeout(r, 420); });

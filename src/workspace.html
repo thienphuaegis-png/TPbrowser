@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="obsidian-gold">
+<head>
+<meta charset="UTF-8" />
+<title>TPbrowser — Không Gian Làm Việc TMĐT</title>
+<link id="tp_favicon" rel="icon" type="image/png" href="" />
+<style>
+/*__TP_FONT_FACE__*/
+  :root, html[data-theme="obsidian-gold"] {
+    color-scheme: dark;
+    --font-heading: "Cormorant Garamond Gnosis", "Cormorant Garamond", Georgia, serif;
+    --bg-base: #0B0C0E;
+    --bg-card: rgba(20, 23, 30, 0.94);
+    --bg-card-2: rgba(14, 16, 22, 0.96);
+    --gold-bright: #E2BE68;
+    --gold-main: #C99B3B;
+    --gold-line: rgba(212, 175, 55, 0.28);
+    --text-main: #F5F2EB;
+    --text-sub: #C8C0B0;
+    --text-muted: #8E8779;
+    --cta-bg: linear-gradient(135deg, #E2BE68 0%, #B5872E 100%);
+    --cta-fg: #140F05;
+    --ok-bg: rgba(16, 185, 129, 0.14);
+    --ok-fg: #34D399;
+    --warn-bg: rgba(239, 68, 68, 0.14);
+    --warn-fg: #FCA5A5;
+  }
+
+  html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
+    color-scheme: light;
+    --bg-base: #F6F2EA;
+    --bg-card: #FFFFFF;
+    --bg-card-2: #FBF8F2;
+    --gold-bright: #8A5E10;
+    --gold-main: #A6731A;
+    --gold-line: rgba(154, 107, 22, 0.28);
+    --text-main: #18130C;
+    --text-sub: #3D3222;
+    --text-muted: #61533E;
+    --cta-bg: linear-gradient(135deg, #C79535 0%, #9A6B16 100%);
+    --cta-fg: #FFFFFF;
+    --ok-bg: rgba(21, 128, 61, 0.10);
+    --ok-fg: #166534;
+    --warn-bg: rgba(220, 38, 38, 0.10);
+    --warn-fg: #991B1B;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg-base);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    padding: 20px 24px 40px;
+    line-height: 1.45;
+  }
+
+  .wrap {
+    max-width: 1260px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .top-hero {
+    background: var(--bg-card);
+    border: 1px solid var(--gold-line);
+    border-radius: 16px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .hero-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .hero-left img {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    object-fit: contain;
+  }
+  .hero-left h1 {
+    font-family: var(--font-heading);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--gold-bright);
+    line-height: 1.15;
+  }
+  .hero-left p {
+    font-size: 12px;
+    color: var(--text-sub);
+  }
+
+  .hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    border: 1px solid var(--gold-line);
+    background: var(--bg-card-2);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 0.15s ease, transform 0.12s ease;
+  }
+  .btn:hover { border-color: var(--gold-bright); }
+  .btn:active { transform: scale(0.97); }
+  .btn.cta {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    border-color: transparent;
+    font-weight: 700;
+  }
+  .btn.active-auto {
+    background: var(--ok-bg);
+    color: var(--ok-fg);
+    border-color: var(--ok-fg);
+  }
+
+  .worker-strip {
+    background: var(--bg-card);
+    border: 1px solid var(--gold-line);
+    border-radius: 14px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .strip-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .strip-head b {
+    font-size: 12.5px;
+    color: var(--gold-bright);
+    letter-spacing: 0.3px;
+  }
+  .strip-head span {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .worker-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+  }
+  .w-card {
+    background: var(--bg-card-2);
+    border: 1px solid var(--gold-line);
+    border-radius: 11px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .w-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+  .w-name { font-size: 12.5px; font-weight: 700; }
+  .w-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--ok-bg);
+    color: var(--ok-fg);
+  }
+  .w-badge.warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .w-meta { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .w-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .w-mini {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--gold-line);
+    background: transparent;
+    color: var(--text-sub);
+    cursor: pointer;
+  }
+  .w-mini:hover { border-color: var(--gold-bright); color: var(--text-main); }
+
+  .cols-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--gold-line);
+    border-radius: 16px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--gold-line);
+  }
+  .panel-head h2 {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gold-bright);
+  }
+  .ts-lbl { font-size: 11px; color: var(--text-muted); }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+    gap: 10px;
+  }
+  .kpi {
+    background: var(--bg-card-2);
+    border: 1px solid var(--gold-line);
+    border-radius: 11px;
+    padding: 10px 12px;
+  }
+  .kpi .k-lbl { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+  .kpi .k-val { font-size: 18px; font-weight: 700; color: var(--text-main); margin-top: 2px; }
+  .kpi .k-sub { font-size: 10.5px; color: var(--gold-bright); margin-top: 2px; }
+
+  .tbl-wrap {
+    overflow-x: auto;
+    max-height: 290px;
+    border: 1px solid var(--gold-line);
+    border-radius: 10px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+  }
+  th, td {
+    padding: 7px 9px;
+    text-align: left;
+    border-bottom: 1px solid var(--gold-line);
+  }
+  th {
+    background: var(--bg-card-2);
+    color: var(--gold-bright);
+    font-weight: 700;
+    position: sticky;
+    top: 0;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  .alert-box {
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 11.5px;
+    display: none;
+  }
+
+  .log-box {
+    background: var(--bg-card-2);
+    border: 1px solid var(--gold-line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    max-height: 150px;
+    overflow-y: auto;
+    font-family: Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-sub);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  @media (max-width: 960px) {
+    .cols-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top-hero">
+      <div class="hero-left">
+        <img id="ws_brand_icon" alt="TPbrowser" />
+        <div>
+          <h1>Không Gian Làm Việc TMĐT &amp; Tab Ngầm</h1>
+          <p>Lấy dữ liệu Shopee (Đơn hàng + PAS) &amp; TikTok Seller song song trên Tab ngầm — không chiếm chuột, không đổi Tab đang xem.</p>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <button type="button" class="btn cta" onclick="runScan('all')">⚡ Quét Tất Cả Ngầm</button>
+        <button type="button" class="btn" onclick="runScan('shopee_orders')">🟠 Quét Đơn Shopee</button>
+        <button type="button" class="btn" onclick="runScan('shopee_pas')">📈 Quét Shopee PAS</button>
+        <button type="button" class="btn" onclick="runScan('tiktok')">🎵 Quét TikTok Hôm nay</button>
+        <button type="button" class="btn" id="btn_auto_scan" onclick="toggleAutoScan()">⏱ Tự động: Tắt</button>
+        <button type="button" class="btn" onclick="exportShopeeCsv()">📥 Xuất CSV Đơn</button>
+        <button type="button" class="btn" onclick="copyReportText()">📋 Copy Báo Cáo</button>
+      </div>
+    </div>
+
+    <div class="worker-strip">
+      <div class="strip-head">
+        <b>CÁC TAB NGẦM ĐANG QUẢN LÝ (Dùng chung Cookie • Lớp dưới không chiếm chuột)</b>
+        <span id="ws_status_banner">Sẵn sàng — bấm "Quét Tất Cả Ngầm" để bắt đầu</span>
+      </div>
+      <div class="worker-cards" id="ws_worker_cards"></div>
+    </div>
+
+    <div class="cols-2">
+      <!-- SHOPEE PANEL -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Shopee Kênh Người Bán</h2>
+          <span class="ts-lbl" id="sp_ts">Chưa có dữ liệu</span>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="k-lbl">Chờ lấy hàng</div>
+            <div class="k-val" id="sp_toship">—</div>
+            <div class="k-sub" id="sp_express">Hỏa tốc: —</div>
+          </div>
+          <div class="kpi">
+            <div class="k-lbl">Đang giao / Đã quét</div>
+            <div class="k-val" id="sp_shipping">—</div>
+            <div class="k-sub" id="sp_scanned">Đã đọc: — đơn</div>
+          </div>
+          <div class="kpi">
+            <div class="k-lbl">PAS Doanh số</div>
+            <div class="k-val" id="sp_pas_sales">—</div>
+            <div class="k-sub" id="sp_pas_cost">Chi phí: —</div>
+          </div>
+          <div class="kpi">
+            <div class="k-lbl">PAS ROAS / Đơn</div>
+            <div class="k-val" id="sp_pas_roas">—</div>
+            <div class="k-sub" id="sp_pas_orders">Đơn QC: —</div>
+          </div>
+        </div>
+
+        <div class="alert-box" id="sp_anomaly_box"></div>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Chiến dịch Shopee PAS</th>
+                <th>Ngân sách</th>
+                <th>Chi phí</th>
+                <th>Doanh số</th>
+                <th>ROAS</th>
+                <th>ACOS</th>
+              </tr>
+            </thead>
+            <tbody id="sp_pas_tbody">
+              <tr><td colspan="6" style="color:var(--text-muted); text-align:center;">Bấm "Quét Shopee PAS" để nạp danh sách chiến dịch.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TIKTOK PANEL -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>TikTok Seller Ads (Hôm nay)</h2>
+          <span class="ts-lbl" id="tt_ts">Chưa có dữ liệu</span>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="k-lbl">Chi phí Ads</div>
+            <div class="k-val" id="tt_cost">—</div>
+            <div class="k-sub" id="tt_period">Kỳ: Hôm nay</div>
+          </div>
+          <div class="kpi">
+            <div class="k-lbl">Đơn hàng SKU</div>
+            <div class="k-val" id="tt_orders">—</div>
+            <div class="k-sub" id="tt_cpa">CPA: —</div>
+          </div>
+          <div class="kpi">
+            <div class="k-lbl">Doanh thu gộp</div>
+            <div class="k-val" id="tt_sales">—</div>
+            <div class="k-sub" id="tt_live">Live: —</div>
+          </div>
+          <div class="kpi">
+            <div class="k-lbl">ROI tổng</div>
+            <div class="k-val" id="tt_roi">—</div>
+            <div class="k-sub">IIFE ẩn danh SecSDK</div>
+          </div>
+        </div>
+
+        <div class="alert-box" id="tt_captcha_box"></div>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Chiến dịch TikTok</th>
+                <th>Ngân sách</th>
+                <th>Chi phí</th>
+                <th>Đơn</th>
+                <th>Doanh thu</th>
+                <th>ROI</th>
+              </tr>
+            </thead>
+            <tbody id="tt_tbody">
+              <tr><td colspan="6" style="color:var(--text-muted); text-align:center;">Bấm "Quét TikTok Hôm nay" để nạp chiến dịch.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Nhật Ký Chạy Ngầm</h2>
+        <span class="ts-lbl">Theo dõi tiến trình Worker Tab &amp; AI Cowork</span>
+      </div>
+      <div class="log-box" id="ws_log_box">
+        <div>• Khởi tạo Không Gian Làm Việc TMĐT TPbrowser.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>/*__TP_BRAND_ASSETS_JS__*/</script>
+  <script>
+    var currentTheme = document.documentElement.getAttribute("data-theme") || "obsidian-gold";
+    var currentLogoStyle = "ribbon";
+    var autoScanEnabled = false;
+    var lastData = { shopee_orders: null, shopee_pas: null, tiktok: null };
+
+    function sendRust(payload) {
+      try {
+        if (window.ipc && typeof window.ipc.postMessage === "function") {
+          window.ipc.postMessage(JSON.stringify(payload));
+        }
+      } catch (_) {}
+    }
+
+    function fmtVnd(n) {
+      var v = Math.round(Number(n || 0));
+      return v ? v.toLocaleString("vi-VN") + "đ" : "0đ";
+    }
+
+    function esc(s) {
+      return String(s || "").replace(/[&<>"']/g, function (c) {
+        return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c];
+      });
+    }
+
+    function syncWorkspaceBrand() {
+      if (window.__tpSetFavicon && window.__tpResolveBrandAsset) {
+        window.__tpSetFavicon("tp_favicon", "app", currentLogoStyle, currentTheme);
+      }
+      var img = document.getElementById("ws_brand_icon");
+      if (img && window.__tpResolveBrandAsset) {
+        var src = window.__tpResolveBrandAsset("app", currentLogoStyle, currentTheme);
+        if (src) img.src = src;
+      }
+    }
+
+    function runScan(scope) {
+      sendRust({ cmd: "run_ecom_scan", scope: scope || "all" });
+    }
+
+    function toggleAutoScan() {
+      autoScanEnabled = !autoScanEnabled;
+      sendRust({ cmd: "set_ecom_auto_scan", enabled: autoScanEnabled });
+      renderAutoBtn();
+    }
+
+    function renderAutoBtn() {
+      var btn = document.getElementById("btn_auto_scan");
+      if (!btn) return;
+      btn.textContent = autoScanEnabled ? "⏱ Tự động: 15 phút" : "⏱ Tự động: Tắt";
+      btn.classList.toggle("active-auto", autoScanEnabled);
+    }
+
+    function exportShopeeCsv() {
+      sendRust({ cmd: "export_shopee_csv" });
+    }
+
+    function copyReportText() {
+      var sp = lastData.shopee_orders || {};
+      var pas = lastData.shopee_pas || {};
+      var tt = lastData.tiktok || {};
+      var lines = [
+        "📊 BÁO CÁO NHANH SÀN TMĐT (" + new Date().toLocaleTimeString("vi-VN") + ")",
+        "🟠 SHOPEE: Chờ lấy " + (sp.to_ship || 0) + " | Đang giao " + (sp.shipping || 0) + " | Hỏa tốc " + (sp.express_orders || 0) + " | Đơn bất thường: " + ((sp.anomalies && sp.anomalies.length) || 0),
+        "   • PAS: DS " + fmtVnd(pas.sales_ads || 0) + " | CP " + fmtVnd(pas.cost_ads || 0) + " | ROAS " + (pas.roas_ads || 0),
+        "🎵 TIKTOK: DS " + fmtVnd(tt.sales_ads || 0) + " | CP " + fmtVnd(tt.cost_ads || 0) + " | Đơn SKU " + (tt.orders_ads || 0) + " | ROI " + (tt.roas_ads || 0)
+      ];
+      var text = lines.join("\n");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          document.getElementById("ws_status_banner").textContent = "✅ Đã copy báo cáo nhanh vào Clipboard!";
+        }).catch(function () {});
+      }
+    }
+
+    window.__tpSyncWorkspace = function (st) {
+      if (!st) return;
+      if (st.ui_theme) {
+        currentTheme = st.ui_theme;
+        document.documentElement.setAttribute("data-theme", currentTheme);
+      }
+      if (st.logo_style) currentLogoStyle = st.logo_style;
+      syncWorkspaceBrand();
+
+      if (typeof st.auto_scan === "boolean") {
+        autoScanEnabled = st.auto_scan;
+        renderAutoBtn();
+      }
+      if (st.status_text) {
+        document.getElementById("ws_status_banner").textContent = st.status_text;
+      }
+
+      // Render Worker Tabs
+      var cardsEl = document.getElementById("ws_worker_cards");
+      var workers = st.worker_tabs || [];
+      if (workers.length === 0) {
+        cardsEl.innerHTML = '<div class="w-card"><div class="w-top"><span class="w-name">Chưa có Tab ngầm nào đang mở</span><span class="w-badge">Nhàn rỗi</span></div><div class="w-meta">Khi anh bấm Quét hoặc giao việc cho AI Cowork, Tab ngầm sẽ tự mở &amp; chạy tại đây.</div></div>';
+      } else {
+        var html = "";
+        for (var i = 0; i < workers.length; i++) {
+          var w = workers[i];
+          var isWarn = /lỗi|captcha|đăng nhập/i.test(w.status || "");
+          html += '<div class="w-card">' +
+            '<div class="w-top">' +
+              '<span class="w-name">[' + esc((w.worker_kind || "BOT").toUpperCase()) + '] ' + esc(w.title || w.url) + '</span>' +
+              '<span class="w-badge ' + (isWarn ? 'warn' : '') + '">' + esc(w.status || 'Đang chạy ngầm') + '</span>' +
+            '</div>' +
+            '<div class="w-meta">' + esc(w.url) + '</div>' +
+            '<div class="w-btns">' +
+              '<button type="button" class="w-mini" onclick="sendRust({cmd:\'focus_tab_by_id\', tab_id:' + w.id + '})">👁 Mở xem Tab</button>' +
+              '<button type="button" class="w-mini" onclick="sendRust({cmd:\'close_tab_by_id\', tab_id:' + w.id + '})">✕ Đóng</button>' +
+            '</div>' +
+          '</div>';
+        }
+        cardsEl.innerHTML = html;
+      }
+
+      // Shopee Orders
+      if (st.shopee_orders) {
+        lastData.shopee_orders = st.shopee_orders;
+        var sp = st.shopee_orders;
+        document.getElementById("sp_ts").textContent = "Cập nhật: " + (sp.ts || "vừa xong");
+        document.getElementById("sp_toship").textContent = sp.to_ship !== undefined ? sp.to_ship : "0";
+        document.getElementById("sp_express").textContent = "Hỏa tốc: " + (sp.express_orders || 0);
+        document.getElementById("sp_shipping").textContent = sp.shipping !== undefined ? sp.shipping : "0";
+        document.getElementById("sp_scanned").textContent = "Đã đọc: " + (sp.scanned_orders || 0) + " đơn";
+
+        var anomBox = document.getElementById("sp_anomaly_box");
+        if (sp.need_login) {
+          anomBox.style.display = "block";
+          anomBox.innerHTML = "⚠️ Worker Shopee cần đăng nhập 1 lần. Bấm <b>👁 Mở xem Tab</b> ở trên để đăng nhập tài khoản Kênh Người Bán.";
+        } else if (Array.isArray(sp.anomalies) && sp.anomalies.length > 0) {
+          anomBox.style.display = "block";
+          anomBox.innerHTML = "<b>⚠️ Phát hiện " + sp.anomalies.length + " dòng giá bất thường:</b> " +
+            sp.anomalies.slice(0, 4).map(function (a) {
+              return esc(a.order_sn) + " (" + esc(a.item_name).slice(0, 36) + ": " + fmtVnd(a.effective_price) + " — " + esc((a.reasons || []).join(", ")) + ")";
+            }).join(" • ");
+        } else {
+          anomBox.style.display = "none";
+        }
+      }
+
+      // Shopee PAS
+      if (st.shopee_pas) {
+        lastData.shopee_pas = st.shopee_pas;
+        var pas = st.shopee_pas;
+        document.getElementById("sp_pas_sales").textContent = fmtVnd(pas.sales_ads || 0);
+        document.getElementById("sp_pas_cost").textContent = "Chi phí: " + fmtVnd(pas.cost_ads || 0);
+        document.getElementById("sp_pas_roas").textContent = pas.roas_ads || 0;
+        document.getElementById("sp_pas_orders").textContent = "Đơn QC: " + (pas.orders_ads || 0);
+        var tb = document.getElementById("sp_pas_tbody");
+        var camps = pas.campaigns || [];
+        if (camps.length > 0) {
+          tb.innerHTML = camps.map(function (c) {
+            return "<tr><td><b>" + esc(c.name) + "</b><br/><span style='color:var(--text-muted);font-size:10px;'>" + esc(c.status) + "</span></td>" +
+              "<td>" + esc(c.budget_raw || fmtVnd(c.budget)) + "</td>" +
+              "<td>" + fmtVnd(c.cost) + "</td>" +
+              "<td>" + fmtVnd(c.sales) + "</td>" +
+              "<td><b>" + esc(c.roas) + "</b></td>" +
+              "<td>" + esc(c.acos) + "%</td></tr>";
+          }).join("");
+        }
+      }
+
+      // TikTok
+      if (st.tiktok) {
+        lastData.tiktok = st.tiktok;
+        var tt = st.tiktok;
+        document.getElementById("tt_ts").textContent = "Cập nhật: " + (tt.ts || "vừa xong");
+        document.getElementById("tt_cost").textContent = fmtVnd(tt.cost_ads || 0);
+        document.getElementById("tt_period").textContent = tt.period_label || "Hôm nay";
+        document.getElementById("tt_orders").textContent = tt.orders_ads !== undefined ? tt.orders_ads : "0";
+        document.getElementById("tt_cpa").textContent = "CPA: " + fmtVnd(tt.cpa_ads || 0);
+        document.getElementById("tt_sales").textContent = fmtVnd(tt.sales_ads || 0);
+        document.getElementById("tt_live").textContent = tt.live_streaming ? "🔴 Đang Live" : "Phiên thường";
+        document.getElementById("tt_roi").textContent = tt.roas_ads || 0;
+
+        var capBox = document.getElementById("tt_captcha_box");
+        if (tt.captcha_active) {
+          capBox.style.display = "block";
+          capBox.innerHTML = "🧩 TikTok đang yêu cầu kéo mảnh ghép CAPTCHA. Bấm <b>👁 Mở xem Tab</b> ở khung Tab ngầm phía trên để anh kéo 1 lần.";
+        } else if (tt.need_login) {
+          capBox.style.display = "block";
+          capBox.innerHTML = "⚠️ TikTok Seller chưa đăng nhập. Bấm <b>👁 Mở xem Tab</b> ở khung Tab ngầm phía trên để đăng nhập.";
+        } else {
+          capBox.style.display = "none";
+        }
+
+        var ttb = document.getElementById("tt_tbody");
+        var tcamps = tt.campaigns || [];
+        if (tcamps.length > 0) {
+          ttb.innerHTML = tcamps.map(function (c) {
+            return "<tr><td><b>" + esc(c.name) + "</b><br/><span style='color:var(--text-muted);font-size:10px;'>" + esc(c.status) + "</span></td>" +
+              "<td>" + fmtVnd(c.budget) + "</td>" +
+              "<td>" + fmtVnd(c.cost) + "</td>" +
+              "<td>" + esc(c.orders) + "</td>" +
+              "<td>" + fmtVnd(c.sales) + "</td>" +
+              "<td><b>" + esc(c.roas) + "</b></td></tr>";
+          }).join("");
+        }
+      }
+
+      if (Array.isArray(st.logs)) {
+        var lb = document.getElementById("ws_log_box");
+        lb.innerHTML = st.logs.map(function (l) {
+          return "<div>" + esc(l) + "</div>";
+        }).join("");
+        lb.scrollTop = lb.scrollHeight;
+      }
+    };
+
+    window.addEventListener("tp_config_changed", function (ev) {
+      if (ev && ev.detail) {
+        if (ev.detail.ui_theme) {
+          currentTheme = ev.detail.ui_theme;
+          document.documentElement.setAttribute("data-theme", currentTheme);
+        }
+        if (ev.detail.logo_style) currentLogoStyle = ev.detail.logo_style;
+        syncWorkspaceBrand();
+      }
+    });
+
+    syncWorkspaceBrand();
+    sendRust({ cmd: "ui_shell_ready", shell: "workspace" });
+  </script>
+</body>
+</html>

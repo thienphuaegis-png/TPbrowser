@@ -1,26 +1,29 @@
 # STATE.md — TPbrowser (`D:\Projects_Hermes\TPbrowser`)
 
-**Checkpoint:** `v0.5.4-settings-fix-and-startup-stability` (2026-11-12)
-**Dự án:** `TPbrowser` — Trình duyệt cá nhân Rust (`tao` + `wry` / WebView2), giao diện **AURELIA**, **Thanh trên Icon-First tích hợp Tab Ngang + URL ngắn**, **Favicon thật trên từng Tab**, **Kéo giãn Tab Dọc tự do**, **Cửa sổ Chat tối giản**, **Bộ Logo & App Icon**, **Universal MCP Server**, AI Cowork & `uBlock Origin Lite`.
+**Checkpoint:** `v0.5.5-ecommerce-workspace-and-background-workers` (2026-11-12)
+**Dự án:** `TPbrowser` — Trình duyệt cá nhân Rust (`tao` + `wry` / WebView2), giao diện **AURELIA**, **Màn hình làm việc riêng TMĐT (`tp://workspace`)**, **Worker Tabs chạy ngầm không chiếm chuột**, **Thanh trên Icon-First tích hợp Tab Ngang + URL ngắn**, **Favicon thật trên từng Tab**, **Kéo giãn Tab Dọc tự do**, **Cửa sổ Chat tối giản**, **Bộ Logo & App Icon**, **Universal MCP Server**, AI Cowork & `uBlock Origin Lite`.
 
 ---
 
 ## 1. Phiên Hiện Tại
 
-- **Sửa Toàn Diện Lỗi Nút Cài Đặt & Ổn Định Khởi Động (`src/main.rs`, `src/settings_modal.html`, `src/titlebar.html`, `src/tab_shell.html`, `src/newtab.html`, `src/history.html`, `src/chat_header.html`, `src/dock_resizer.html`, `src/sidebar_resizer.html`)**:
-  - **Giữ đúng Tab Cài Đặt đang mở**: `build_config_payload_json(None)` gửi `open_section: ""` thay vì luôn reset về `"look_feel"`; đồng bộ `set_settings_section`; bỏ hẳn `spawn_titlebar_hover_watcher` gây spam `sync_all_ui()`.
-  - **Bỏ `sw_compact_titlebar` & Thêm `startup_mode`**: Thanh trên luôn cố định `40px`; thêm lựa chọn `Khi mở TPbrowser (Khởi động)` trong Tab 2 (`Khôi phục Tab cũ` với đúng `active_idx` | `Mở Tab mới sạch`), parse JSON chuẩn bằng `parse_json()` cho `save_setting` và `save_ai_config`.
-  - **Sửa CSS Tab 4, Gemini URL & Mô tả Tab 1**: Style `.zs-input`, đổi `.pill-btn.primary` → `.pill-btn.cta`, `var(--border-col)` → `var(--gold-line)`, sửa `.setting-info > b`, giữ nguyên Base URL khi chọn `Gemini Direct`.
-  - **Khởi động đồng bộ 0-Flash**: Tính sẵn `compute_shell_layout` trước khi tạo WebView con, tiêm `ui_theme` + `window.__TP_BOOTSTRAP__` vào `titlebar.html` / `tab_shell.html` từ frame đầu tiên, bổ sung bắt tay `ui_shell_ready` + `boot_settle`, ẩn sạch WebView phụ lúc tạo.
-- **Tinh gọn Giao Diện Icon-First, Favicon Tab & Kéo Giãn Tab Dọc Tự Do (`v0.5.3`)**: Đã hoàn tất trước đó.
+- **Tích hợp Màn Hình Làm Việc Riêng TMĐT & Worker Tab Chạy Ngầm (`src/main.rs`, `src/workspace.html`, `src/ecom_agents.js`, `src/titlebar.html`, `src/tab_shell.html`, `src/ai_panel.html`)**:
+  - **Màn hình làm việc riêng `tp://workspace`**: Mở nhanh bằng nút icon trên thanh trên (`Alt+W`), giao diện AURELIA Sáng/Tối đồng bộ, quản lý quét song song **Shopee (Đơn hàng + Kiểm toán giá bất thường + Quảng cáo PAS)** và **TikTok Seller (KPI Hôm nay + Bảng Chiến dịch)**.
+  - **Nguyên tắc Không chiếm chuột & Không cướp Tab**:
+    - Thêm `worker_kind: Option<String>` vào `BrowserTab` (`BOT` / `AI`), gán nhãn huy hiệu trên cả Tab Dọc lẫn Tab Ngang.
+    - Worker Tab chạy ở lớp nền (`HWND_BOTTOM`) với kích thước thật `1366x860` + `MemoryUsageLevel::Normal` để SPA/API chạy mượt mà mà **không đổi `active_idx`**, **không gọi `webview.focus()`** và **không chiếm con trỏ chuột Windows**.
+  - **AI Cowork tự mở Worker Tab riêng**: Thêm tùy chọn `quick_worker_tab` (mặc định BẬT) giúp AI Cowork tự tạo/dùng Tab ngầm `AI` để duyệt web, tìm kiếm và thao tác DOM mà không đè lên Tab người dùng đang xem.
+  - **An toàn TikTok `SecSDK`**: Giữ nguyên kiến trúc IIFE ẩn danh, không đổi User-Agent, không đụng `navigator.webdriver`.
+  - **Kho xuất & báo cáo**: Tự lưu cache `exports/*.json`, xuất file CSV `exports/shopee_don_hang.csv` chuẩn Excel tiếng Việt (UTF-8 BOM), nút Copy báo cáo chuẩn định dạng Zalo.
+- **Sửa Lỗi Nút Cài Đặt & Khởi Động Ổn Định (`v0.5.4`)**: Đã hoàn tất trước đó.
 
 ---
 
 ## 2. Bằng Chứng Kiểm Thử
 
-- **Rust Unit Tests (`cargo test`)**: `15 passed; 0 failed` (bao gồm `test_settings_modal_and_startup_stability`, `test_compact_icon_ui_and_sidebar_resizer`, `test_brand_logo_and_icon_assets`).
+- **Rust Unit Tests (`cargo test`)**: `16 passed; 0 failed` (bao gồm `test_workspace_and_background_worker_tabs`, `test_settings_modal_and_startup_stability`, `test_compact_icon_ui_and_sidebar_resizer`, `test_brand_logo_and_icon_assets`).
 - **Build Release (`cargo build --release`)**: `0 errors, 0 warnings`, đã deploy ra `TPbrowser.exe`.
-- **Kiểm chứng sống & thị giác (`TPbrowser.exe` + MCP `tp_eval_js` + `PrintWindow` + `vision_analyze`)**: Xác nhận trên bản chạy thật — Tab 2 (`startup_mode`, `sidebar_collapsed`), Tab 3, Tab 4 (`snap_settings_tab2.png`, `snap_settings_tab4.png`), Tab 5 đều giữ nguyên tab khi bấm nút và lưu trạng thái đúng; cold-startup render đủ theme, favicon, Google profile.
+- **Kiểm chứng sống & thị giác (`TPbrowser.exe` + MCP + `PrintWindow` + `vision_analyze`)**: Xác nhận qua `live_workspace_view.png` (`tp://workspace` hiển thị chuẩn), `live_workspace_scanning.png` (3 tab ngầm `[BOT]` Shopee đơn, Shopee PAS, TikTok Ads chạy song song và cập nhật tiến trình vào dashboard mà không chiếm chuột hay cướp tab đang xem), và `live_user_tab_uninterrupted.png` (Tab 0 của người dùng hoàn toàn nguyên vẹn, giữ trọn focus).
 - **Kiểm tra Checkpoint Trio (`pytest -q tests/test_checkpoint_integrity.py`)**: Đầy đủ `AGENTS.md`, `CLAUDE.md`, `STATE.md` (< 100 dòng), `MAP.html`, `PROJECT_STATE.json`.
 
 ---

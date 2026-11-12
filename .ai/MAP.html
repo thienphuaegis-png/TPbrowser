@@ -156,9 +156,10 @@
       <div class="filters">
         <button class="f-btn active" data-cat="ALL" onclick="filterTasks('ALL', this)">Tất cả</button>
         <button class="f-btn" data-cat="UI" onclick="filterTasks('UI', this)">UI / AURELIA</button>
-        <button class="f-btn" data-cat="AI" onclick="filterTasks('AI', this)">AI Cowork & Skill</button>
+        <button class="f-btn" data-cat="ECOM" onclick="filterTasks('ECOM', this)">Sàn TMĐT</button>
+        <button class="f-btn" data-cat="AI" onclick="filterTasks('AI', this)">AI Cowork &amp; Skill</button>
         <button class="f-btn" data-cat="ADBLOCK" onclick="filterTasks('ADBLOCK', this)">Chặn Quảng Cáo</button>
-        <button class="f-btn" data-cat="CORE" onclick="filterTasks('CORE', this)">Nhân Rust & Tab</button>
+        <button class="f-btn" data-cat="CORE" onclick="filterTasks('CORE', this)">Nhân Rust &amp; Tab</button>
       </div>
       <div id="task_list"></div>
     </div>
@@ -183,7 +184,8 @@
       { id: "t14", cat: "UI", title: "Chuẩn hóa Phím tắt Chrome/Zen (Alt) & Sửa mất 3 nút AI/FB/Zalo trên YouTube (Trusted Types)", done: true, note: "Loại bỏ hoàn toàn innerHTML trong content_agent.js (dùng createElement/createElementNS + MutationObserver), chuẩn hóa phím tắt toàn trình duyệt, tinh gọn Tab Ngang 36px." },
       { id: "t15", cat: "UI", title: "Tích hợp Bộ Logo & App Icon Thương Hiệu (Dải Lụa 3D & Mũi Tên)", done: true, note: "Tách nền sạch 2 bộ Sáng/Tối, nhúng tpbrowser.ico vào .exe qua build.rs, đồng bộ WM_SETICON (Taskbar/Titlebar) & UI (Titlebar 24px, Settings 30px, NewTab Logo, Favicon), cho phép đổi Bộ 1/Bộ 2 trong Cài Đặt." },
       { id: "t16", cat: "UI", title: "Giao diện Icon-First, Favicon Tab, URL ngắn + Tab Ngang, Bỏ thanh trên Chat & Kéo giãn Tab Dọc", done: true, note: "Logo TP mở Cài đặt; bỏ thanh chuyển kênh Chat (AI 0px, FB/Zalo mini 28px); ưu tiên icon+tooltip; Tab lấy Favicon & Title thật; kéo giãn Tab Dọc tự do (sidebar_resizer_shell)." },
-      { id: "t17", cat: "UI", title: "Sửa Lỗi Nút Cài Đặt & Ổn Định Khởi Động TPbrowser", done: true, note: "Giữ đúng Tab Cài đặt khi bấm nút (open_section=''), bỏ sw_compact_titlebar & titlebar hover watcher, thêm startup_mode (restore/newtab), sửa CSS Tab 4 (.zs-input, cta, --gold-line), tiêm window.__TP_BOOTSTRAP__ + ui_shell_ready ổn định cold-startup." }
+      { id: "t17", cat: "UI", title: "Sửa Lỗi Nút Cài Đặt & Ổn Định Khởi Động TPbrowser", done: true, note: "Giữ đúng Tab Cài đặt khi bấm nút (open_section=''), bỏ sw_compact_titlebar & titlebar hover watcher, thêm startup_mode (restore/newtab), sửa CSS Tab 4 (.zs-input, cta, --gold-line), tiêm window.__TP_BOOTSTRAP__ + ui_shell_ready ổn định cold-startup." },
+      { id: "t18", cat: "ECOM", title: "Màn Hình Làm Việc TMĐT (tp://workspace) & Worker Tabs Chạy Ngầm Không Chiếm Chuột", done: true, note: "Quét Shopee (Đơn hàng + PAS) và TikTok Seller trên Worker Tab ngầm (gán nhãn BOT); AI Cowork tự mở Tab ngầm (nhãn AI) không chiếm Tab người dùng; xuất CSV UTF-8 BOM và Copy báo cáo." }
     ];
 
     document.getElementById("ver_lbl").textContent = ROADMAP_VERSION;

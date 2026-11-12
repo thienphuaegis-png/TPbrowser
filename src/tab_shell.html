@@ -307,6 +307,24 @@
     flex: 1;
     min-width: 0;
   }
+  .tab-worker-badge {
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 5px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+  }
+  .tab-worker-badge.bot {
+    background: rgba(245, 158, 11, 0.18);
+    color: #D97706;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+  }
+  .tab-worker-badge.ai {
+    background: rgba(16, 185, 129, 0.16);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.45);
+  }
   .tab-title {
     font-size: 12px;
     font-weight: 500;
@@ -599,7 +617,7 @@
 
     function resolveTabFavicon(t) {
       if (!t) return "";
-      if (t.url === "tp://newtab" || t.url === "tp://history") {
+      if (t.url === "tp://newtab" || t.url === "tp://history" || t.url === "tp://workspace") {
         return window.__tpResolveBrandAsset ? window.__tpResolveBrandAsset("app", currentLogoStyle, currentTheme) : "";
       }
       if (t.favicon) return t.favicon;
@@ -735,6 +753,13 @@
           tDiv.textContent = title;
           meta.appendChild(tDiv);
           row.appendChild(meta);
+
+          if (t.worker_kind === "bot" || t.worker_kind === "ai") {
+            var wb = document.createElement("span");
+            wb.className = "tab-worker-badge hide-when-collapsed " + t.worker_kind;
+            wb.textContent = t.worker_kind === "ai" ? "AI" : "BOT";
+            row.appendChild(wb);
+          }
 
           if (tabs.length > 1) {
             var cls = document.createElement("button");

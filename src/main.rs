@@ -115,6 +115,7 @@ const CHROME_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Apple
 const TAB_SHELL_HTML: &str = include_str!("tab_shell.html");
 const NEWTAB_HTML: &str = include_str!("newtab.html");
 const HISTORY_HTML: &str = include_str!("history.html");
+const WORKSPACE_HTML: &str = include_str!("workspace.html");
 const AI_PANEL_HTML: &str = include_str!("ai_panel.html");
 const CHAT_HEADER_HTML: &str = include_str!("chat_header.html");
 const TITLEBAR_HTML: &str = include_str!("titlebar.html");
@@ -122,8 +123,178 @@ const DOCK_RESIZER_HTML: &str = include_str!("dock_resizer.html");
 const SIDEBAR_RESIZER_HTML: &str = include_str!("sidebar_resizer.html");
 const SETTINGS_MODAL_HTML: &str = include_str!("settings_modal.html");
 const CONTENT_AGENT_JS: &str = include_str!("content_agent.js");
+const ECOM_AGENTS_JS: &str = include_str!("ecom_agents.js");
 const MOTION_JS: &str = include_str!("../assets/vendor/motion.js");
 const TITLEBAR_HEIGHT: u32 = 40;
+
+const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
+  try {
+    var bodyTxt0 = (document.body && document.body.innerText) || "";
+    if (/login|sign in|đăng nhập/i.test(window.location.pathname)) {
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify({ logged_in: false, need_login: true, ts: new Date().toLocaleTimeString("vi-VN") }) }));
+      }
+      return;
+    }
+    var captcha = /xác minh để tiếp tục|kéo mảnh ghép vào vị trí/i.test(bodyTxt0);
+    if (captcha) {
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify({ logged_in: true, captcha_active: true, ts: new Date().toLocaleTimeString("vi-VN") }) }));
+      }
+      return;
+    }
+
+    function parseVn(s) {
+      if (!s) return 0;
+      var t = String(s).trim().toLowerCase().replace(/[^\d.,-]/g, "");
+      if (!t) return 0;
+      if (t.indexOf(".") !== -1 && t.indexOf(",") !== -1) {
+        t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+      } else if (t.indexOf(",") !== -1) {
+        var p = t.split(",");
+        t = p.length === 2 && p[1].length <= 2 ? t.replace(",", ".") : t.replace(/,/g, "");
+      } else if (t.indexOf(".") !== -1) {
+        var p2 = t.split(".");
+        if ((p2.length === 2 && p2[1].length === 3) || p2.length > 2) t = t.replace(/\./g, "");
+      }
+      var v = parseFloat(t);
+      return isNaN(v) ? 0 : v;
+    }
+
+    function fromOverviewCard(matchFn) {
+      var nodes = document.querySelectorAll("div, span, p");
+      for (var i = 0; i < nodes.length; i++) {
+        var rawLabel = (nodes[i].innerText || "").trim();
+        if (!rawLabel || rawLabel.length > 65 || rawLabel.indexOf("\n") !== -1) continue;
+        if (!matchFn(rawLabel.toLowerCase())) continue;
+        var card = nodes[i].parentElement;
+        for (var step = 0; step < 6 && card; step++) {
+          var cTxt = card.innerText || "";
+          var parts = cTxt.split(/so với/i);
+          if (parts.length === 2) {
+            var lines = parts[0].split(/
+?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+            for (var j = 0; j < lines.length; j++) {
+              var mm = lines[j].match(/^([\d]+(?:[.,]\d+)*)/);
+              if (mm) {
+                var v = parseVn(mm[1]);
+                if (v > 0) return v;
+              }
+            }
+            break;
+          }
+          card = card.parentElement;
+        }
+      }
+      return 0;
+    }
+
+    function getDateInputs() {
+      return [].slice.call(document.querySelectorAll("input")).filter(function (el) {
+        return /^\d{4}-\d{2}-\d{2}$/.test((el.value || "").trim());
+      });
+    }
+
+    function isTodaySelected() {
+      var inps = getDateInputs();
+      if (inps.length >= 2) return inps[0].value.trim() === inps[1].value.trim();
+      var bTxt = (document.body && document.body.innerText) || "";
+      return bTxt.indexOf("so với ngày hôm trước") !== -1 || bTxt.indexOf("so với ngày") !== -1;
+    }
+
+    var retryCount = 0;
+    function extractAndSend() {
+      var bodyTxt = (document.body && document.body.innerText) || "";
+      var isToday = isTodaySelected();
+      var inps = getDateInputs();
+      var costAds = fromOverviewCard(function (t) { return t === "chi phí" || (t.indexOf("chi phí") === 0 && t.indexOf("mỗi") === -1 && t.indexOf("ròng") === -1); });
+      var skuOrders = fromOverviewCard(function (t) { return t.indexOf("số lượng đơn hàng") === 0 || t.indexOf("số lượng") === 0; });
+      var cpaAds = fromOverviewCard(function (t) { return t.indexOf("chi phí cho mỗi") === 0 || t.indexOf("chi phí mỗi") === 0; });
+      var grossRev = fromOverviewCard(function (t) { return t.indexOf("doanh thu gộp") === 0 || t.indexOf("doanh thu") === 0; });
+      var roi = fromOverviewCard(function (t) { return t === "roi" || t.indexOf("roi ") === 0; });
+
+      if ((!isToday || (costAds === 0 && skuOrders === 0)) && retryCount < 4) {
+        retryCount++;
+        setTimeout(extractAndSend, 1100);
+        return;
+      }
+
+      var campaigns = [];
+      var tables = document.querySelectorAll("table");
+      if (tables.length > 0) {
+        var tbl = tables[tables.length - 1];
+        var ths = [].slice.call(tbl.querySelectorAll("thead th, tr:first-child th")).map(function (th) {
+          return (th.innerText || "").trim().toLowerCase().replace(/\s+/g, " ");
+        });
+        var idxName = ths.findIndex(function (t) { return t.indexOf("tên chiến dịch") !== -1 || t.indexOf("tên sản phẩm") !== -1; });
+        var idxStatus = ths.findIndex(function (t) { return t.indexOf("trạng thái") !== -1; });
+        var idxBudget = ths.findIndex(function (t) { return t.indexOf("ngân sách") !== -1; });
+        var idxCost = ths.findIndex(function (t) { return t === "chi phí" || (t.indexOf("chi phí") === 0 && t.indexOf("ròng") === -1 && t.indexOf("mỗi") === -1); });
+        var idxOrders = ths.findIndex(function (t) { return t.indexOf("số lượng đơn hàng") !== -1; });
+        var idxRev = ths.findIndex(function (t) { return t.indexOf("doanh thu gộp") !== -1 || t.indexOf("doanh thu") !== -1; });
+        var idxRoi = ths.findIndex(function (t) { return t === "roi" || t.indexOf("roi ") === 0; });
+        if (idxName < 0) idxName = 2;
+        if (idxStatus < 0) idxStatus = 3;
+        if (idxBudget < 0) idxBudget = 5;
+
+        [].slice.call(tbl.querySelectorAll("tbody tr")).forEach(function (tr) {
+          var cells = [].slice.call(tr.querySelectorAll("td, th")).map(function (c) { return (c.innerText || "").trim().replace(/\s+/g, " "); });
+          if (cells.length >= 4) {
+            var name = (cells[idxName] || "").trim();
+            if (name && !/tên chiến dịch|tên sản phẩm|bật\/tắt/i.test(name)) {
+              var cost = idxCost >= 0 && cells[idxCost] ? parseVn(cells[idxCost]) : 0;
+              var rev = idxRev >= 0 && cells[idxRev] ? parseVn(cells[idxRev]) : 0;
+              campaigns.push({
+                name: name,
+                status: idxStatus >= 0 && cells[idxStatus] ? cells[idxStatus] : "Đang hoạt động",
+                budget: idxBudget >= 0 && cells[idxBudget] ? parseVn(cells[idxBudget]) : 0,
+                cost: cost,
+                orders: idxOrders >= 0 && cells[idxOrders] ? parseVn(cells[idxOrders]) : 0,
+                sales: rev,
+                roas: idxRoi >= 0 && cells[idxRoi] ? parseVn(cells[idxRoi]) : (cost > 0 && rev > 0 ? Number((rev / cost).toFixed(2)) : 0)
+              });
+            }
+          }
+        });
+      }
+      if (grossRev === 0 && costAds > 0 && roi > 0) grossRev = Math.round(costAds * roi);
+      if (roi === 0 && costAds > 0 && grossRev > 0) roi = Number((grossRev / costAds).toFixed(2));
+      var payload = {
+        ts: new Date().toLocaleTimeString("vi-VN"),
+        logged_in: true,
+        captcha_active: false,
+        period_label: "Hôm nay (" + (inps[0] ? inps[0].value.trim() : "") + ")",
+        orders_ads: skuOrders,
+        cpa_ads: cpaAds,
+        sales_ads: grossRev,
+        cost_ads: costAds,
+        roas_ads: roi,
+        campaigns: campaigns,
+        live_streaming: /đang live|live now/i.test(bodyTxt)
+      };
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify(payload) }));
+      }
+    }
+
+    if (!isTodaySelected()) {
+      var inps = getDateInputs();
+      var targetInp = inps[0] || document.querySelector(".dashboard-date-picker-F08X input") || document.querySelector(".dashboard-date-picker-F08X");
+      if (targetInp) {
+        targetInp.click();
+        setTimeout(function () {
+          var el = [].slice.call(document.querySelectorAll("*")).find(function (e) {
+            return e.children.length <= 1 && (e.innerText || "").trim() === "Hôm nay";
+          });
+          if (el) el.click();
+          setTimeout(extractAndSend, 2400);
+        }, 800);
+        return;
+      }
+    }
+    extractAndSend();
+  } catch (_) {}
+})();"##;
 
 const SHELL_SHORTCUTS_JS: &str = r##"(function(){
   if (window.__tpShellShortcuts) return;
@@ -216,6 +387,8 @@ const SHELL_SHORTCUTS_JS: &str = r##"(function(){
       e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "toggle_collections_drawer" });
     } else if (code === "KeyP") {
       e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "new_tab", url: "tp://newtab", isolated: true });
+    } else if (code === "KeyW") {
+      e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "open_workspace" });
     }
   }, true);
 })();"##;
@@ -660,6 +833,17 @@ enum AppCmd {
     OpenHistory,
     GetHistory,
     ClearHistory,
+    OpenWorkspace,
+    RunEcomScan {
+        scope: String,
+    },
+    SetEcomAutoScan(bool),
+    UpdatePlatformData {
+        platform: String,
+        data_json: String,
+    },
+    ExportShopeeCsv,
+    CloseTabById(u64),
     ReopenClosedTab,
     ZoomStep(i32),
     ZoomReset,
@@ -684,7 +868,10 @@ enum AppCmd {
     StopSkillRecording,
     RecordedSkillStep(String),
     RunAiPrompt(String),
-    RequestDomContextForAi,
+    RequestDomContextForAi {
+        use_worker: bool,
+        prompt: String,
+    },
     DomContextResult {
         tab_id: u64,
         title: String,
@@ -692,7 +879,10 @@ enum AppCmd {
         visible_text: String,
         elements_json: String,
     },
-    ExecuteDomAction(String),
+    ExecuteDomAction {
+        target_tab_id: Option<u64>,
+        action_json: String,
+    },
     SyncBubbleStatus {
         working: bool,
         recording: bool,
@@ -735,6 +925,8 @@ struct BrowserTab {
     url: String,
     title: String,
     favicon_url: String,
+    worker_kind: Option<String>,
+    worker_status: String,
     webview: WebView,
 }
 
@@ -808,6 +1000,14 @@ struct TpBrowserApp {
     bookmarks_json: String,
     skills_json: String,
     tasks_json: String,
+    ai_worker_tab_id: Option<u64>,
+    shopee_orders_json: String,
+    shopee_pas_json: String,
+    tiktok_json: String,
+    ecom_auto_scan: bool,
+    ecom_status_text: String,
+    ecom_logs: Vec<String>,
+    last_ecom_auto_epoch: u64,
     next_mcp_req_id: u64,
     mcp_pending: HashMap<u64, mpsc::Sender<Result<String, String>>>,
 }
@@ -1356,6 +1556,14 @@ impl TpBrowserApp {
             bookmarks_json: default_bookmarks,
             skills_json: default_skills,
             tasks_json: "[]".to_string(),
+            ai_worker_tab_id: None,
+            shopee_orders_json: String::new(),
+            shopee_pas_json: String::new(),
+            tiktok_json: String::new(),
+            ecom_auto_scan: false,
+            ecom_status_text: "Sẵn sàng — bấm \"Quét Tất Cả Ngầm\" để bắt đầu".to_string(),
+            ecom_logs: vec!["• Khởi tạo Không Gian Làm Việc TMĐT TPbrowser.".to_string()],
+            last_ecom_auto_epoch: 0,
             next_mcp_req_id: 1,
             mcp_pending: HashMap::new(),
         };
@@ -1370,6 +1578,7 @@ impl TpBrowserApp {
         app.load_skills();
         app.load_tasks();
         app.load_history();
+        app.load_exports_cache();
         app.load_session_or_default();
         let preload_proxy = app.proxy.clone();
         std::thread::spawn(move || {
@@ -1498,6 +1707,9 @@ impl TpBrowserApp {
         if trimmed.eq_ignore_ascii_case("tp://history") {
             return "tp://history".to_string();
         }
+        if trimmed.eq_ignore_ascii_case("tp://workspace") {
+            return "tp://workspace".to_string();
+        }
         if trimmed.starts_with("http://")
             || trimmed.starts_with("https://")
             || trimmed.starts_with("chrome-extension://")
@@ -1528,6 +1740,9 @@ impl TpBrowserApp {
         if url == "tp://history" {
             return "Lịch sử duyệt web".to_string();
         }
+        if url == "tp://workspace" {
+            return "Không gian TMĐT".to_string();
+        }
         if url.starts_with("chrome-extension://") && url.contains("dashboard.html") {
             return "🛡️ uBlock Origin Dashboard".to_string();
         }
@@ -1539,12 +1754,29 @@ impl TpBrowserApp {
     }
 
     fn add_tab(&mut self, raw_url: &str, isolated: bool) {
-        self.add_tab_internal(raw_url, isolated, true);
+        self.add_tab_internal(raw_url, isolated, true, None, None);
     }
 
-    fn add_tab_internal(&mut self, raw_url: &str, isolated: bool, sync_now: bool) {
-        if self.tabs.len() >= 12 {
-            return;
+    fn add_worker_tab(&mut self, raw_url: &str, worker_kind: &str, custom_title: Option<&str>) -> Option<u64> {
+        self.add_tab_internal(
+            raw_url,
+            false,
+            true,
+            Some(worker_kind.to_string()),
+            custom_title.map(|s| s.to_string()),
+        )
+    }
+
+    fn add_tab_internal(
+        &mut self,
+        raw_url: &str,
+        isolated: bool,
+        sync_now: bool,
+        worker_kind: Option<String>,
+        custom_title: Option<String>,
+    ) -> Option<u64> {
+        if self.tabs.len() >= 14 {
+            return None;
         }
         let tab_id = NEXT_TAB_ID.fetch_add(1, Ordering::SeqCst);
         let profile_name = if isolated {
@@ -1555,7 +1787,8 @@ impl TpBrowserApp {
         };
 
         let url = Self::normalize_url(raw_url);
-        let init_js = CONTENT_AGENT_JS.replace("__TAB_ID__", &tab_id.to_string());
+        let is_tiktok = url.to_lowercase().contains("tiktok.com");
+        let is_worker = worker_kind.is_some();
 
         let proxy_ipc = self.proxy.clone();
         let proxy_popup = self.proxy.clone();
@@ -1566,19 +1799,30 @@ impl TpBrowserApp {
         let mut builder = WebViewBuilder::new_with_web_context(&mut self.web_context)
             .with_environment(shared_env)
             .with_browser_extensions_enabled(true)
-            .with_user_agent(CHROME_USER_AGENT)
             .with_autoplay(true)
             .with_clipboard(true)
             .with_devtools(true)
             .with_theme(Theme::Light)
-            .with_visible(sync_now)
+            .with_visible(sync_now && !is_worker)
             .with_background_color(if self.ui_theme == "carrara-light" {
                 (246, 242, 234, 255)
             } else {
                 (14, 16, 20, 255)
             })
-            .with_profile_name(profile_name.clone())
-            .with_initialization_script(&init_js)
+            .with_profile_name(profile_name.clone());
+
+        if !is_tiktok {
+            let init_js = format!(
+                "{}\n{}",
+                CONTENT_AGENT_JS.replace("__TAB_ID__", &tab_id.to_string()),
+                ECOM_AGENTS_JS
+            );
+            builder = builder
+                .with_user_agent(CHROME_USER_AGENT)
+                .with_initialization_script(&init_js);
+        }
+
+        let mut builder = builder
             .with_on_page_load_handler(move |event, loaded_url| {
                 if matches!(event, PageLoadEvent::Finished) {
                     let _ = proxy_load.send_event(AppCmd::PageFinished {
@@ -1659,6 +1903,8 @@ impl TpBrowserApp {
             builder.with_html(inject_ui_html(NEWTAB_HTML, &self.ui_theme))
         } else if url == "tp://history" {
             builder.with_html(inject_ui_html(HISTORY_HTML, &self.ui_theme))
+        } else if url == "tp://workspace" {
+            builder.with_html(inject_ui_html(WORKSPACE_HTML, &self.ui_theme))
         } else if is_ext_url {
             builder.with_html("<html><body style='background:#f8fafc;'></body></html>")
         } else {
@@ -1674,22 +1920,28 @@ impl TpBrowserApp {
                     let _ = proxy_delayed.send_event(AppCmd::NavigateActive(ext_target));
                 });
             }
-            let title = Self::title_from_url(&url);
+            let title = custom_title.unwrap_or_else(|| Self::title_from_url(&url));
             self.tabs.push(BrowserTab {
                 id: tab_id,
                 profile_name,
                 url,
                 title,
                 favicon_url: String::new(),
+                worker_kind,
+                worker_status: if is_worker { "Đang chạy ngầm".to_string() } else { String::new() },
                 webview,
             });
-            self.active_idx = self.tabs.len() - 1;
+            if !is_worker {
+                self.active_idx = self.tabs.len() - 1;
+            }
             if sync_now {
                 self.relayout();
                 self.sync_all_ui();
                 self.save_session();
             }
+            return Some(tab_id);
         }
+        None
     }
 
     fn relayout(&self) {
@@ -1740,8 +1992,32 @@ impl TpBrowserApp {
         let total = self.tabs.len();
         if total > 0 {
             if self.view_mode == ContentViewMode::SingleTab || total == 1 {
+                if let Some(active_tab) = self.tabs.get(self.active_idx) {
+                    let _ = active_tab.webview.set_visible(true);
+                    let _ = active_tab.webview.set_bounds(Rect {
+                        position: LogicalPosition::new(
+                            shell.content_area.x,
+                            shell.content_area.y,
+                        )
+                        .into(),
+                        size: LogicalSize::new(
+                            shell.content_area.width,
+                            shell.content_area.height,
+                        )
+                        .into(),
+                    });
+                    let _ = active_tab
+                        .webview
+                        .set_memory_usage_level(MemoryUsageLevel::Normal);
+                    #[cfg(target_os = "windows")]
+                    Self::send_webview_to_back(&active_tab.webview);
+                }
                 for (idx, tab) in self.tabs.iter().enumerate() {
                     if idx == self.active_idx {
+                        continue;
+                    }
+                    if tab.worker_kind.is_some() {
+                        // Giữ Worker Tab sống ở kích thước đầy đủ lớp dưới (HWND_BOTTOM sau tab đang xem) để SPA/API chạy mượt mà không chiếm màn hình hay chuột
                         let _ = tab.webview.set_visible(true);
                         let _ = tab.webview.set_bounds(Rect {
                             position: LogicalPosition::new(
@@ -1755,9 +2031,7 @@ impl TpBrowserApp {
                             )
                             .into(),
                         });
-                        let _ = tab
-                            .webview
-                            .set_memory_usage_level(MemoryUsageLevel::Normal);
+                        let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Normal);
                         #[cfg(target_os = "windows")]
                         Self::send_webview_to_back(&tab.webview);
                     } else {
@@ -2025,12 +2299,13 @@ impl TpBrowserApp {
         let mut tabs_json = Vec::new();
         for t in &self.tabs {
             tabs_json.push(format!(
-                "{{\"id\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\"}}",
+                "{{\"id\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\",\"worker_kind\":\"{}\"}}",
                 t.id,
                 Self::escape_json(&t.url),
                 Self::escape_json(&t.title),
                 Self::escape_json(&t.favicon_url),
-                Self::escape_json(&t.profile_name)
+                Self::escape_json(&t.profile_name),
+                Self::escape_json(t.worker_kind.as_deref().unwrap_or(""))
             ));
         }
         let tabs_arr_str = tabs_json.join(",");
@@ -2316,6 +2591,12 @@ impl TpBrowserApp {
             Ok(d) => d.as_secs(),
             Err(_) => return,
         };
+        if self.ecom_auto_scan && now_secs.saturating_sub(self.last_ecom_auto_epoch) >= 900 {
+            self.last_ecom_auto_epoch = now_secs;
+            self.execute(AppCmd::RunEcomScan {
+                scope: "all".to_string(),
+            });
+        }
         let tasks_raw = self.tasks_json.clone();
         if !tasks_raw.starts_with('[') || !tasks_raw.ends_with(']') {
             return;
@@ -2562,20 +2843,209 @@ impl TpBrowserApp {
         }
     }
 
+    fn load_exports_cache(&mut self) {
+        let dir = self.exe_dir.join("exports");
+        if let Ok(s) = fs::read_to_string(dir.join("shopee_orders_latest.json")) {
+            if !s.trim().is_empty() {
+                self.shopee_orders_json = s;
+            }
+        }
+        if let Ok(s) = fs::read_to_string(dir.join("shopee_pas_latest.json")) {
+            if !s.trim().is_empty() {
+                self.shopee_pas_json = s;
+            }
+        }
+        if let Ok(s) = fs::read_to_string(dir.join("tiktok_latest.json")) {
+            if !s.trim().is_empty() {
+                self.tiktok_json = s;
+            }
+        }
+    }
+
+    fn save_export_file(&self, filename: &str, content: &str) -> Option<PathBuf> {
+        let dir = self.exe_dir.join("exports");
+        if fs::create_dir_all(&dir).is_err() {
+            return None;
+        }
+        let path = dir.join(filename);
+        if fs::write(&path, content).is_ok() {
+            Some(path)
+        } else {
+            None
+        }
+    }
+
+    fn push_ecom_log(&mut self, msg: &str) {
+        self.ecom_logs.push(format!("• {}", msg));
+        if self.ecom_logs.len() > 60 {
+            let drop_n = self.ecom_logs.len() - 60;
+            self.ecom_logs.drain(0..drop_n);
+        }
+    }
+
+    fn sync_workspace_view(&self) {
+        let mut workers = Vec::new();
+        for t in &self.tabs {
+            if let Some(kind) = &t.worker_kind {
+                workers.push(JsonVal::obj(vec![
+                    ("id", JsonVal::Num(t.id as f64)),
+                    ("worker_kind", JsonVal::Str(kind.clone())),
+                    ("title", JsonVal::Str(t.title.clone())),
+                    ("url", JsonVal::Str(t.url.clone())),
+                    (
+                        "status",
+                        JsonVal::Str(if t.worker_status.is_empty() {
+                            "Đang chạy ngầm".to_string()
+                        } else {
+                            t.worker_status.clone()
+                        }),
+                    ),
+                ]));
+            }
+        }
+        let logs_arr: Vec<JsonVal> = self
+            .ecom_logs
+            .iter()
+            .map(|l| JsonVal::Str(l.clone()))
+            .collect();
+
+        let sp_ord = if self.shopee_orders_json.trim().is_empty() {
+            "null"
+        } else {
+            &self.shopee_orders_json
+        };
+        let sp_pas = if self.shopee_pas_json.trim().is_empty() {
+            "null"
+        } else {
+            &self.shopee_pas_json
+        };
+        let tt = if self.tiktok_json.trim().is_empty() {
+            "null"
+        } else {
+            &self.tiktok_json
+        };
+
+        let payload = format!(
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"auto_scan\":{},\"status_text\":\"{}\",\"worker_tabs\":{},\"shopee_orders\":{},\"shopee_pas\":{},\"tiktok\":{},\"logs\":{}}}",
+            Self::escape_json(&self.ui_theme),
+            Self::escape_json(&self.logo_style),
+            self.ecom_auto_scan,
+            Self::escape_json(&self.ecom_status_text),
+            JsonVal::Arr(workers).to_json(),
+            sp_ord,
+            sp_pas,
+            tt,
+            JsonVal::Arr(logs_arr).to_json()
+        );
+        let js = format!("if (window.__tpSyncWorkspace) window.__tpSyncWorkspace({});", payload);
+        for t in &self.tabs {
+            if t.url == "tp://workspace" {
+                let _ = t.webview.evaluate_script(&js);
+            }
+        }
+    }
+
+    fn export_shopee_csv(&mut self) {
+        let Ok(val) = parse_json(&self.shopee_orders_json) else {
+            self.ecom_status_text = "Chưa có dữ liệu đơn Shopee để xuất CSV — hãy bấm Quét Đơn Shopee trước.".to_string();
+            self.push_ecom_log(&self.ecom_status_text.clone());
+            self.sync_workspace_view();
+            return;
+        };
+        let mut lines = vec!["\u{FEFF}MaDon,KhachHang,TrangThai,SanPham,PhanLoai,SoLuong,DonGia,TongDon,DonViVanChuyen".to_string()];
+        let csv_esc = |s: &str| -> String {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        };
+        if let Some(arr) = val.get("raw_rows").and_then(|v| v.as_arr()) {
+            for r in arr {
+                let sn = r.get("order_sn").and_then(|v| v.as_str()).unwrap_or("");
+                let buyer = r.get("buyer").and_then(|v| v.as_str()).unwrap_or("");
+                let st = r.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                let item = r.get("item_name").and_then(|v| v.as_str()).unwrap_or("");
+                let model = r.get("model_name").and_then(|v| v.as_str()).unwrap_or("");
+                let qty = r.get("qty").and_then(|v| v.as_i64()).unwrap_or(1);
+                let ip = r.get("item_price").and_then(|v| v.as_str()).unwrap_or("");
+                let tp = r.get("total_price").and_then(|v| v.as_str()).unwrap_or("");
+                let ship = r.get("shipping").and_then(|v| v.as_str()).unwrap_or("");
+                lines.push(format!(
+                    "{},{},{},{},{},{},{},{},{}",
+                    csv_esc(sn),
+                    csv_esc(buyer),
+                    csv_esc(st),
+                    csv_esc(item),
+                    csv_esc(model),
+                    qty,
+                    csv_esc(ip),
+                    csv_esc(tp),
+                    csv_esc(ship)
+                ));
+            }
+        }
+        let count = lines.len().saturating_sub(1);
+        if let Some(p) = self.save_export_file("shopee_don_hang.csv", &lines.join("
+\n")) {
+            self.ecom_status_text = format!("✅ Đã xuất {} dòng ra {}", count, p.display());
+        } else {
+            self.ecom_status_text = "Không ghi được file exports/shopee_don_hang.csv".to_string();
+        }
+        self.push_ecom_log(&self.ecom_status_text.clone());
+        self.sync_workspace_view();
+    }
+
+    fn ensure_ecom_worker(&mut self, domain_hint: &str, url: &str, title: &str) -> Option<u64> {
+        if let Some(t) = self.tabs.iter_mut().find(|t| {
+            t.worker_kind.as_deref() == Some("bot") && t.url.contains(domain_hint)
+        }) {
+            t.worker_status = "Đang quét...".to_string();
+            let id = t.id;
+            return Some(id);
+        }
+        self.add_worker_tab(url, "bot", Some(title))
+    }
+
+    fn trigger_worker_scan_by_id(&mut self, tab_id: u64, url: &str) {
+        if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+            if url.contains("banhang.shopee.vn/portal/marketing/pas") {
+                let _ = tab.webview.evaluate_script(
+                    "setTimeout(function(){ if (window.__tpRunShopeeScan) window.__tpRunShopeeScan('pas'); }, 1500);",
+                );
+            } else if url.contains("banhang.shopee.vn") {
+                let _ = tab.webview.evaluate_script(
+                    "setTimeout(function(){ if (window.__tpRunShopeeScan) window.__tpRunShopeeScan('orders'); }, 1000);",
+                );
+            } else if url.contains("seller-vn.tiktok.com") {
+                let js = format!("setTimeout(function(){{ {} }}, 2200);", TIKTOK_PASSIVE_SCAN_JS);
+                let _ = tab.webview.evaluate_script(&js);
+            }
+        }
+    }
+
     fn save_session(&self) {
         let session_path = self.exe_dir.join("session.json");
         let mut tabs_arr = Vec::new();
-        for t in &self.tabs {
+        let mut saved_active_idx = 0usize;
+        let mut user_idx = 0usize;
+        for (idx, t) in self.tabs.iter().enumerate() {
+            if t.worker_kind.is_some() {
+                continue;
+            }
+            if idx == self.active_idx {
+                saved_active_idx = user_idx;
+            }
             tabs_arr.push(format!(
                 "{{\"url\":\"{}\",\"profile\":\"{}\"}}",
                 Self::escape_json(&t.url),
                 Self::escape_json(&t.profile_name)
             ));
+            user_idx += 1;
+        }
+        if tabs_arr.is_empty() {
+            tabs_arr.push("{\"url\":\"tp://newtab\",\"profile\":\"default\"}".to_string());
         }
         let body = format!(
             "{{\n  \"view_mode\": \"{}\",\n  \"active_idx\": {},\n  \"tabs\": [\n    {}\n  ]\n}}",
             self.view_mode.as_str(),
-            self.active_idx,
+            saved_active_idx,
             tabs_arr.join(",\n    ")
         );
         let _ = fs::write(session_path, body);
@@ -2607,7 +3077,7 @@ impl TpBrowserApp {
                                 .and_then(|v| v.as_str())
                                 .map(|p| p != "default")
                                 .unwrap_or(false);
-                            self.add_tab_internal(u, isolated, false);
+                            self.add_tab_internal(u, isolated, false, None, None);
                         }
                     }
                 }
@@ -2621,14 +3091,14 @@ impl TpBrowserApp {
                     let trimmed = line.trim();
                     if trimmed.starts_with("{\"url\":\"") {
                         if let Some(u) = Self::extract_string(trimmed, "\"url\":\"") {
-                            self.add_tab_internal(&u, false, false);
+                            self.add_tab_internal(&u, false, false, None, None);
                         }
                     }
                 }
             }
         }
         if self.tabs.is_empty() {
-            self.add_tab_internal("tp://newtab", false, false);
+            self.add_tab_internal("tp://newtab", false, false, None, None);
         }
         if let Some(idx) = saved_active_idx {
             if idx < self.tabs.len() {
@@ -2888,6 +3358,14 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::PrevTab);
         } else if body.contains("\"cmd\":\"focus_this_tab\"") {
             let _ = proxy.send_event(AppCmd::FocusTabById(tab_id));
+        } else if body.contains("\"cmd\":\"focus_tab_by_id\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":") {
+                let _ = proxy.send_event(AppCmd::FocusTabById(tid));
+            }
+        } else if body.contains("\"cmd\":\"close_tab_by_id\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":") {
+                let _ = proxy.send_event(AppCmd::CloseTabById(tid));
+            }
         } else if body.contains("\"cmd\":\"close_index\"") {
             if let Some(idx) = Self::extract_u64(body, "\"index\":") {
                 let _ = proxy.send_event(AppCmd::CloseIndex(idx as usize));
@@ -2920,6 +3398,24 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::GetHistory);
         } else if body.contains("\"cmd\":\"clear_history\"") {
             let _ = proxy.send_event(AppCmd::ClearHistory);
+        } else if body.contains("\"cmd\":\"open_workspace\"") {
+            let _ = proxy.send_event(AppCmd::OpenWorkspace);
+        } else if body.contains("\"cmd\":\"run_ecom_scan\"") {
+            let scope = Self::extract_field_str(body, "scope").unwrap_or_else(|| "all".to_string());
+            let _ = proxy.send_event(AppCmd::RunEcomScan { scope });
+        } else if body.contains("\"cmd\":\"set_ecom_auto_scan\"") {
+            let enabled = body.contains("\"enabled\":true");
+            let _ = proxy.send_event(AppCmd::SetEcomAutoScan(enabled));
+        } else if body.contains("\"cmd\":\"update_platform_data\"") {
+            if let Ok(val) = parse_json(body) {
+                let platform = val.get("platform").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let data_json = val.get("data_json").and_then(|v| v.as_str()).unwrap_or("{}").to_string();
+                if !platform.is_empty() {
+                    let _ = proxy.send_event(AppCmd::UpdatePlatformData { platform, data_json });
+                }
+            }
+        } else if body.contains("\"cmd\":\"export_shopee_csv\"") {
+            let _ = proxy.send_event(AppCmd::ExportShopeeCsv);
         } else if body.contains("\"cmd\":\"reopen_closed_tab\"") {
             let _ = proxy.send_event(AppCmd::ReopenClosedTab);
         } else if body.contains("\"cmd\":\"zoom_step\"") {
@@ -3019,7 +3515,12 @@ impl TpBrowserApp {
                 let _ = proxy.send_event(AppCmd::RunAiPrompt(p));
             }
         } else if body.contains("\"cmd\":\"request_dom_context_for_ai\"") {
-            let _ = proxy.send_event(AppCmd::RequestDomContextForAi);
+            let use_worker = parse_json(body)
+                .ok()
+                .and_then(|v| v.get("use_worker").and_then(|b| b.as_bool()))
+                .unwrap_or(true);
+            let prompt = Self::extract_field_str(body, "prompt").unwrap_or_default();
+            let _ = proxy.send_event(AppCmd::RequestDomContextForAi { use_worker, prompt });
         } else if body.contains("\"cmd\":\"dom_context_result\"") {
             let title = Self::extract_string(body, "\"title\":\"").unwrap_or_default();
             let url = Self::extract_string(body, "\"url\":\"").unwrap_or_default();
@@ -3033,8 +3534,22 @@ impl TpBrowserApp {
                 elements_json,
             });
         } else if body.contains("\"cmd\":\"execute_dom_action\"") {
-            if let Some(act_json) = Self::extract_string(body, "\"action_json\":\"") {
-                let _ = proxy.send_event(AppCmd::ExecuteDomAction(act_json));
+            if let Ok(val) = parse_json(body) {
+                let target_tab_id = val.get("target_tab_id").and_then(|v| v.as_u64());
+                let action_json = val
+                    .get("action_json")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}")
+                    .to_string();
+                let _ = proxy.send_event(AppCmd::ExecuteDomAction {
+                    target_tab_id,
+                    action_json,
+                });
+            } else if let Some(act_json) = Self::extract_string(body, "\"action_json\":\"") {
+                let _ = proxy.send_event(AppCmd::ExecuteDomAction {
+                    target_tab_id: None,
+                    action_json: act_json,
+                });
             }
         } else if body.contains("\"cmd\":\"sync_bubble_status\"") {
             let working = body.contains("\"working\":true");
@@ -3375,6 +3890,8 @@ impl TpBrowserApp {
                 self.sync_all_ui();
                 if shell == "history" {
                     self.sync_history_view();
+                } else if shell == "workspace" {
+                    self.sync_workspace_view();
                 }
             }
             AppCmd::SetSettingsSection(sec) => {
@@ -3588,16 +4105,27 @@ impl TpBrowserApp {
                 if let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id) {
                     if self.active_idx != pos {
                         self.active_idx = pos;
+                        self.relayout();
+                        if let Some(t) = self.tabs.get(self.active_idx) {
+                            let _ = t.webview.focus();
+                        }
                         self.sync_all_ui();
                         self.save_session();
                     }
                 }
-                if self.ai_mode == AiDisplayMode::FbPopup {
-                    self.relayout();
+            }
+            AppCmd::CloseTabById(tab_id) => {
+                if let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id) {
+                    self.execute(AppCmd::CloseIndex(pos));
+                    self.sync_workspace_view();
                 }
             }
             AppCmd::CloseIndex(idx) => {
                 if self.tabs.len() > 1 && idx < self.tabs.len() {
+                    let removed_id = self.tabs[idx].id;
+                    if self.ai_worker_tab_id == Some(removed_id) {
+                        self.ai_worker_tab_id = None;
+                    }
                     let closed_url = self.tabs[idx].url.clone();
                     if closed_url.starts_with("http://") || closed_url.starts_with("https://") {
                         self.closed_tabs.push(closed_url);
@@ -3627,6 +4155,8 @@ impl TpBrowserApp {
                         let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
                     } else if normalized == "tp://history" {
                         let _ = tab.webview.load_html(&inject_ui_html(HISTORY_HTML, &self.ui_theme));
+                    } else if normalized == "tp://workspace" {
+                        let _ = tab.webview.load_html(&inject_ui_html(WORKSPACE_HTML, &self.ui_theme));
                     } else {
                         let _ = tab.webview.load_url(&normalized);
                     }
@@ -3636,6 +4166,8 @@ impl TpBrowserApp {
                     self.record_history(&t, &normalized);
                 } else if normalized == "tp://history" {
                     self.sync_history_view();
+                } else if normalized == "tp://workspace" {
+                    self.sync_workspace_view();
                 }
                 self.sync_all_ui();
                 self.save_session();
@@ -3656,6 +4188,8 @@ impl TpBrowserApp {
                         let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
                     } else if tab.url == "tp://history" {
                         let _ = tab.webview.load_html(&inject_ui_html(HISTORY_HTML, &self.ui_theme));
+                    } else if tab.url == "tp://workspace" {
+                        let _ = tab.webview.load_html(&inject_ui_html(WORKSPACE_HTML, &self.ui_theme));
                     } else {
                         let _ = tab.webview.reload();
                     }
@@ -3667,6 +4201,8 @@ impl TpBrowserApp {
                         let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
                     } else if tab.url == "tp://history" {
                         let _ = tab.webview.load_html(&inject_ui_html(HISTORY_HTML, &self.ui_theme));
+                    } else if tab.url == "tp://workspace" {
+                        let _ = tab.webview.load_html(&inject_ui_html(WORKSPACE_HTML, &self.ui_theme));
                     } else {
                         let _ = tab.webview.evaluate_script(
                             "try { if (window.caches) caches.keys().then(function(ks){ ks.forEach(function(k){ caches.delete(k); }); }); fetch(location.href, { cache: 'reload', credentials: 'same-origin' }).catch(function(){}).finally(function(){ location.reload(); }); } catch(_) { location.reload(); }",
@@ -3726,6 +4262,129 @@ impl TpBrowserApp {
                 self.history_json = "[]".to_string();
                 self.save_history();
                 self.sync_history_view();
+            }
+            AppCmd::OpenWorkspace => {
+                if let Some(pos) = self.tabs.iter().position(|t| t.url == "tp://workspace") {
+                    self.execute(AppCmd::FocusIndex(pos));
+                } else {
+                    self.add_tab("tp://workspace", false);
+                }
+                self.sync_workspace_view();
+            }
+            AppCmd::RunEcomScan { scope } => {
+                let s = scope.to_lowercase();
+                let run_orders = s == "all" || s == "shopee_orders";
+                let run_pas = s == "all" || s == "shopee_pas";
+                let run_tiktok = s == "all" || s == "tiktok";
+                self.ecom_status_text = format!("⏳ Đang mở Tab ngầm để quét ({})...", scope);
+                self.push_ecom_log(&format!("Khởi chạy quét ngầm [{}] — giữ nguyên Tab đang xem.", scope));
+
+                if run_orders {
+                    if let Some(tid) = self.ensure_ecom_worker(
+                        "banhang.shopee.vn/portal/sale",
+                        "https://banhang.shopee.vn/portal/sale/order",
+                        "Shopee Đơn Hàng",
+                    ) {
+                        self.trigger_worker_scan_by_id(tid, "https://banhang.shopee.vn/portal/sale/order");
+                    }
+                }
+                if run_pas {
+                    if let Some(tid) = self.ensure_ecom_worker(
+                        "banhang.shopee.vn/portal/marketing/pas",
+                        "https://banhang.shopee.vn/portal/marketing/pas/index?source_page_id=1&type=new_cpc_homepage&group=today",
+                        "Shopee PAS",
+                    ) {
+                        self.trigger_worker_scan_by_id(tid, "https://banhang.shopee.vn/portal/marketing/pas/index");
+                    }
+                }
+                if run_tiktok {
+                    if let Some(tid) = self.ensure_ecom_worker(
+                        "seller-vn.tiktok.com",
+                        "https://seller-vn.tiktok.com/ads-creation/dashboard",
+                        "TikTok Seller Ads",
+                    ) {
+                        self.trigger_worker_scan_by_id(tid, "https://seller-vn.tiktok.com/ads-creation/dashboard");
+                    }
+                }
+                self.sync_workspace_view();
+            }
+            AppCmd::SetEcomAutoScan(enabled) => {
+                self.ecom_auto_scan = enabled;
+                if enabled {
+                    self.last_ecom_auto_epoch = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    self.ecom_status_text = "⏱ Đã bật tự động quét ngầm mỗi 15 phút.".to_string();
+                } else {
+                    self.ecom_status_text = "Đã tắt tự động quét ngầm.".to_string();
+                }
+                self.push_ecom_log(&self.ecom_status_text.clone());
+                self.sync_workspace_view();
+            }
+            AppCmd::UpdatePlatformData { platform, data_json } => {
+                match platform.as_str() {
+                    "shopee_orders" => {
+                        self.shopee_orders_json = data_json.clone();
+                        self.save_export_file("shopee_orders_latest.json", &data_json);
+                        self.ecom_status_text = "✅ Đã cập nhật dữ liệu Đơn hàng Shopee (Tab ngầm).".to_string();
+                        self.push_ecom_log("Shopee Đơn hàng: đã cập nhật JSON & kiểm toán giá.");
+                        for t in &mut self.tabs {
+                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("banhang.shopee.vn/portal/sale") {
+                                t.worker_status = if data_json.contains("\"need_login\":true") {
+                                    "Cần đăng nhập".to_string()
+                                } else {
+                                    "Đã lấy xong".to_string()
+                                };
+                            }
+                        }
+                    }
+                    "shopee_pas" => {
+                        self.shopee_pas_json = data_json.clone();
+                        self.save_export_file("shopee_pas_latest.json", &data_json);
+                        self.ecom_status_text = "✅ Đã cập nhật dữ liệu Quảng cáo Shopee PAS (Tab ngầm).".to_string();
+                        self.push_ecom_log("Shopee PAS: đã cập nhật danh sách chiến dịch & ROAS/ACOS.");
+                        for t in &mut self.tabs {
+                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("/portal/marketing/pas") {
+                                t.worker_status = if data_json.contains("\"need_login\":true") {
+                                    "Cần đăng nhập".to_string()
+                                } else {
+                                    "Đã lấy xong".to_string()
+                                };
+                            }
+                        }
+                    }
+                    "tiktok" => {
+                        self.tiktok_json = data_json.clone();
+                        self.save_export_file("tiktok_latest.json", &data_json);
+                        let cap = data_json.contains("\"captcha_active\":true");
+                        let login = data_json.contains("\"need_login\":true");
+                        self.ecom_status_text = if cap {
+                            "🧩 TikTok đang yêu cầu kéo CAPTCHA — bấm Mở xem Tab để kéo 1 lần.".to_string()
+                        } else if login {
+                            "⚠️ TikTok chưa đăng nhập — bấm Mở xem Tab để đăng nhập.".to_string()
+                        } else {
+                            "✅ Đã cập nhật dữ liệu TikTok Seller Hôm nay (Tab ngầm).".to_string()
+                        };
+                        self.push_ecom_log(&self.ecom_status_text.clone());
+                        for t in &mut self.tabs {
+                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("seller-vn.tiktok.com") {
+                                t.worker_status = if cap {
+                                    "Cần kéo CAPTCHA".to_string()
+                                } else if login {
+                                    "Cần đăng nhập".to_string()
+                                } else {
+                                    "Đã lấy xong".to_string()
+                                };
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                self.sync_workspace_view();
+            }
+            AppCmd::ExportShopeeCsv => {
+                self.export_shopee_csv();
             }
             AppCmd::ReopenClosedTab => {
                 if let Some(url) = self.closed_tabs.pop() {
@@ -3934,8 +4593,36 @@ impl TpBrowserApp {
                 );
                 let _ = self.ai_shell.evaluate_script(&js);
             }
-            AppCmd::RequestDomContextForAi => {
-                if let Some(tab) = self.tabs.get(self.active_idx) {
+            AppCmd::RequestDomContextForAi { use_worker, prompt } => {
+                let target_id = if use_worker {
+                    let existing = self.ai_worker_tab_id.filter(|id| self.tabs.iter().any(|t| t.id == *id));
+                    if let Some(id) = existing {
+                        id
+                    } else {
+                        let lower = prompt.trim().to_lowercase();
+                        let initial_url = if lower.starts_with("mở trang ") || lower.starts_with("vào trang ") || lower.starts_with("open ") {
+                            let raw = prompt
+                                .split_once(' ')
+                                .map(|(_, rest)| rest)
+                                .unwrap_or("https://www.google.com")
+                                .trim();
+                            let cleaned = raw.trim_start_matches("trang ").trim();
+                            if cleaned.is_empty() {
+                                "https://www.google.com".to_string()
+                            } else {
+                                Self::normalize_url(cleaned)
+                            }
+                        } else {
+                            "https://www.google.com".to_string()
+                        };
+                        let created = self.add_worker_tab(&initial_url, "ai", Some("AI Cowork"));
+                        self.ai_worker_tab_id = created;
+                        created.unwrap_or_else(|| self.tabs.get(self.active_idx).map(|t| t.id).unwrap_or(0))
+                    }
+                } else {
+                    self.tabs.get(self.active_idx).map(|t| t.id).unwrap_or(0)
+                };
+                if let Some(tab) = self.tabs.iter().find(|t| t.id == target_id) {
                     let _ = tab.webview.evaluate_script(
                         "if (window.__tpCollectDomForAi) window.__tpCollectDomForAi();",
                     );
@@ -3953,22 +4640,27 @@ impl TpBrowserApp {
                     .iter()
                     .position(|t| t.id == tab_id)
                     .unwrap_or(self.active_idx);
+                let mut is_worker = false;
                 if let Some(tab) = self.tabs.get_mut(target_idx) {
-                    if !title.is_empty() {
+                    is_worker = tab.worker_kind.is_some();
+                    if !title.is_empty() && tab.worker_kind.is_none() {
                         tab.title = title.clone();
                     }
                 }
                 let mut all_tabs_json = Vec::new();
                 for t in &self.tabs {
                     all_tabs_json.push(format!(
-                        "{{\"title\":\"{}\",\"url\":\"{}\",\"profile\":\"{}\"}}",
+                        "{{\"title\":\"{}\",\"url\":\"{}\",\"profile\":\"{}\",\"worker_kind\":\"{}\"}}",
                         Self::escape_json(&t.title),
                         Self::escape_json(&t.url),
-                        Self::escape_json(&t.profile_name)
+                        Self::escape_json(&t.profile_name),
+                        Self::escape_json(t.worker_kind.as_deref().unwrap_or(""))
                     ));
                 }
                 let payload = format!(
-                    "{{\"title\":\"{}\",\"url\":\"{}\",\"visible_text\":\"{}\",\"elements\":{},\"all_tabs\":[{}]}}",
+                    "{{\"target_tab_id\":{},\"is_worker\":{},\"title\":\"{}\",\"url\":\"{}\",\"visible_text\":\"{}\",\"elements\":{},\"all_tabs\":[{}]}}",
+                    tab_id,
+                    is_worker,
                     Self::escape_json(&title),
                     Self::escape_json(&url),
                     Self::escape_json(&visible_text),
@@ -3985,8 +4677,33 @@ impl TpBrowserApp {
                 ));
                 self.sync_all_ui();
             }
-            AppCmd::ExecuteDomAction(action_json) => {
-                if let Some(tab) = self.tabs.get(self.active_idx) {
+            AppCmd::ExecuteDomAction {
+                target_tab_id,
+                action_json,
+            } => {
+                let from_worker = target_tab_id.is_some()
+                    && target_tab_id
+                        .and_then(|id| self.tabs.iter().find(|t| t.id == id))
+                        .map(|t| t.worker_kind.is_some())
+                        .unwrap_or(false);
+                if from_worker {
+                    if let Ok(val) = parse_json(&action_json) {
+                        if val.get("type").and_then(|v| v.as_str()) == Some("new_tab") {
+                            let new_u = val
+                                .get("url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("https://www.google.com");
+                            if let Some(new_id) = self.add_worker_tab(new_u, "ai", Some("AI Cowork")) {
+                                self.ai_worker_tab_id = Some(new_id);
+                            }
+                            return;
+                        }
+                    }
+                }
+                let target_tab = target_tab_id
+                    .and_then(|id| self.tabs.iter().find(|t| t.id == id))
+                    .or_else(|| self.tabs.get(self.active_idx));
+                if let Some(tab) = target_tab {
                     let js = format!(
                         "if (window.__tpExecuteDomAction) window.__tpExecuteDomAction({});",
                         action_json
@@ -4025,22 +4742,32 @@ impl TpBrowserApp {
             }
             AppCmd::PageFinished { tab_id, url } => {
                 let mut finished_title = String::new();
+                let mut is_bot_worker = false;
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                    is_bot_worker = tab.worker_kind.as_deref() == Some("bot");
                     if url.starts_with("http://") || url.starts_with("https://") {
                         let host_changed = Self::title_from_url(&tab.url) != Self::title_from_url(&url);
                         tab.url = url.clone();
-                        if host_changed || tab.title.is_empty() {
+                        if !is_bot_worker && (host_changed || tab.title.is_empty()) {
                             tab.title = Self::title_from_url(&url);
                             tab.favicon_url.clear();
                         }
-                        finished_title = tab.title.clone();
+                        if tab.worker_kind.is_none() {
+                            finished_title = tab.title.clone();
+                        }
                     }
+                }
+                if is_bot_worker {
+                    self.trigger_worker_scan_by_id(tab_id, &url);
+                    self.sync_workspace_view();
                 }
                 if !finished_title.is_empty() {
                     self.record_history(&finished_title, &url);
                 }
                 if url == "tp://history" {
                     self.sync_history_view();
+                } else if url == "tp://workspace" {
+                    self.sync_workspace_view();
                 }
                 self.sync_ai_config_to_panel(false);
                 self.sync_all_ui();
@@ -4093,6 +4820,14 @@ impl TpBrowserApp {
         }
         if t == "ai" {
             return Ok(&self.ai_shell);
+        }
+        if t == "workspace" {
+            return self
+                .tabs
+                .iter()
+                .find(|tab| tab.url == "tp://workspace")
+                .map(|tab| &tab.webview)
+                .ok_or_else(|| "Workspace tab not open".to_string());
         }
         if t.is_empty() || t == "active" {
             return self
@@ -4685,6 +5420,7 @@ fn main() -> wry::Result<()> {
                                 url: "tp://newtab".to_string(),
                                 isolated: true,
                             }),
+                            KeyCode::KeyW => app.execute(AppCmd::OpenWorkspace),
                             _ => {}
                         }
                     }
@@ -4871,5 +5607,21 @@ mod tests {
         assert!(light_tb.contains("data-theme=\"carrara-light\""));
         let light_nt = inject_ui_html(NEWTAB_HTML, "carrara-light");
         assert!(light_nt.contains("data-theme=\"carrara-light\""));
+    }
+
+    #[test]
+    fn test_workspace_and_background_worker_tabs() {
+        assert!(WORKSPACE_HTML.contains("__tpSyncWorkspace"));
+        assert!(WORKSPACE_HTML.contains("run_ecom_scan"));
+        assert!(WORKSPACE_HTML.contains("export_shopee_csv"));
+        assert!(ECOM_AGENTS_JS.contains("__tpRunShopeeScan"));
+        assert!(ECOM_AGENTS_JS.contains("search_order_list_index"));
+        assert!(TIKTOK_PASSIVE_SCAN_JS.contains("update_platform_data"));
+        assert!(TITLEBAR_HTML.contains("open_workspace"));
+        assert!(TITLEBAR_HTML.contains("tb-worker-badge"));
+        assert!(TAB_SHELL_HTML.contains("tab-worker-badge"));
+        assert!(AI_PANEL_HTML.contains("quick_worker_tab"));
+        assert_eq!(TpBrowserApp::normalize_url("tp://workspace"), "tp://workspace");
+        assert_eq!(TpBrowserApp::title_from_url("tp://workspace"), "Không gian TMĐT");
     }
 }

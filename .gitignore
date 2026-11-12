@@ -15,3 +15,4 @@ __pycache__/
 tasks/
 history.json
 .ai/checkpoints/bak_*/
+exports/
