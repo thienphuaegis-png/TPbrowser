@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>TPbrowser MCP Server Inspector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0f14;
+      color: #f3efe6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+    }
+    h1 {
+      font-size: 18px;
+      color: #e5c372;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-badge {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: #141822;
+      border: 1.5px solid rgba(212, 175, 55, 0.22);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .card h2 {
+      font-size: 13.5px;
+      color: #e5c372;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .tool-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 480px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .tool-item {
+      background: #191f2c;
+      border: 1px solid #283144;
+      border-radius: 8px;
+      padding: 10px;
+      transition: all 0.15s ease;
+    }
+    .tool-item:hover {
+      border-color: #d4af37;
+      background: #1e2535;
+    }
+    .tool-name {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #f4d08a;
+      font-family: Consolas, monospace;
+    }
+    .tool-desc {
+      font-size: 11.5px;
+      color: #94a3b8;
+      margin-top: 3px;
+    }
+    .tool-args {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .arg-tag {
+      font-size: 10px;
+      background: #0f121a;
+      border: 1px solid #333f56;
+      color: #cbd5e1;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: Consolas, monospace;
+    }
+    pre {
+      background: #090b10;
+      border: 1px solid #232a3b;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><span>🔌</span> TPbrowser Built-in MCP Server (Model Context Protocol)</h1>
+    <div class="status-badge"><span class="dot"></span> ĐANG CHẠY TRỰC TIẾP (Cổng 17777)</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>
+        <span>Danh Sách 15 Công Cụ MCP (Tools)</span>
+        <span style="font-size:11px; color:#94a3b8;">JSON-RPC 2.0</span>
+      </h2>
+      <div class="tool-list">
+        <div class="tool-item">
+          <div class="tool-name">1. tp_list_tabs</div>
+          <div class="tool-desc">Liệt kê tất cả tab đang mở (ID, Title, URL, tab đang active, chế độ xem).</div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">2. tp_get_page_context</div>
+          <div class="tool-desc">Đọc cấu trúc DOM, tiêu đề, URL, text và ID các nút bấm trên trang để AI phân tích.</div>
+          <div class="tool-args"><span class="arg-tag">target: active/zalo/fb</span><span class="arg-tag">max_chars: 9000</span></div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">3. tp_execute_action</div>
+          <div class="tool-desc">Thực hiện hành động click chuột, gõ phím, cuộn trang hoặc điều hướng URL.</div>
+          <div class="tool-args"><span class="arg-tag">type: click/fill/scroll</span><span class="arg-tag">target_id</span><span class="arg-tag">value</span></div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">4. tp_eval_js</div>
+          <div class="tool-desc">Chạy lệnh JavaScript bất kỳ trực tiếp trên WebView và trả về kết quả JSON.</div>
+          <div class="tool-args"><span class="arg-tag">code (JS string)</span><span class="arg-tag">target: active/zalo/fb</span></div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">5. tp_open_tab &amp; tp_close_tab</div>
+          <div class="tool-desc">Mở tab mới (hỗ trợ Isolated Profile riêng biệt) hoặc đóng tab theo ID.</div>
+          <div class="tool-args"><span class="arg-tag">url</span><span class="arg-tag">isolated: bool</span></div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">6. tp_focus_tab &amp; tp_navigate</div>
+          <div class="tool-desc">Chuyển đổi tab đang xem hoặc điều hướng back/forward/reload.</div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">7. tp_chat_open, tp_chat_scan, tp_chat_draft</div>
+          <div class="tool-desc">Quét tin nhắn Zalo Web / Facebook Messenger và điền sẵn tin nhắn nháp cho anh duyệt.</div>
+          <div class="tool-args"><span class="arg-tag">channel: zalo/fb</span><span class="arg-tag">text: draft</span></div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">8. tp_tasks_list, tp_task_complete, tp_task_snooze</div>
+          <div class="tool-desc">Đọc, lưu và đánh dấu hoàn thành danh sách công việc/nhắc nhở nội bộ.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span>Cách Kết Nối Vào Claude Desktop / Hermes Agent / AI</span></h2>
+      <p style="font-size:12px; color:#cbd5e1; margin-bottom:10px;">
+        TPbrowser tích hợp sẵn MCP Server 2 trong 1: <b>HTTP Endpoint</b> và <b>Stdio CLI Bridge</b>.
+      </p>
+
+      <div style="font-size:11.5px; font-weight:700; color:#f4d08a; margin-bottom:5px;">1. Cấu hình cho Claude Desktop (claude_desktop_config.json):</div>
+      <pre>{
+  "mcpServers": {
+    "tpbrowser": {
+      "command": "D:\\Projects_Hermes\\TPbrowser\\target\\release\\TPbrowser.exe",
+      "args": ["--mcp"]
+    }
+  }
+}</pre>
+
+      <div style="font-size:11.5px; font-weight:700; color:#f4d08a; margin-top:12px; margin-bottom:5px;">2. Gọi kiểm tra trực tiếp qua Terminal (cURL HTTP):</div>
+      <pre># 1. Kiểm tra liveness & số tab đang mở:
+curl http://127.0.0.1:17777/health
+
+# 2. Lấy danh sách 15 Tools của TPbrowser:
+curl -X POST http://127.0.0.1:17777/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'</pre>
+
+      <div style="font-size:11.5px; font-weight:700; color:#f4d08a; margin-top:12px; margin-bottom:5px;">3. Dữ liệu Tài nguyên (Resources):</div>
+      <div style="font-size:11.5px; color:#94a3b8;">
+        • <code>tpbrowser://tabs</code>: Danh sách tab theo thời gian thực.<br>
+        • <code>tpbrowser://tasks</code>: Việc cần làm trong Cowork.<br>
+        • <code>tpbrowser://skills</code>: Kỹ năng tự động hóa đã ghi lại.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -288,6 +288,11 @@
           e.stopImmediatePropagation();
           sendRust({ cmd: "bookmark_active" });
           return;
+        } else if (code === "KeyB" && e.shiftKey) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          sendRust({ cmd: "toggle_bookmarks_bar" });
+          return;
         } else if (code === "KeyF" && !e.shiftKey) {
           e.preventDefault();
           e.stopImmediatePropagation();

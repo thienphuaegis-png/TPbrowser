@@ -719,6 +719,16 @@
 
               <div class="setting-row">
                 <div class="setting-info">
+                  <b>Hiển Thị Thanh Bookmark Ở Hàng Tab Ngang</b>
+                  <span>Hiện thanh lối tắt các trang yêu thích (Google Sheets, Gmail, Zalo...) dưới hàng tab ngang để truy cập nhanh 1-chạm (Ctrl+Shift+B).</span>
+                </div>
+                <button type="button" class="pill-switch checked" id="sw_show_bookmarks_bar" onclick="toggleBoolSetting('show_bookmarks_bar')" aria-label="Hiện Thanh Bookmark"></button>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
                   <b>Chế độ Chia Khung Đa Màn Hình (Split Views / BSP)</b>
                   <span>Xem 1 Tab toàn vùng hoặc chia khung song song để đối chiếu tài liệu và Zalo cùng lúc (Alt+M).</span>
                 </div>
@@ -1144,6 +1154,7 @@
       floating_omnibox: true,
       startup_mode: "restore",
       tab_orientation: "vertical",
+      show_bookmarks_bar: true,
       sidebar_collapsed: false,
       view_mode: "single",
       ai_provider: "openai",
@@ -1274,6 +1285,8 @@
       document.getElementById("seg_tab_vert").classList.toggle("active", !isHoriz);
       document.getElementById("seg_tab_horiz").classList.toggle("active", isHoriz);
       document.getElementById("sw_sidebar_collapsed").classList.toggle("checked", !!modalState.sidebar_collapsed);
+      var swBmBar = document.getElementById("sw_show_bookmarks_bar");
+      if (swBmBar) swBmBar.classList.toggle("checked", modalState.show_bookmarks_bar !== false);
 
       var sbw = parseInt(modalState.sidebar_width || 228, 10);
       var btn180 = document.getElementById("seg_sbw_180");

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Mockup Thiết Kế Thanh Bookmark Cho Tab Ngang - TPbrowser</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0f14;
+      color: #f3efe6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 19px;
+      color: #e5c372;
+      margin-bottom: 6px;
+    }
+    p.sub {
+      font-size: 12.5px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+    }
+    .compare-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    .variant-card {
+      background: #141822;
+      border: 1.5px solid rgba(212, 175, 55, 0.35);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    }
+    .variant-head {
+      background: #1c2230;
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .variant-head h2 {
+      font-size: 13.5px;
+      color: #e5c372;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(212, 175, 55, 0.16);
+      color: #f4d08a;
+      font-weight: 600;
+    }
+    .badge.green {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* MÔ PHỎNG TITLEBAR THẬT CỦA TPBROWSER */
+    .mock-window {
+      background: #090a0f;
+      border-bottom: 1px solid #232a3b;
+      padding: 0;
+    }
+    .mock-titlebar {
+      height: 40px;
+      background: #0e1118;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      gap: 8px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+    }
+    .mock-logo {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: rgba(212, 175, 55, 0.18);
+      border: 1px solid #d4af37;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+      color: #f4d08a;
+    }
+    .mock-nav-btns {
+      display: flex;
+      gap: 3px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .mock-nav-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #171b26;
+      border: 1px solid #283144;
+      cursor: pointer;
+    }
+    .mock-omni {
+      flex: 0 1 220px;
+      height: 28px;
+      background: #151924;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      gap: 6px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .mock-tabs {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      overflow: hidden;
+    }
+    .mock-tab {
+      height: 27px;
+      padding: 0 10px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      background: #131722;
+      color: #94a3b8;
+      border: 1px solid #232a3b;
+    }
+    .mock-tab.active {
+      background: rgba(212, 175, 55, 0.15);
+      border-color: #d4af37;
+      color: #f4d08a;
+      font-weight: 600;
+    }
+    .mock-tools {
+      display: flex;
+      gap: 4px;
+    }
+
+    /* THANH BOOKMARK CON DƯỚI (PHƯƠNG ÁN A) */
+    .mock-bm-bar {
+      height: 30px;
+      background: #11141c;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 6px;
+      overflow-x: auto;
+    }
+    .mock-bm-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      color: #cbd5e1;
+      background: transparent;
+      border: 1px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .mock-bm-item:hover {
+      background: rgba(212, 175, 55, 0.12);
+      border-color: rgba(212, 175, 55, 0.3);
+      color: #f4d08a;
+    }
+    .mock-bm-fav {
+      width: 13px;
+      height: 13px;
+      border-radius: 3px;
+    }
+
+    /* MÔ PHỎNG NỘI DUNG WEB */
+    .mock-content {
+      height: 90px;
+      background: #090b10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    /* CÀI ĐẶT PREVIEW */
+    .settings-demo {
+      background: #161b26;
+      border: 1px solid #283246;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1><span>⭐</span> Phương Án Thiết Kế Thanh Bookmark (Tab Ngang) &amp; Tùy Chọn Ẩn/Hiện Trong Cài Đặt</h1>
+  <p class="sub">Đảm bảo đúng quy tắc thiết kế: ADN thị giác AURELIA Vàng Đồng &amp; Thép Đen, không làm nặng giao diện, phím tắt chuẩn và tự động co giãn layout.</p>
+
+  <div class="compare-container">
+    <!-- BIẾN THỂ 1: CÓ THANH BOOKMARK -->
+    <div class="variant-card">
+      <div class="variant-head">
+        <h2>Trạng Thái 1: Bật Thanh Bookmark Ở Tab Ngang (Khuyên Dùng Cho Người Nhiều Bookmark)</h2>
+        <span class="badge green">✓ Chiều cao Titlebar mở rộng từ 40px lên 68px (hoặc 70px)</span>
+      </div>
+      <div class="mock-window">
+        <!-- Hàng 1: Titlebar điều hướng + Tabs ngang -->
+        <div class="mock-titlebar">
+          <div class="mock-logo">TP</div>
+          <div class="mock-nav-btns">
+            <div class="mock-nav-btn">←</div>
+            <div class="mock-nav-btn">→</div>
+            <div class="mock-nav-btn">↻</div>
+          </div>
+          <div class="mock-omni">🔍 shopee.vn/seller...</div>
+          <div class="mock-tabs">
+            <div class="mock-tab active">🛍️ Shopee Quản Lý Đơn</div>
+            <div class="mock-tab">📊 Doanh Thu Sheets</div>
+            <div class="mock-tab">+</div>
+          </div>
+          <div class="mock-tools">
+            <div class="mock-nav-btn">◫</div>
+            <div class="mock-nav-btn">⚙</div>
+          </div>
+        </div>
+
+        <!-- Hàng 2: Thanh Bookmark AURELIA mảnh (28px - 30px) -->
+        <div class="mock-bm-bar">
+          <div class="mock-bm-item">
+            <span>📑</span>
+            <span>Google Sheets</span>
+          </div>
+          <div class="mock-bm-item">
+            <span>✉️</span>
+            <span>Gmail Cá Nhân</span>
+          </div>
+          <div class="mock-bm-item">
+            <span>📁</span>
+            <span>Google Drive</span>
+          </div>
+          <div class="mock-bm-item">
+            <span>💬</span>
+            <span>FB Messenger</span>
+          </div>
+          <div class="mock-bm-item">
+            <span>📱</span>
+            <span>Zalo Web</span>
+          </div>
+          <div class="mock-bm-item">
+            <span>📺</span>
+            <span>YouTube</span>
+          </div>
+          <div class="mock-bm-item">
+            <span>🤖</span>
+            <span>Gemini AI</span>
+          </div>
+        </div>
+
+        <!-- Vùng nội dung web -->
+        <div class="mock-content">
+          [Vùng hiển thị nội dung trang Web - WebView2 nội dung tự động dời xuống đúng 68px]
+        </div>
+      </div>
+    </div>
+
+    <!-- MỤC CÀI ĐẶT TẬP TRUNG -->
+    <div class="variant-card" style="border-color: rgba(212,175,55,0.25);">
+      <div class="variant-head">
+        <h2>Vị Trí Tùy Chọn Trong Bảng Cài Đặt (Alt+, $\rightarrow$ Tab 2: Quản Lý Tab)</h2>
+        <span class="badge">Lưu Bền Vững Vào config.json</span>
+      </div>
+      <div style="padding: 16px;">
+        <div class="settings-demo">
+          <div>
+            <b style="color:#f4d08a; font-size:13px; display:block; margin-bottom:3px;">Hiển Thị Thanh Bookmark Dưới Hàng Tab Ngang</b>
+            <span style="font-size:12px; color:#94a3b8;">Hiện thanh lối tắt các trang yêu thích (Google Sheets, Zalo, Gmail...) ngay dưới thanh tab ngang để truy cập nhanh 1-chạm. (Ctrl+Shift+B)</span>
+          </div>
+          <div>
+            <div style="width:38px; height:20px; background:#d4af37; border-radius:999px; position:relative; cursor:pointer;">
+              <div style="width:16px; height:16px; background:#0d0f14; border-radius:50%; position:absolute; right:2px; top:2px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

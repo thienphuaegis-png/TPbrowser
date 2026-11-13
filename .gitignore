@@ -16,3 +16,6 @@ tasks/
 history.json
 .ai/checkpoints/bak_*/
 exports/
+*.zip
+perf_latency.log
+*.perf.log

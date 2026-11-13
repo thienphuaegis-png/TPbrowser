@@ -1,8 +1,8 @@
 {
   "project": "TPbrowser",
   "version": "0.1.0",
-  "git_commit": "27a1718",
-  "updated_at": "2026-11-13 10:44:25",
+  "git_commit": "a3f4114",
+  "updated_at": "2026-11-13 17:56:55",
   "codegraph_ast": {
     "files": 9,
     "nodes": 436,

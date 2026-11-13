@@ -7,11 +7,13 @@ mod mcp_server;
 use std::{
     collections::HashMap,
     env, fs,
+    io::Write,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc, OnceLock,
     },
+    time::Instant,
 };
 
 use json_mini::{parse_json, JsonVal};
@@ -133,10 +135,12 @@ const CONTENT_AGENT_JS: &str = include_str!("content_agent.js");
 const ECOM_AGENTS_JS: &str = include_str!("ecom_agents.js");
 const MOTION_JS: &str = include_str!("../assets/vendor/motion.js");
 const TITLEBAR_HEIGHT: u32 = 40;
+const BOOKMARKS_BAR_HEIGHT: u32 = 28;
 
 pub const APP_VERSION: &str = "0.5.6";
 pub const APP_CODENAME: &str = "workspace-landing";
 pub const APP_FULL_VERSION: &str = "v0.5.6-workspace-landing";
+pub const APP_GIT_COMMIT: &str = "441e841";
 
 const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
   try {
@@ -862,6 +866,7 @@ impl ChatChannel {
 #[derive(Debug, Clone)]
 enum AppCmd {
     ToggleTabOrientation,
+    ToggleBookmarksBar,
     ToggleSidebarCollapse,
     #[allow(dead_code)]
     SetTitlebarHover(bool),
@@ -897,6 +902,7 @@ enum AppCmd {
         title: String,
         favicon: String,
     },
+    #[allow(dead_code)]
     PreloadChatChannels,
     ChannelUnread {
         channel: ChatChannel,
@@ -1045,6 +1051,7 @@ struct BrowserTab {
     favicon_url: String,
     worker_kind: Option<String>,
     worker_status: String,
+    is_loaded: bool,
     webview: WebView,
 }
 
@@ -1098,6 +1105,7 @@ struct TpBrowserApp {
     // Config fields (persisted in config.json)
     floating_omnibox: bool,
     compact_titlebar: bool,
+    show_bookmarks_bar: bool,
     sidebar_width: u32,
     show_unread_badges: bool,
     always_show_floating_orbs: bool,
@@ -1655,6 +1663,7 @@ impl TpBrowserApp {
             profile_counter: 1,
             floating_omnibox: true,
             compact_titlebar: false,
+            show_bookmarks_bar: true,
             sidebar_width: 228,
             show_unread_badges: true,
             always_show_floating_orbs: true,
@@ -1704,8 +1713,7 @@ impl TpBrowserApp {
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(250));
             let _ = preload_proxy.send_event(AppCmd::UiShellReady("boot_settle".to_string()));
-            std::thread::sleep(std::time::Duration::from_millis(950));
-            let _ = preload_proxy.send_event(AppCmd::PreloadChatChannels);
+            // Đã tắt tự động Preload Messenger & Zalo để khởi động nhanh tức thì và tiết kiệm 400MB RAM
         });
         Ok(app)
     }
@@ -1874,7 +1882,7 @@ impl TpBrowserApp {
     }
 
     fn add_tab(&mut self, raw_url: &str, isolated: bool) {
-        self.add_tab_internal(raw_url, isolated, true, None, None);
+        self.add_tab_internal(raw_url, isolated, true, None, None, false);
     }
 
     fn add_worker_tab(&mut self, raw_url: &str, worker_kind: &str, custom_title: Option<&str>) -> Option<u64> {
@@ -1884,6 +1892,7 @@ impl TpBrowserApp {
             true,
             Some(worker_kind.to_string()),
             custom_title.map(|s| s.to_string()),
+            false,
         )
     }
 
@@ -1894,6 +1903,7 @@ impl TpBrowserApp {
         sync_now: bool,
         worker_kind: Option<String>,
         custom_title: Option<String>,
+        lazy: bool,
     ) -> Option<u64> {
         if self.tabs.len() >= 14 {
             return None;
@@ -2017,7 +2027,10 @@ impl TpBrowserApp {
         }
 
         let is_ext_url = url.starts_with("chrome-extension://");
-        builder = if url == "tp://newtab" {
+        let should_sleep_load = lazy && !is_worker && !url.starts_with("tp://");
+        builder = if should_sleep_load {
+            builder.with_html("<html><body style='background:#0d0f14; color:#94a3b8; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;'><div style='text-align:center;'>⚡ <span style='font-size:13px;'>Đang ngủ đông để tiết kiệm RAM... Bấm để đánh thức</span></div></body></html>")
+        } else if url == "tp://newtab" {
             builder.with_html(inject_ui_html(NEWTAB_HTML, &self.ui_theme))
         } else if url == "tp://history" {
             builder.with_html(inject_ui_html(HISTORY_HTML, &self.ui_theme))
@@ -2039,6 +2052,7 @@ impl TpBrowserApp {
                 });
             }
             let title = custom_title.unwrap_or_else(|| Self::title_from_url(&url));
+            let is_loaded = !should_sleep_load;
             self.tabs.push(BrowserTab {
                 id: tab_id,
                 profile_name,
@@ -2047,6 +2061,7 @@ impl TpBrowserApp {
                 favicon_url: String::new(),
                 worker_kind,
                 worker_status: if is_worker { "Đang chạy ngầm".to_string() } else { String::new() },
+                is_loaded,
                 webview,
             });
             if !is_worker {
@@ -2062,10 +2077,19 @@ impl TpBrowserApp {
         None
     }
 
+    fn titlebar_height(&self) -> u32 {
+        if self.tab_orientation == TabOrientation::HorizontalTop && self.show_bookmarks_bar {
+            TITLEBAR_HEIGHT + BOOKMARKS_BAR_HEIGHT
+        } else {
+            TITLEBAR_HEIGHT
+        }
+    }
+
     fn relayout(&self) {
+        let t0 = Instant::now();
         let scale = self.window.scale_factor();
         let logical = self.window.inner_size().to_logical::<u32>(scale);
-        let top_reserved = TITLEBAR_HEIGHT;
+        let top_reserved = self.titlebar_height();
         let mut shell = compute_shell_layout(
             logical.width,
             logical.height.saturating_sub(top_reserved),
@@ -2380,10 +2404,11 @@ impl TpBrowserApp {
             let _ = self.dock_resizer_shell.set_visible(false);
         }
 
+        let tb_h = self.titlebar_height();
         let _ = self.titlebar_shell.set_visible(true);
         let _ = self.titlebar_shell.set_bounds(Rect {
             position: LogicalPosition::new(0, 0).into(),
-            size: LogicalSize::new(logical.width.max(320), TITLEBAR_HEIGHT).into(),
+            size: LogicalSize::new(logical.width.max(320), tb_h).into(),
         });
         #[cfg(target_os = "windows")]
         Self::bring_webview_to_front(&self.titlebar_shell);
@@ -2398,6 +2423,10 @@ impl TpBrowserApp {
             Self::bring_webview_to_front(&self.settings_shell);
         } else {
             let _ = self.settings_shell.set_visible(false);
+        }
+        let dur = t0.elapsed().as_secs_f64() * 1000.0;
+        if dur > 5.0 {
+            Self::log_perf("relayout (bounds)", dur);
         }
     }
 
@@ -2434,20 +2463,7 @@ impl TpBrowserApp {
     }
 
     fn get_current_git_commit() -> String {
-        std::process::Command::new("git")
-            .args(["rev-parse", "--short", "HEAD"])
-            .output()
-            .ok()
-            .and_then(|out| {
-                if out.status.success() {
-                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if !s.is_empty() {
-                        return Some(s);
-                    }
-                }
-                None
-            })
-            .unwrap_or_else(|| "27a1718".to_string())
+        APP_GIT_COMMIT.to_string()
     }
 
     fn build_config_payload_json(&self, open_section: Option<&str>) -> String {
@@ -2509,12 +2525,13 @@ impl TpBrowserApp {
         let _ = self.ai_shell.evaluate_script(&ev_js);
         let _ = self.titlebar_shell.evaluate_script(&ev_js);
         let _ = self.settings_shell.evaluate_script(&ev_js);
-        for t in &self.tabs {
+        if let Some(t) = self.tabs.get(self.active_idx) {
             let _ = t.webview.evaluate_script(&ev_js);
         }
     }
 
     fn sync_all_ui(&self) {
+        let t0 = Instant::now();
         let mut tabs_json = Vec::new();
         for t in &self.tabs {
             tabs_json.push(format!(
@@ -2544,10 +2561,12 @@ impl TpBrowserApp {
         let tb_title = format!("TPbrowser — {}", active_title);
         let paired_tab_id_val = self.split_paired_tab_id.unwrap_or(0);
         let tb_state = format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"active_idx\":{},\"tabs\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"show_bookmarks_bar\":{},\"bookmarks\":{},\"active_idx\":{},\"tabs\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             self.tab_orientation.as_str(),
+            self.show_bookmarks_bar,
+            &self.bookmarks_json,
             self.active_idx,
             tabs_arr_str,
             Self::escape_json(&tb_title),
@@ -2625,6 +2644,13 @@ impl TpBrowserApp {
             &self.floating_orbs_json
         };
         for (idx, t) in self.tabs.iter().enumerate() {
+            // Tối ưu độ trễ: Chỉ gửi IPC đồng bộ Bong bóng giao diện tới Tab đang hiển thị (Active hoặc Split-Visible)
+            let is_tab_visible = !is_split && idx == self.active_idx;
+            let is_split_visible = is_split && (idx == self.active_idx || Some(t.id) == self.split_paired_tab_id);
+            if !is_tab_visible && !is_split_visible {
+                continue;
+            }
+
             let show_ring = is_split && idx == self.active_idx;
             // KHI CHIA KHUNG (SPLIT VIEW): Chỉ duy nhất 1 tab active được hiển thị bộ 3 nút Zalo/FB/AI
             // Các tab phụ trong split view sẽ bị ẩn cụm nút hoàn toàn, tránh bị nhân bản 2-3 bộ nút
@@ -2715,6 +2741,10 @@ impl TpBrowserApp {
             tab_mode_lbl,
             ai_lbl
         ));
+        let dur = t0.elapsed().as_secs_f64() * 1000.0;
+        if dur > 5.0 {
+            Self::log_perf("sync_all_ui", dur);
+        }
     }
 
     fn sync_ai_config_to_panel(&self, open_drawer: bool) {
@@ -2905,7 +2935,9 @@ impl TpBrowserApp {
                 &self.bookmarks_json
             }
         );
-        let _ = fs::write(cfg_path, body);
+        std::thread::spawn(move || {
+            let _ = fs::write(cfg_path, body);
+        });
     }
 
     fn load_config(&mut self) {
@@ -3249,6 +3281,7 @@ impl TpBrowserApp {
     }
 
     fn save_session(&self) {
+        let t0 = Instant::now();
         let session_path = self.exe_dir.join("session.json");
         let mut tabs_arr = Vec::new();
         let mut saved_active_idx = 0usize;
@@ -3276,7 +3309,13 @@ impl TpBrowserApp {
             saved_active_idx,
             tabs_arr.join(",\n    ")
         );
-        let _ = fs::write(session_path, body);
+        std::thread::spawn(move || {
+            let _ = fs::write(session_path, body);
+        });
+        let dur = t0.elapsed().as_secs_f64() * 1000.0;
+        if dur > 5.0 {
+            Self::log_perf("save_session (spawn thread)", dur);
+        }
     }
 
     fn load_session_or_default(&mut self) {
@@ -3297,15 +3336,17 @@ impl TpBrowserApp {
                     }
                 }
                 saved_active_idx = val.get("active_idx").and_then(|v| v.as_u64()).map(|n| n as usize);
+                let target_active = saved_active_idx.unwrap_or(0);
                 if let Some(arr) = val.get("tabs").and_then(|v| v.as_arr()) {
-                    for item in arr {
+                    for (i, item) in arr.iter().enumerate() {
                         if let Some(u) = item.get("url").and_then(|v| v.as_str()) {
                             let isolated = item
                                 .get("profile")
                                 .and_then(|v| v.as_str())
                                 .map(|p| p != "default")
                                 .unwrap_or(false);
-                            self.add_tab_internal(u, isolated, false, None, None);
+                            let lazy = i != target_active;
+                            self.add_tab_internal(u, isolated, false, None, None, lazy);
                         }
                     }
                 }
@@ -3319,14 +3360,14 @@ impl TpBrowserApp {
                     let trimmed = line.trim();
                     if trimmed.starts_with("{\"url\":\"") {
                         if let Some(u) = Self::extract_string(trimmed, "\"url\":\"") {
-                            self.add_tab_internal(&u, false, false, None, None);
+                            self.add_tab_internal(&u, false, false, None, None, false);
                         }
                     }
                 }
             }
         }
         if self.tabs.is_empty() {
-            self.add_tab_internal("tp://newtab", false, false, None, None);
+            self.add_tab_internal("tp://newtab", false, false, None, None, false);
         }
         if let Some(idx) = saved_active_idx {
             if idx < self.tabs.len() {
@@ -3456,7 +3497,9 @@ impl TpBrowserApp {
             }
         }
         let tab_id = Self::extract_u64(body, "\"tab_id\":").unwrap_or(0);
-        if body.contains("\"cmd\":\"toggle_tab_orientation\"") {
+        if body.contains("\"cmd\":\"toggle_bookmarks_bar\"") {
+            let _ = proxy.send_event(AppCmd::ToggleBookmarksBar);
+        } else if body.contains("\"cmd\":\"toggle_tab_orientation\"") {
             let _ = proxy.send_event(AppCmd::ToggleTabOrientation);
         } else if body.contains("\"cmd\":\"toggle_sidebar_collapse\"") {
             let _ = proxy.send_event(AppCmd::ToggleSidebarCollapse);
@@ -3817,8 +3860,28 @@ impl TpBrowserApp {
         }
     }
 
+    fn log_perf(action: &str, elapsed_ms: f64) {
+        if elapsed_ms < 5.0 {
+            return;
+        }
+        let line = format!("[PERF] {:<25} | {:>7.2} ms\n", action, elapsed_ms);
+        println!("{}", line.trim());
+        if env::var("TP_DEBUG_PERF").is_ok() {
+            if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open("perf_latency.log") {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+    }
+
     fn execute(&mut self, cmd: AppCmd) {
         match cmd {
+            AppCmd::ToggleBookmarksBar => {
+                self.show_bookmarks_bar = !self.show_bookmarks_bar;
+                self.relayout();
+                self.sync_all_ui();
+                self.save_config();
+                self.broadcast_config_changed();
+            }
             AppCmd::ToggleTabOrientation => {
                 self.tab_orientation = self.tab_orientation.toggle();
                 self.relayout();
@@ -4197,12 +4260,13 @@ impl TpBrowserApp {
                 self.sync_all_ui();
             }
             AppCmd::UiShellReady(shell) => {
-                self.relayout();
-                self.sync_all_ui();
                 if shell == "history" {
                     self.sync_history_view();
                 } else if shell == "workspace" {
                     self.sync_workspace_view();
+                } else if shell == "boot_settle" {
+                    self.relayout();
+                    self.sync_all_ui();
                 }
             }
             AppCmd::SetSettingsSection(sec) => {
@@ -4211,7 +4275,9 @@ impl TpBrowserApp {
                 }
             }
             AppCmd::SyncSettingsModalInit => {
-                self.sync_settings_modal(Some(&self.settings_section));
+                if self.settings_open {
+                    self.sync_settings_modal(Some(&self.settings_section));
+                }
             }
             AppCmd::OpenSettingsModal(section) => {
                 let target_sec = if section.trim().is_empty() {
@@ -4378,6 +4444,9 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                     "sidebar_collapsed" => {
                         self.sidebar_collapsed = Self::parse_bool_str(&value, false);
                     }
+                    "show_bookmarks_bar" => {
+                        self.show_bookmarks_bar = Self::parse_bool_str(&value, true);
+                    }
                     "view_mode" => {
                         self.view_mode = ContentViewMode::from_str(&value);
                         self.save_session();
@@ -4482,6 +4551,14 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
             AppCmd::FocusIndex(idx) => {
                 if idx < self.tabs.len() {
                     self.active_idx = idx;
+                    // Đánh thức tab nếu đang ở trạng thái ngủ đông (Lazy Loading)
+                    if let Some(t) = self.tabs.get_mut(self.active_idx) {
+                        if !t.is_loaded {
+                            t.is_loaded = true;
+                            let target_url = t.url.clone();
+                            let _ = t.webview.load_url(&target_url);
+                        }
+                    }
                     self.relayout();
                     if let Some(t) = self.tabs.get(self.active_idx) {
                         let _ = t.webview.focus();
@@ -4514,15 +4591,7 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
             }
             AppCmd::FocusTabById(tab_id) => {
                 if let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id) {
-                    if self.active_idx != pos {
-                        self.active_idx = pos;
-                        self.relayout();
-                        if let Some(t) = self.tabs.get(self.active_idx) {
-                            let _ = t.webview.focus();
-                        }
-                        self.sync_all_ui();
-                        self.save_session();
-                    }
+                    self.execute(AppCmd::FocusIndex(pos));
                 }
             }
             AppCmd::CloseTabById(tab_id) => {
@@ -5646,6 +5715,14 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
 }
 
 fn main() -> wry::Result<()> {
+    // Tối ưu hóa bộ nhớ và tài nguyên cho WebView2 (tiết kiệm RAM, khởi động nhanh)
+    if env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_err() {
+        env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--disable-features=Translate,OptimizationHints,MediaRouter --renderer-process-limit=4",
+        );
+    }
+
     if env::args().any(|a| a == "--mcp") {
         std::process::exit(mcp_server::run_stdio_bridge());
     }
@@ -5839,7 +5916,13 @@ fn main() -> wry::Result<()> {
                 _ => {}
             },
             Event::UserEvent(cmd) => {
+                let cmd_desc = format!("{:?}", cmd);
+                let t_evt = Instant::now();
                 app.execute(cmd);
+                let dur = t_evt.elapsed().as_secs_f64() * 1000.0;
+                if dur > 10.0 {
+                    TpBrowserApp::log_perf(&format!("CMD: {}", cmd_desc), dur);
+                }
                 if app.should_exit {
                     *control_flow = ControlFlow::Exit;
                 }

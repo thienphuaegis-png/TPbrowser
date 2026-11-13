@@ -39,16 +39,27 @@
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
   html, body {
     width: 100%;
-    height: 40px;
+    height: 100%;
+    margin: 0;
+    padding: 0;
     overflow: hidden;
     background: var(--tb-bg);
     color: var(--tb-btn-fg);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
     border-bottom: 1px solid var(--tb-border);
     display: flex;
+    flex-direction: column;
+  }
+
+  .tb-main-bar {
+    width: 100%;
+    height: 40px;
+    min-height: 40px;
+    display: flex;
     align-items: center;
     gap: 8px;
     padding-left: 10px;
+    box-sizing: border-box;
   }
 
   .tb-brand {
@@ -389,13 +400,69 @@
     background: #dc2626;
     color: #ffffff;
   }
+  .tb-bookmarks-bar {
+    display: none;
+    width: 100%;
+    height: 28px;
+    min-height: 28px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 10px;
+    background: var(--tb-bg);
+    border-top: 1px solid var(--tb-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+    box-sizing: border-box;
+  }
+  .tb-bookmarks-bar::-webkit-scrollbar { display: none; }
+  body.mode-horizontal.show-bm-bar .tb-bookmarks-bar {
+    display: flex;
+  }
+  .tb-bm-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--tb-btn-fg);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    flex-shrink: 0;
+  }
+  .tb-bm-item:hover {
+    background: var(--tb-btn-hover);
+    border-color: var(--tb-border);
+    color: var(--tb-gold);
+  }
+  .tb-bm-fav {
+    width: 13px;
+    height: 13px;
+    border-radius: 2px;
+    display: inline-block;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+  .tb-bm-title {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   @media (max-width: 1040px) {
     .hide-compact { display: none; }
   }
 </style>
 </head>
 <body>
-  <div class="tb-brand">
+  <div class="tb-main-bar">
+    <div class="tb-brand">
     <div class="tb-monogram tb-no-drag" onclick="sendRust({cmd:'open_settings_modal', section:'look_feel'})" title="TPbrowser — Cài Đặt (Alt+,)">
       <img id="tb_brand_icon" alt="TPbrowser" />
     </div>
@@ -492,6 +559,9 @@
       <svg viewBox="0 0 12 12"><line x1="2.5" y1="2.5" x2="9.5" y2="9.5"/><line x1="9.5" y1="2.5" x2="2.5" y2="9.5"/></svg>
     </button>
   </div>
+  </div>
+
+  <div id="tb_bookmarks_bar" class="tb-bookmarks-bar tb-no-drag"></div>
 
   <script>/*__TP_MOTION_JS__*/</script>
   <script>/*__TP_BRAND_ASSETS_JS__*/</script>
@@ -757,6 +827,43 @@
       return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
 
+    function renderBookmarksBar(bms) {
+      var bar = document.getElementById("tb_bookmarks_bar");
+      if (!bar) return;
+      bar.innerHTML = "";
+      if (!Array.isArray(bms) || bms.length === 0) return;
+      for (var i = 0; i < bms.length; i++) {
+        (function(bm) {
+          if (!bm || !bm.url) return;
+          var a = document.createElement("a");
+          a.className = "tb-bm-item";
+          a.title = (bm.title || bm.url) + " — Bấm để mở tab mới";
+          a.onclick = function(e) {
+            e.preventDefault();
+            sendRust({ cmd: "new_tab", url: bm.url, isolated: false });
+          };
+
+          var fav = document.createElement("img");
+          fav.className = "tb-bm-fav";
+          try {
+            var host = new URL(bm.url).hostname;
+            fav.src = "https://www.google.com/s2/favicons?sz=32&domain=" + encodeURIComponent(host);
+          } catch (_) {
+            fav.src = "https://www.google.com/s2/favicons?sz=32&domain=google.com";
+          }
+          fav.onerror = function() { fav.style.display = "none"; };
+          a.appendChild(fav);
+
+          var tit = document.createElement("span");
+          tit.className = "tb-bm-title";
+          tit.textContent = bm.title || bm.url;
+          a.appendChild(tit);
+
+          bar.appendChild(a);
+        })(bms[i]);
+      }
+    }
+
     function renderHorizontalTopTabs(tabs, activeIdx) {
       var box = document.getElementById("tb_horiz_tabs");
       if (!box) return;
@@ -833,6 +940,12 @@
       if (st.orientation) {
         document.body.classList.toggle("mode-horizontal", st.orientation === "horizontal");
         document.body.classList.toggle("mode-vertical", st.orientation !== "horizontal");
+      }
+      if (typeof st.show_bookmarks_bar === "boolean") {
+        document.body.classList.toggle("show-bm-bar", st.show_bookmarks_bar);
+      }
+      if (Array.isArray(st.bookmarks)) {
+        renderBookmarksBar(st.bookmarks);
       }
       if (Array.isArray(st.tabs)) {
         renderHorizontalTopTabs(st.tabs, typeof st.active_idx === "number" ? st.active_idx : 0);

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Khảo Sát &amp; Phân Tích Các Tính Năng Đột Phá Của Zen Browser Kế Thừa Cho TPbrowser</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0f14;
+      color: #f3efe6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 20px;
+      color: #e5c372;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    p.sub {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 960px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: #141822;
+      border: 1.5px solid rgba(212, 175, 55, 0.28);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .card.highlight {
+      border-color: #e5c372;
+      box-shadow: 0 4px 24px rgba(229, 195, 114, 0.12);
+    }
+    .card-head {
+      background: #1c2230;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-head h2 {
+      font-size: 14px;
+      color: #e5c372;
+      font-weight: 700;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(212, 175, 55, 0.16);
+      color: #f4d08a;
+      font-weight: 600;
+    }
+    .badge.green {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .card-body {
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .demo-box {
+      background: #0c0e14;
+      border: 1px solid #293245;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .desc-text {
+      font-size: 12.5px;
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+    .desc-text b { color: #f4d08a; }
+    .desc-text ul { padding-left: 18px; margin-top: 6px; }
+    .desc-text li { margin-bottom: 4px; }
+    
+    /* MÔ PHỎNG WORKSPACES */
+    .ws-bar {
+      display: flex;
+      gap: 6px;
+      background: #171b26;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid #2d3748;
+    }
+    .ws-pill {
+      font-size: 11px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: #0f121a;
+      color: #94a3b8;
+      border: 1px solid transparent;
+    }
+    .ws-pill.active {
+      background: rgba(212, 175, 55, 0.18);
+      color: #f4d08a;
+      border-color: #d4af37;
+      font-weight: 700;
+    }
+
+    /* MÔ PHỎNG GLANCE */
+    .glance-preview {
+      position: relative;
+      height: 110px;
+      background: #11141d;
+      border-radius: 8px;
+      border: 1px dashed #4b5563;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .glance-card {
+      width: 80%;
+      height: 75%;
+      background: #1a202c;
+      border: 1.5px solid #d4af37;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .glance-hdr {
+      background: #242c3d;
+      padding: 4px 8px;
+      font-size: 10px;
+      color: #e5c372;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+    }
+    .glance-content {
+      padding: 8px;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
+    /* MÔ PHỎNG PINNED ESSENTIALS */
+    .pin-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .pin-item {
+      background: #181d29;
+      border: 1px solid #333d52;
+      border-radius: 8px;
+      padding: 6px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .pin-item.active {
+      border-color: #d4af37;
+      background: rgba(212, 175, 55, 0.15);
+    }
+    .pin-icon {
+      font-size: 16px;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .pin-lbl {
+      font-size: 10px;
+      color: #cbd5e1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+  <h1><span>⚡</span> Khảo Sát &amp; Phân Tích Các Tính Năng Đột Phá Của Zen Browser Cho TPbrowser</h1>
+  <p class="sub">Đối soát trực tiếp từ tiến trình Zen Browser thật đang chạy trên máy anh (PID 2604 • Profile <code>nri8zwwp.Default</code> • Mod Sameerasw):</p>
+
+  <div class="grid">
+    <!-- 1. WORKSPACES (KHÔNG GIAN LÀM VIỆC ĐA NHIỆM) -->
+    <div class="card highlight">
+      <div class="card-head">
+        <h2>1. Zen Workspaces (Phân Tách Không Gian Làm Việc Đa Nhiệm)</h2>
+        <span class="badge">Đặc sản #1 Zen</span>
+      </div>
+      <div class="card-body">
+        <div class="demo-box">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; font-weight:700; margin-bottom:8px;">Thanh Chuyển Workspaces (Gắn đầu Sidebar)</div>
+          <div class="ws-bar">
+            <div class="ws-pill active">🛒 TMĐT Shopee (4)</div>
+            <div class="ws-pill">💼 Công Việc / AI (2)</div>
+            <div class="ws-pill">📺 Giải Trí (1)</div>
+            <div class="ws-pill" style="border:1px dashed #64748b;">+ Thêm</div>
+          </div>
+        </div>
+        <div class="desc-text">
+          <p><b>• Hiện trạng Zen thật của anh:</b> Đang bật <code>zen.workspaces.show-workspace-indicator = true</code> và <code>zen.workspaces.continue-where-left-off = true</code>.</p>
+          <p><b>• Giá trị cho TPbrowser:</b> Thay vì dồn 15–20 tab Shopee, Facebook, TikTok, YouTube vào một danh sách dài dằng dặc, Workspaces cho phép anh tách biệt:
+            <ul>
+              <li><b>Workspace 1 (Shopee &amp; TikTok):</b> Chỉ chứa các tab Đơn hàng, PAS, Live, Báo cáo TMĐT.</li>
+              <li><b>Workspace 2 (Văn phòng &amp; AI):</b> Chứa Google Sheets, Claude, ChatGPT, 9Router.</li>
+              <li><b>Workspace 3 (Cá nhân &amp; Giải trí):</b> YouTube, Web Phim, Facebook, Tin tức.</li>
+            </ul>
+          </p>
+          <p><b>• Kiến trúc Rust:</b> Bổ sung <code>workspace_id: String</code> vào <code>BrowserTab</code>, chuyển đổi workspace tức thì bằng 1 phím tắt hoặc 1 click chuột mà không tải lại webview.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. PINNED TABS / ESSENTIALS (TAB GHIM CỐ ĐỊNH ICON VUÔNG) -->
+    <div class="card highlight">
+      <div class="card-head">
+        <h2>2. Pinned Essentials (Tab Ghim Cố Định Dạng Lưới Icon)</h2>
+        <span class="badge">Siêu Tối Giản</span>
+      </div>
+      <div class="card-body">
+        <div class="demo-box">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Lưới Essentials Trên Cùng Tab Dọc</div>
+          <div class="pin-grid">
+            <div class="pin-item active">
+              <span class="pin-icon">🛍️</span>
+              <div class="pin-lbl">Shopee Đơn</div>
+            </div>
+            <div class="pin-item">
+              <span class="pin-icon">🤖</span>
+              <div class="pin-lbl">AI Cowork</div>
+            </div>
+            <div class="pin-item">
+              <span class="pin-icon">💬</span>
+              <div class="pin-lbl">Zalo Web</div>
+            </div>
+            <div class="pin-item">
+              <span class="pin-icon">📊</span>
+              <div class="pin-lbl">Sheets</div>
+            </div>
+          </div>
+        </div>
+        <div class="desc-text">
+          <p><b>• Hiện trạng Zen thật của anh:</b> Zen tách riêng các tab quan trọng nhất thành cụm Essentials cố định trên đỉnh Sidebar (dạng ô vuông icon 32x32px).</p>
+          <p><b>• Giá trị cho TPbrowser:</b> 
+            <ul>
+              <li>Không bao giờ vô tình bị đóng (không có nút × khi chưa unpin).</li>
+              <li>Tồn tại vĩnh viễn xuyên suốt các Workspaces, giúp anh mở nhanh các trang cốt lõi trong 0.1 giây.</li>
+              <li>Tiết kiệm diện tích màn hình tối đa, rất hợp với gu thanh tab dọc AURELIA.</li>
+            </ul>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. ZEN GLANCE (XEM NHANH LIÊN KẾT KHÔNG CẦN RỜI TAB) -->
+    <div class="card highlight">
+      <div class="card-head">
+        <h2>3. Zen Glance (Cửa Sổ Xem Nhanh Nổi / Peek Preview)</h2>
+        <span class="badge">Đặc quyền Zen Mod</span>
+      </div>
+      <div class="card-body">
+        <div class="demo-box">
+          <div class="glance-preview">
+            <div class="glance-card">
+              <div class="glance-hdr">
+                <span>👁️ Xem Nhanh: shopee.vn/chi-tiet-don-hang...</span>
+                <span>ESC để đóng</span>
+              </div>
+              <div class="glance-content">
+                Mở modal pop-up nổi chính giữa trang, xem xong bấm ra ngoài hoặc ESC để tắt ngay mà không mở thêm tab rác!
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="desc-text">
+          <p><b>• Hiện trạng Zen thật của anh:</b> Anh đang bật mod <code>mod.sameerasw.zen_transparent_glance_enabled = true</code>.</p>
+          <p><b>• Giá trị cho TPbrowser:</b> Khi anh đang lướt bảng đơn Shopee hoặc đọc tin tức, muốn xem chi tiết 1 sản phẩm hay 1 link:
+            <ul>
+              <li>Giữ phím <code>Alt</code> (hoặc chuột giữa) bấm vào link $\rightarrow$ hiện cửa sổ xem nhanh nổi (Glance Overlay) trong suốt tuyệt đẹp.</li>
+              <li>Xem nhanh xong bấm <code>ESC</code> hoặc click ra ngoài để đóng ngay $\rightarrow$ <b>Tránh mở 20–30 tab rác</b> làm nặng máy.</li>
+            </ul>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. FLOATING URL BAR & COMPACT AUTO-HIDE -->
+    <div class="card highlight">
+      <div class="card-head">
+        <h2>4. Floating URL Bar &amp; Tự Thu Gọn Thanh Trên (Compact Mode)</h2>
+        <span class="badge">Thẩm Mỹ AURELIA</span>
+      </div>
+      <div class="card-body">
+        <div class="demo-box">
+          <div style="display:flex; justify-content:center;">
+            <div style="background:#181c26; border:1.5px solid #d4af37; border-radius:999px; padding:6px 14px; width:85%; display:flex; align-items:center; gap:8px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+              <span style="color:#e5c372;">⚡</span>
+              <span style="font-size:12px; color:#f3efe6; flex:1;">Gõ URL hoặc @ai giao việc...</span>
+              <span style="font-size:10px; color:#94a3b8; background:#242c3d; padding:2px 6px; border-radius:4px;">Ctrl+L</span>
+            </div>
+          </div>
+        </div>
+        <div class="desc-text">
+          <p><b>• Hiện trạng Zen thật của anh:</b> Cấu hình <code>zen.urlbar.behavior = "float"</code> và <code>mod.sameerasw.zen_compact_sidebar_width = 165px</code>.</p>
+          <p><b>• Giá trị cho TPbrowser:</b> 
+            <ul>
+              <li>Bình thường thanh trên có thể tự ẩn (hoặc thu mỏng còn 4px), trả lại 100% diện tích làm việc toàn màn hình cho nội dung web.</li>
+              <li>Khi bấm <code>Ctrl+L</code> hoặc rê chuột lên trên $\rightarrow$ Thanh URL nổi (Floating Omnibox) hạ xuống mượt mà với dải lụa Vàng Gold, gõ xong tự thu lại gọn gàng.</li>
+            </ul>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
