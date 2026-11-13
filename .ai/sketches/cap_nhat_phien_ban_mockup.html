@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mockup — Nút Cập Nhật Từ Phiên Bản</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0f14;
+      color: #f3efe6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 18px;
+      color: #e5c372;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    p.sub {
+      font-size: 13px;
+      color: #9aa2b1;
+      margin-bottom: 24px;
+    }
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: stretch;
+    }
+    @media (max-width: 800px) {
+      .options-grid { grid-template-columns: 1fr; }
+    }
+    .opt-card {
+      background: #151821;
+      border: 1.5px solid rgba(212, 175, 55, 0.35);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .opt-card.featured {
+      border-color: #e5c372;
+      box-shadow: 0 4px 20px rgba(229, 195, 114, 0.12);
+    }
+    .card-header {
+      background: #1b202c;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-header h2 {
+      font-size: 14px;
+      color: #e5c372;
+      font-weight: 700;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(212, 175, 55, 0.18);
+      color: #f4d08a;
+      font-weight: 600;
+    }
+    .card-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    .sim-bar {
+      background: #0e1017;
+      border: 1px solid #283042;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .btn-action {
+      background: #1f2533;
+      border: 1px solid rgba(212, 175, 55, 0.5);
+      color: #f4d08a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .btn-action:hover {
+      background: rgba(212, 175, 55, 0.2);
+    }
+    .btn-action.highlight {
+      background: #d4af37;
+      color: #0e0f12;
+      border-color: #d4af37;
+    }
+    .desc-list {
+      font-size: 12px;
+      color: #cbd5e1;
+      padding-left: 18px;
+      line-height: 1.6;
+    }
+    .desc-list li { margin-bottom: 4px; }
+    .desc-list strong { color: #f4d08a; }
+  </style>
+</head>
+<body>
+  <h1><span>🔍</span> Khảo Sát /brainstorming: Vị Trí &amp; Ý Nghĩa "Nút Cập Nhật Từ Phiên Bản"</h1>
+  <p class="sub">Em rà soát 2 ngữ cảnh khả dĩ nhất trong codebase TPbrowser để anh chọn đúng nhu cầu thực tế:</p>
+
+  <div class="options-grid">
+    <!-- HƯỚNG 1: MAP.HTML -->
+    <div class="opt-card featured">
+      <div class="card-header">
+        <h2>Phương Án 1: Trong Bản Đồ Dự Án (.ai/MAP.html)</h2>
+        <span class="badge">Đề xuất ưu tiên</span>
+      </div>
+      <div class="card-body">
+        <div class="sim-bar">
+          <div>
+            <div style="font-weight:700; color:#f4d08a; font-size:13px;">TPbrowser — MAP.html</div>
+            <div style="font-size:11px; color:#8e99ab;">Version: v0.5.6-workspace-landing</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-action highlight">🔄 Cập Nhật Từ Phiên Bản Cũ ▾</button>
+            <button class="btn-action">⬇ Export Markdown</button>
+          </div>
+        </div>
+        <ul class="desc-list">
+          <li><strong>Vấn đề hiện tại:</strong> Khi bump <code>ROADMAP_VERSION</code> (từ v0.5.5 lên v0.5.6), trình duyệt nạp key <code>localStorage</code> mới nên không kế thừa được trạng thái các checkbox anh đã tick ở phiên bản trước.</li>
+          <li><strong>Giải pháp nút mới:</strong> Thêm nút bấm <strong>"🔄 Cập Nhật Từ Phiên Bản..."</strong> có droplist chọn phiên bản cũ (v0.5.5, v0.5.4...) để <strong>đồng bộ/kế thừa tự động trạng thái đã xong (done: true)</strong> sang phiên bản mới mà không bị mất dấu.</li>
+          <li><strong>Thêm nút:</strong> "Làm mới theo DEFAULT_TASKS từ code".</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- HƯỚNG 2: SETTINGS MODAL / TPBROWSER APP -->
+    <div class="opt-card">
+      <div class="card-header">
+        <h2>Phương Án 2: Trong Cài Đặt TPbrowser (Alt+,)</h2>
+        <span class="badge">Ứng dụng TPbrowser</span>
+      </div>
+      <div class="card-body">
+        <div class="sim-bar">
+          <div>
+            <div style="font-weight:700; color:#f4d08a; font-size:13px;">Bảng Cài Đặt Zen (Settings)</div>
+            <div style="font-size:11px; color:#8e99ab;">Tab 7: Thông Tin &amp; Cập Nhật (About)</div>
+          </div>
+          <button class="btn-action highlight">🚀 Kiểm Tra &amp; Cập Nhật Bản Mới</button>
+        </div>
+        <ul class="desc-list">
+          <li><strong>Vấn đề hiện tại:</strong> Bảng Cài Đặt TPbrowser (Alt+,) có 6 tab nhưng chưa có tab <strong>"Thông Tin &amp; Cập Nhật"</strong> (About Zen/TPbrowser) để xem phiên bản app.</li>
+          <li><strong>Giải pháp nút mới:</strong> Thêm Tab thứ 7 trong Cài Đặt hiển thị: Logo app, Phiên bản hiện tại (v0.5.6), Commit hash, và nút <strong>"Kiểm Tra &amp; Cập Nhật Phiên Bản"</strong> (chạy lệnh git pull / cập nhật build).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

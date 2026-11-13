@@ -63,26 +63,50 @@
       if (!u || u === "about:blank" || u.startsWith("data:")) return;
       var t = (document.title || "").trim();
       var f = pickTabFavicon();
-      var sig = t + "|" + f;
+      var sig = u + "|" + t + "|" + f;
       if (sig === lastMetaSig) return;
       lastMetaSig = sig;
-      sendRust({ cmd: "tab_meta", title: t, favicon: f });
+      sendRust({ cmd: "tab_meta", url: u, title: t, favicon: f });
     } catch (_) {}
   }
+
+  // Hook SPA History & URL changes (YouTube, Shopee, Facebook, Google...)
+  (function hookSpaNavigation() {
+    try {
+      var origPush = history.pushState;
+      if (typeof origPush === "function") {
+        history.pushState = function () {
+          var res = origPush.apply(this, arguments);
+          setTimeout(reportTabMeta, 60);
+          return res;
+        };
+      }
+      var origReplace = history.replaceState;
+      if (typeof origReplace === "function") {
+        history.replaceState = function () {
+          var res = origReplace.apply(this, arguments);
+          setTimeout(reportTabMeta, 60);
+          return res;
+        };
+      }
+      window.addEventListener("popstate", function () { setTimeout(reportTabMeta, 60); }, true);
+      window.addEventListener("hashchange", function () { setTimeout(reportTabMeta, 60); }, true);
+    } catch (_) {}
+  })();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       reportTabMeta();
-      setTimeout(reportTabMeta, 500);
+      setTimeout(reportTabMeta, 400);
     });
   } else {
     reportTabMeta();
   }
   window.addEventListener("load", function () {
     reportTabMeta();
-    setTimeout(reportTabMeta, 700);
+    setTimeout(reportTabMeta, 600);
   });
-  setInterval(reportTabMeta, 2500);
+  setInterval(reportTabMeta, 1000);
 
   // Hàm trích xuất Nhãn ngữ nghĩa (Semantic Label) & Selector bền vững của 1 phần tử DOM
   function describeElement(el) {

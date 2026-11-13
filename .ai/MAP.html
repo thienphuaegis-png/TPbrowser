@@ -171,8 +171,10 @@
   </div>
 
   <script>
-    const ROADMAP_VERSION = "v0.5.6-2026-11-12-workspace-landing";
+    const ROADMAP_VERSION = "v0.5.8-2026-11-13-zen-split-and-url-fix";
     const DEFAULT_TASKS = [
+      { id: "t21", cat: "UI", title: "Kế Thừa Zen Browser: Chia Khung Tự Do (Popover Chọn Tab & 3 Bố Cục), Sửa Link SPA, Copy Native & Khử Trùng Bộ 3 Nút", done: true, note: "Thêm Menu Popover Zen trên Titlebar (chọn 2 Cột / 2 Hàng / Xoắn Ốc / Hủy chia, ghép đôi tab tự do), hook pushState/popstate đồng bộ URL thật, nút Copy qua Win32 Native Clipboard, và cờ ẩn bộ 3 nút trên tab phụ khi chia khung." },
+      { id: "t20", cat: "UI", title: "Bảng Cài Đặt Zen (Alt+,): Bổ Sung Tab 7 Thông Tin & Cập Nhật (About) Kèm Nút Kiểm Tra Cập Nhật Phiên Bản Mới", done: true, note: "Thêm Tab 7 trong src/settings_modal.html & src/main.rs: logo TP (kèm fallback SVG chống broken image), phiên bản v0.5.6, commit hash git động, nút Kiểm Tra Cập Nhật ngầm (git fetch) & nút Cập Nhật Rebuild tự động." },
       { id: "t1", cat: "UI", title: "Giao diện AURELIA (Giao diện Tối Đen Vàng Gold & Sáng Ngọc Trắng)", done: true, note: "Dựng nguyên bản 2 ảnh mẫu AURELIA với dải lụa 3D SVG, trục kim cương và 3 bong bóng Vàng Gold (AI, Messenger, Zalo) trong src/newtab.html." },
       { id: "t2", cat: "UI", title: "Thanh Tab & Ngăn Trợ lý AI tối giản thoáng mắt (Hover Reveal)", done: true, note: "Đồng bộ bảng màu Đen + Vàng Gold (obsidian-gold) & Sáng, ẩn gọn nút điều hướng phụ và nút đóng tab × khi chưa rê chuột." },
       { id: "t3", cat: "ADBLOCK", title: "Tích hợp Extension uBlock Origin Lite (MV3) + Bộ lọc tiếng Việt ABPVN", done: true, note: "Nạp trực tiếp vào WebView2 qua with_browser_extensions_enabled(true), bật sẵn vie-1 (ABPVN List) và annoyances." },

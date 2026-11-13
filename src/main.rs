@@ -101,6 +101,10 @@ extern "system" {
     ) -> isize;
     fn DestroyIcon(hicon: isize) -> i32;
     fn SendMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
+    fn OpenClipboard(hwnd: isize) -> i32;
+    fn CloseClipboard() -> i32;
+    fn EmptyClipboard() -> i32;
+    fn SetClipboardData(u_format: u32, h_mem: isize) -> isize;
 }
 
 #[cfg(target_os = "windows")]
@@ -108,6 +112,9 @@ extern "system" {
 extern "system" {
     fn LoadLibraryA(lp_lib_file_name: *const u8) -> isize;
     fn GetProcAddress(h_module: isize, lp_proc_name: *const u8) -> *const std::ffi::c_void;
+    fn GlobalAlloc(u_flags: u32, dw_bytes: usize) -> isize;
+    fn GlobalLock(h_mem: isize) -> *mut std::ffi::c_void;
+    fn GlobalUnlock(h_mem: isize) -> i32;
 }
 
 const CHROME_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -126,6 +133,10 @@ const CONTENT_AGENT_JS: &str = include_str!("content_agent.js");
 const ECOM_AGENTS_JS: &str = include_str!("ecom_agents.js");
 const MOTION_JS: &str = include_str!("../assets/vendor/motion.js");
 const TITLEBAR_HEIGHT: u32 = 40;
+
+pub const APP_VERSION: &str = "0.5.6";
+pub const APP_CODENAME: &str = "workspace-landing";
+pub const APP_FULL_VERSION: &str = "v0.5.6-workspace-landing";
 
 const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
   try {
@@ -860,6 +871,13 @@ enum AppCmd {
     WinToggleMaximize,
     WinClose,
     CycleViewMode,
+    SetSplitMode {
+        mode: ContentViewMode,
+        pair_tab_id: Option<u64>,
+    },
+    SwapSplitTabs,
+    Unsplit,
+    CopyToClipboard(String),
     ToggleAiMode,
     SetAiMode(AiDisplayMode),
     OpenChatChannel(ChatChannel),
@@ -875,6 +893,7 @@ enum AppCmd {
     FinishSidebarResize,
     UpdateTabMeta {
         tab_id: u64,
+        url: String,
         title: String,
         favicon: String,
     },
@@ -1007,6 +1026,15 @@ enum AppCmd {
         ok: bool,
         payload_json: String,
     },
+    CheckAppUpdate,
+    RunAppUpdate,
+    AppUpdateResult {
+        has_update: bool,
+        current_commit: String,
+        remote_commit: String,
+        behind_count: usize,
+        message: String,
+    },
 }
 
 struct BrowserTab {
@@ -1059,6 +1087,7 @@ struct TpBrowserApp {
     closed_tabs: Vec<String>,
     history_json: String,
     view_mode: ContentViewMode,
+    split_paired_tab_id: Option<u64>,
     ai_mode: AiDisplayMode,
     ai_working: bool,
     ai_recording: bool,
@@ -1616,6 +1645,7 @@ impl TpBrowserApp {
             closed_tabs: Vec::new(),
             history_json: "[]".to_string(),
             view_mode: ContentViewMode::SingleTab,
+            split_paired_tab_id: None,
             ai_mode: AiDisplayMode::FbPopup,
             ai_working: false,
             ai_recording: false,
@@ -2128,27 +2158,77 @@ impl TpBrowserApp {
                     }
                 }
             } else {
-                let rects = compute_content_panes(
-                    shell.content_area,
-                    self.view_mode,
-                    total,
-                    self.master_ratio,
-                    4,
-                );
-                for (idx, tab) in self.tabs.iter().enumerate() {
-                    if let Some(r) = rects.get(idx) {
-                        let _ = tab.webview.set_visible(true);
-                        let _ = tab.webview.set_bounds(Rect {
-                            position: LogicalPosition::new(r.x, r.y).into(),
-                            size: LogicalSize::new(r.width, r.height).into(),
-                        });
-                        let _ = tab.webview.set_memory_usage_level(if idx == self.active_idx {
-                            MemoryUsageLevel::Normal
+                let paired_idx_opt = self.split_paired_tab_id.and_then(|pid| {
+                    self.tabs.iter().position(|t| t.id == pid && t.id != self.tabs[self.active_idx].id)
+                }).or_else(|| {
+                    if total > 1 {
+                        let next_i = if self.active_idx + 1 < total { self.active_idx + 1 } else { self.active_idx.saturating_sub(1) };
+                        Some(next_i)
+                    } else {
+                        None
+                    }
+                });
+
+                if (self.view_mode == ContentViewMode::ColumnsBsp || self.view_mode == ContentViewMode::RowsBsp) && paired_idx_opt.is_some() {
+                    let p_idx = paired_idx_opt.unwrap();
+                    let rects = compute_content_panes(
+                        shell.content_area,
+                        self.view_mode,
+                        2,
+                        self.master_ratio,
+                        4,
+                    );
+                    for (idx, tab) in self.tabs.iter().enumerate() {
+                        if idx == self.active_idx {
+                            if let Some(r) = rects.get(0) {
+                                let _ = tab.webview.set_visible(true);
+                                let _ = tab.webview.set_bounds(Rect {
+                                    position: LogicalPosition::new(r.x, r.y).into(),
+                                    size: LogicalSize::new(r.width, r.height).into(),
+                                });
+                                let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Normal);
+                                #[cfg(target_os = "windows")]
+                                Self::send_webview_to_back(&tab.webview);
+                            }
+                        } else if idx == p_idx {
+                            if let Some(r) = rects.get(1) {
+                                let _ = tab.webview.set_visible(true);
+                                let _ = tab.webview.set_bounds(Rect {
+                                    position: LogicalPosition::new(r.x, r.y).into(),
+                                    size: LogicalSize::new(r.width, r.height).into(),
+                                });
+                                let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Normal);
+                                #[cfg(target_os = "windows")]
+                                Self::send_webview_to_back(&tab.webview);
+                            }
                         } else {
-                            MemoryUsageLevel::Low
-                        });
-                        #[cfg(target_os = "windows")]
-                        Self::send_webview_to_back(&tab.webview);
+                            let _ = tab.webview.set_visible(false);
+                            let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
+                        }
+                    }
+                } else {
+                    let rects = compute_content_panes(
+                        shell.content_area,
+                        self.view_mode,
+                        total,
+                        self.master_ratio,
+                        4,
+                    );
+                    for (idx, tab) in self.tabs.iter().enumerate() {
+                        if let Some(r) = rects.get(idx) {
+                            let _ = tab.webview.set_visible(true);
+                            let _ = tab.webview.set_bounds(Rect {
+                                position: LogicalPosition::new(r.x, r.y).into(),
+                                size: LogicalSize::new(r.width, r.height).into(),
+                            });
+                            let _ = tab.webview.set_memory_usage_level(if idx == self.active_idx {
+                                MemoryUsageLevel::Normal
+                            } else {
+                                MemoryUsageLevel::Low
+                            });
+                            #[cfg(target_os = "windows")]
+                            Self::send_webview_to_back(&tab.webview);
+                        }
                     }
                 }
             }
@@ -2321,6 +2401,55 @@ impl TpBrowserApp {
         }
     }
 
+    pub fn copy_text_to_clipboard(text: &str) -> bool {
+        #[cfg(target_os = "windows")]
+        unsafe {
+            let utf16: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+            let bytes = utf16.len() * 2;
+            const GMEM_MOVEABLE: u32 = 0x0002;
+            const CF_UNICODETEXT: u32 = 13;
+            let h_mem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+            if h_mem == 0 {
+                return false;
+            }
+            let ptr = GlobalLock(h_mem);
+            if ptr.is_null() {
+                return false;
+            }
+            std::ptr::copy_nonoverlapping(utf16.as_ptr() as *const std::ffi::c_void, ptr, bytes);
+            GlobalUnlock(h_mem);
+            if OpenClipboard(0) == 0 {
+                return false;
+            }
+            EmptyClipboard();
+            SetClipboardData(CF_UNICODETEXT, h_mem);
+            CloseClipboard();
+            true
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = text;
+            false
+        }
+    }
+
+    fn get_current_git_commit() -> String {
+        std::process::Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|out| {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !s.is_empty() {
+                        return Some(s);
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| "27a1718".to_string())
+    }
+
     fn build_config_payload_json(&self, open_section: Option<&str>) -> String {
         let sec = open_section.unwrap_or("");
         let orbs_raw = if self.floating_orbs_json.trim().is_empty() {
@@ -2329,7 +2458,7 @@ impl TpBrowserApp {
             &self.floating_orbs_json
         };
         format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\"}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             Self::escape_json(&self.startup_mode),
@@ -2355,7 +2484,9 @@ impl TpBrowserApp {
             self.unread_ai,
             self.unread_fb,
             self.unread_zalo,
-            Self::escape_json(sec)
+            Self::escape_json(sec),
+            APP_FULL_VERSION,
+            Self::get_current_git_commit()
         )
     }
 
@@ -2411,8 +2542,9 @@ impl TpBrowserApp {
             .unwrap_or("tp://newtab");
         let is_bookmarked = !active_url.starts_with("tp://") && self.bookmarks_json.contains(active_url);
         let tb_title = format!("TPbrowser — {}", active_title);
+        let paired_tab_id_val = self.split_paired_tab_id.unwrap_or(0);
         let tb_state = format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"active_idx\":{},\"tabs\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"active_idx\":{},\"tabs\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             self.tab_orientation.as_str(),
@@ -2422,6 +2554,7 @@ impl TpBrowserApp {
             Self::escape_json(active_url),
             is_bookmarked,
             self.view_mode.as_str(),
+            paired_tab_id_val,
             self.zoom_pct,
             self.titlebar_pinned,
             self.window.is_maximized()
@@ -2493,6 +2626,13 @@ impl TpBrowserApp {
         };
         for (idx, t) in self.tabs.iter().enumerate() {
             let show_ring = is_split && idx == self.active_idx;
+            // KHI CHIA KHUNG (SPLIT VIEW): Chỉ duy nhất 1 tab active được hiển thị bộ 3 nút Zalo/FB/AI
+            // Các tab phụ trong split view sẽ bị ẩn cụm nút hoàn toàn, tránh bị nhân bản 2-3 bộ nút
+            let show_orbs_in_tab = if is_split {
+                idx == self.active_idx && self.always_show_floating_orbs
+            } else {
+                self.always_show_floating_orbs
+            };
             let bubble_state = format!(
                 "{{\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ui_theme\":\"{}\",\"working\":{},\"recording\":{},\"status_text\":\"{}\",\"last_reply\":\"{}\",\"show_split_ring\":{},\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"adblock_enabled\":{},\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"ai_finished_flash\":{},\"chime_seq\":{},\"chime_kind\":\"{}\"}}",
                 self.ai_mode.as_str(),
@@ -2504,7 +2644,7 @@ impl TpBrowserApp {
                 Self::escape_json(&self.ai_last_reply),
                 show_ring,
                 self.show_unread_badges,
-                self.always_show_floating_orbs,
+                show_orbs_in_tab,
                 orbs_raw,
                 self.adblock_enabled,
                 self.unread_ai,
@@ -3332,6 +3472,24 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::WinClose);
         } else if body.contains("\"cmd\":\"cycle_view_mode\"") {
             let _ = proxy.send_event(AppCmd::CycleViewMode);
+        } else if body.contains("\"cmd\":\"set_split_mode\"") {
+            if let Ok(val) = parse_json(body) {
+                let mode_str = val.get("mode").and_then(|v| v.as_str()).unwrap_or("single");
+                let pair_id = val.get("pair_tab_id").and_then(|v| v.as_u64());
+                let mode = ContentViewMode::from_str(mode_str);
+                let _ = proxy.send_event(AppCmd::SetSplitMode {
+                    mode,
+                    pair_tab_id: pair_id,
+                });
+            }
+        } else if body.contains("\"cmd\":\"swap_split_tabs\"") {
+            let _ = proxy.send_event(AppCmd::SwapSplitTabs);
+        } else if body.contains("\"cmd\":\"unsplit\"") {
+            let _ = proxy.send_event(AppCmd::Unsplit);
+        } else if body.contains("\"cmd\":\"copy_to_clipboard\"") {
+            if let Some(text) = Self::extract_field_str(body, "text") {
+                let _ = proxy.send_event(AppCmd::CopyToClipboard(text));
+            }
         } else if body.contains("\"cmd\":\"toggle_ai_mode\"") {
             let _ = proxy.send_event(AppCmd::ToggleAiMode);
         } else if body.contains("\"cmd\":\"set_ai_mode\"") {
@@ -3356,10 +3514,12 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::ResetSidebarWidth);
         } else if body.contains("\"cmd\":\"tab_meta\"") {
             if let Ok(val) = parse_json(body) {
+                let url = val.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let title = val.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let favicon = val.get("favicon").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let _ = proxy.send_event(AppCmd::UpdateTabMeta {
                     tab_id,
+                    url,
                     title,
                     favicon,
                 });
@@ -3392,6 +3552,10 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::CloseSettingsModal);
         } else if body.contains("\"cmd\":\"toggle_settings_modal\"") {
             let _ = proxy.send_event(AppCmd::ToggleSettingsModal);
+        } else if body.contains("\"cmd\":\"check_app_update\"") {
+            let _ = proxy.send_event(AppCmd::CheckAppUpdate);
+        } else if body.contains("\"cmd\":\"run_app_update\"") {
+            let _ = proxy.send_event(AppCmd::RunAppUpdate);
         } else if body.contains("\"cmd\":\"save_setting\"") {
             if let Ok(val) = parse_json(body) {
                 if let Some(key) = val.get("key").and_then(|v| v.as_str()) {
@@ -3702,11 +3866,62 @@ impl TpBrowserApp {
             }
             AppCmd::CycleViewMode => {
                 self.view_mode = self.view_mode.next();
+                if self.view_mode != ContentViewMode::SingleTab && self.split_paired_tab_id.is_none() && self.tabs.len() > 1 {
+                    let next_idx = if self.active_idx + 1 < self.tabs.len() {
+                        self.active_idx + 1
+                    } else {
+                        self.active_idx.saturating_sub(1)
+                    };
+                    self.split_paired_tab_id = Some(self.tabs[next_idx].id);
+                }
                 self.relayout();
                 self.sync_all_ui();
                 self.save_session();
                 self.save_config();
                 self.broadcast_config_changed();
+            }
+            AppCmd::SetSplitMode { mode, pair_tab_id } => {
+                self.view_mode = mode;
+                if mode == ContentViewMode::SingleTab {
+                    self.split_paired_tab_id = None;
+                } else if let Some(pid) = pair_tab_id {
+                    self.split_paired_tab_id = Some(pid);
+                } else if self.split_paired_tab_id.is_none() && self.tabs.len() > 1 {
+                    let next_idx = if self.active_idx + 1 < self.tabs.len() {
+                        self.active_idx + 1
+                    } else {
+                        self.active_idx.saturating_sub(1)
+                    };
+                    self.split_paired_tab_id = Some(self.tabs[next_idx].id);
+                }
+                self.relayout();
+                self.sync_all_ui();
+                self.save_session();
+                self.save_config();
+                self.broadcast_config_changed();
+            }
+            AppCmd::SwapSplitTabs => {
+                if let Some(pid) = self.split_paired_tab_id {
+                    if let Some(p_idx) = self.tabs.iter().position(|t| t.id == pid) {
+                        let active_id = self.tabs.get(self.active_idx).map(|t| t.id);
+                        self.active_idx = p_idx;
+                        self.split_paired_tab_id = active_id;
+                        self.relayout();
+                        self.sync_all_ui();
+                    }
+                }
+            }
+            AppCmd::Unsplit => {
+                self.view_mode = ContentViewMode::SingleTab;
+                self.split_paired_tab_id = None;
+                self.relayout();
+                self.sync_all_ui();
+                self.save_session();
+                self.save_config();
+                self.broadcast_config_changed();
+            }
+            AppCmd::CopyToClipboard(text) => {
+                Self::copy_text_to_clipboard(&text);
             }
             AppCmd::ToggleAiMode => {
                 self.ai_mode = match self.ai_mode {
@@ -3896,11 +4111,19 @@ impl TpBrowserApp {
             }
             AppCmd::UpdateTabMeta {
                 tab_id,
+                url,
                 title,
                 favicon,
             } => {
                 let mut changed = false;
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                    let clean_u = url.trim();
+                    if !clean_u.is_empty() && (clean_u.starts_with("http://") || clean_u.starts_with("https://")) {
+                        if tab.url != clean_u {
+                            tab.url = clean_u.to_string();
+                            changed = true;
+                        }
+                    }
                     if tab.url.starts_with("http://") || tab.url.starts_with("https://") {
                         let clean_t = title.trim();
                         if !clean_t.is_empty() && tab.title != clean_t {
@@ -4018,6 +4241,106 @@ impl TpBrowserApp {
                     let sec = self.settings_section.clone();
                     self.execute(AppCmd::OpenSettingsModal(sec));
                 }
+            }
+            AppCmd::CheckAppUpdate => {
+                let proxy = self.proxy.clone();
+                std::thread::spawn(move || {
+                    let current_commit = Self::get_current_git_commit();
+                    let fetch_res = std::process::Command::new("git")
+                        .args(["fetch", "origin", "main", "--quiet"])
+                        .output();
+
+                    let (has_update, remote_commit, behind_count, message) = if fetch_res.is_err() {
+                        (
+                            false,
+                            current_commit.clone(),
+                            0,
+                            "Không thể kết nối tới remote git (offline hoặc thiếu quyền mạng).".to_string(),
+                        )
+                    } else {
+                        let rev_out = std::process::Command::new("git")
+                            .args(["rev-parse", "--short", "origin/main"])
+                            .output();
+                        let remote_hash = rev_out
+                            .ok()
+                            .and_then(|o| {
+                                if o.status.success() {
+                                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                                    if !s.is_empty() {
+                                        Some(s)
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| current_commit.clone());
+
+                        let log_out = std::process::Command::new("git")
+                            .args(["log", "HEAD..origin/main", "--oneline"])
+                            .output();
+                        let lines = log_out
+                            .ok()
+                            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
+                            .unwrap_or(0);
+
+                        if lines > 0 && current_commit != remote_hash {
+                            (
+                                true,
+                                remote_hash,
+                                lines,
+                                format!("Có {} commit mới trên origin/main.", lines),
+                            )
+                        } else {
+                            (
+                                false,
+                                current_commit.clone(),
+                                0,
+                                "Mã nguồn hiện tại đã đồng bộ hoàn toàn với origin/main.".to_string(),
+                            )
+                        }
+                    };
+
+                    let _ = proxy.send_event(AppCmd::AppUpdateResult {
+                        has_update,
+                        current_commit,
+                        remote_commit,
+                        behind_count,
+                        message,
+                    });
+                });
+            }
+            AppCmd::AppUpdateResult {
+                has_update,
+                current_commit,
+                remote_commit,
+                behind_count,
+                message,
+            } => {
+                let json = format!(
+                    "{{\"has_update\":{},\"current_commit\":\"{}\",\"remote_commit\":\"{}\",\"behind_count\":{},\"message\":\"{}\"}}",
+                    has_update,
+                    Self::escape_json(&current_commit),
+                    Self::escape_json(&remote_commit),
+                    behind_count,
+                    Self::escape_json(&message)
+                );
+                let js = format!("if (window.__tpOnUpdateStatus) window.__tpOnUpdateStatus({});", json);
+                let _ = self.settings_shell.evaluate_script(&js);
+            }
+            AppCmd::RunAppUpdate => {
+                let _ = std::process::Command::new("cmd")
+                    .args([
+                        "/c",
+                        "start",
+                        "TPbrowser Updater",
+                        "cmd",
+                        "/c",
+                        "chcp 65001 >nul && echo Dang keo code moi tu GitHub... && git pull origin main && echo Dang build ban Release... && cargo build --release && copy /y target\
+elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe thanh cong! Bam phim bat ky de thoat... && pause",
+                    ])
+                    .spawn();
             }
             AppCmd::SaveSetting { key, value } => {
                 match key.as_str() {
@@ -5573,7 +5896,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_modal_html_has_font_marker_and_six_tabs() {
+    fn test_settings_modal_html_has_font_marker_and_seven_tabs() {
         assert!(SETTINGS_MODAL_HTML.contains("/*__TP_FONT_FACE__*/"));
         let injected = inject_ui_fonts(SETTINGS_MODAL_HTML);
         assert!(injected.contains("@font-face"));
@@ -5584,11 +5907,17 @@ mod tests {
             "pane_side_panels",
             "pane_privacy",
             "pane_shortcuts",
+            "pane_about",
         ] {
             assert!(SETTINGS_MODAL_HTML.contains(tab), "missing {}", tab);
         }
         assert!(SETTINGS_MODAL_HTML.contains("orb_manager_list"));
         assert!(SETTINGS_MODAL_HTML.contains("sw_always_show_orbs"));
+        assert!(SETTINGS_MODAL_HTML.contains("btn_check_update"));
+        assert!(SETTINGS_MODAL_HTML.contains("check_app_update"));
+        assert!(SETTINGS_MODAL_HTML.contains("about_brand_icon"));
+        assert_eq!(APP_VERSION, "0.5.6");
+        assert_eq!(APP_FULL_VERSION, "v0.5.6-workspace-landing");
         assert!(injected.contains("Motion"));
     }
 

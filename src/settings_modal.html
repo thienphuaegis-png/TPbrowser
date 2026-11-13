@@ -554,7 +554,10 @@
       <aside class="zs-sidebar">
         <div>
           <div class="zs-brand">
-            <div class="zs-monogram"><img id="zs_brand_icon" alt="TPbrowser" /></div>
+            <div class="zs-monogram">
+              <img id="zs_brand_icon" alt="" style="display:none; width:100%; height:100%; object-fit:contain;" />
+              <div id="zs_brand_fallback" style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; color:var(--gold-bright); font-weight:800; font-family:var(--font-heading); font-size:15px; letter-spacing:0.5px;">TP</div>
+            </div>
             <div class="zs-brand-txt">
               <div class="zs-brand-title">Cài Đặt TPbrowser</div>
               <div class="zs-brand-sub">Chuẩn Zen • Vàng Đồng</div>
@@ -585,6 +588,10 @@
             <button type="button" class="zs-tab-btn" data-tab="shortcuts" onclick="switchTab('shortcuts')">
               <svg class="ui-ico" viewBox="0 0 16 16"><rect x="1.5" y="4" width="13" height="8.5" rx="2"/><path d="M4.5 7h1M7.5 7h1M10.5 7h1M4.5 10h7"/></svg>
               <span>Phím Tắt (Shortcuts)</span>
+            </button>
+            <button type="button" class="zs-tab-btn" data-tab="about" onclick="switchTab('about')">
+              <svg class="ui-ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 7v4.5M8 4.75h.01" stroke-width="2" stroke-linecap="round"/></svg>
+              <span>Thông Tin &amp; Cập Nhật</span>
             </button>
           </nav>
         </div>
@@ -1022,6 +1029,70 @@
               </div>
             </div>
           </div>
+
+          <!-- 7. ABOUT & UPDATES -->
+          <div class="zs-pane" id="pane_about">
+            <div class="setting-group" style="text-align:center; padding: 22px 18px;">
+              <div style="display:flex; justify-content:center; align-items:center; margin-bottom: 12px;">
+                <div style="width: 58px; height: 58px; border-radius: 16px; border: 1.5px solid var(--gold-line-strong); background: var(--bg-input); display:flex; align-items:center; justify-content:center; padding: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                  <img id="about_brand_icon" alt="" style="display:none; width: 100%; height: 100%; object-fit: contain;" />
+                  <div id="about_brand_fallback" style="display:flex; width:100%; height:100%; align-items:center; justify-content:center; color:var(--gold-bright); font-weight:800; font-family:var(--font-heading); font-size:26px; letter-spacing:1px;">TP</div>
+                </div>
+              </div>
+              <div style="font-family: var(--font-heading); font-size: 24px; color: var(--gold-bright); letter-spacing: 0.5px; font-weight: 700;">TPbrowser</div>
+              <div style="font-size: 11.5px; color: var(--text-sub); margin-top: 2px;">Trình Duyệt Tối Giản AURELIA • Vàng Đồng &amp; Thép Đen</div>
+              <div style="margin-top: 10px; display:flex; justify-content:center; gap: 8px; flex-wrap: wrap;">
+                <span class="kbd-badge" id="about_ver_badge" style="background: rgba(212, 175, 55, 0.15); border-color: var(--gold-line-strong); color: var(--gold-bright); font-weight: 700;">v0.5.6-workspace-landing</span>
+                <span class="kbd-badge" id="about_commit_badge">Commit: 27a1718</span>
+                <span class="kbd-badge" style="color:#38bdf8;">Rust + wry</span>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-bright);">Kiểm Tra &amp; Cập Nhật Phiên Bản</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Cập Nhật Trình Duyệt</b>
+                  <span id="about_update_status_desc">Kiểm tra commit mới nhất trên nhánh origin/main (GitHub)</span>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <button type="button" class="pill-btn cta" id="btn_check_update" onclick="checkAppUpdate()">
+                    <svg class="ui-ico" viewBox="0 0 16 16"><path d="M13.6 8A5.6 5.6 0 1 1 8 2.4c1.8 0 3.3.8 4.3 2.1L14 3v4.5H9.5l2.2-2.2A4.2 4.2 0 1 0 8 3.8a4.2 4.2 0 0 0 4.2 4.2z" fill="currentColor"/></svg>
+                    <span>Kiểm Tra Cập Nhật</span>
+                  </button>
+                  <button type="button" class="pill-btn" id="btn_run_update" style="display:none;" onclick="runAppUpdate()">
+                    🚀 Cập Nhật &amp; Rebuild
+                  </button>
+                </div>
+              </div>
+              <div id="about_update_log_box" style="display:none; margin-top:10px; padding:10px 12px; background:var(--bg-input); border:1px solid var(--gold-line); border-radius:10px; font-size:11.5px; line-height:1.5;">
+                <div id="about_update_log_text" style="color:var(--text-main);"></div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-bright);">Môi Trường &amp; Dịch Vụ Cốt Lõi</div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Universal MCP Server</b><span>Máy chủ ngữ cảnh AI HTTP &amp; Stdio</span></div>
+                <span class="kbd-badge" style="color:#4ade80;">127.0.0.1:17777 (Sẵn sàng)</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Màn hình TMĐT Workspace</b><span>Landing Page kiểm toán Shopee &amp; TikTok</span></div>
+                <span class="kbd-badge">tp://workspace</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Khiên Chặn Quảng Cáo</b><span>uBlock Origin Lite (MV3) + ABPVN + Popunder 0px</span></div>
+                <span class="kbd-badge" style="color:#4ade80;">3 Lớp Tích Hợp</span>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info"><b>Worker Tabs Chạy Ngầm</b><span>Chạy cào dữ liệu &amp; tác vụ AI không chiếm chuột</span></div>
+                <span class="kbd-badge">BOT / AI Workers</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -1054,6 +1125,10 @@
       shortcuts: {
         title: "Phím Tắt Điều Khiển Nhanh (Shortcuts)",
         desc: "Hệ thống phím tắt bàn phím đồng nhất trên toàn trình duyệt giúp thao tác không gián đoạn."
+      },
+      about: {
+        title: "Thông Tin & Cập Nhật (About TPbrowser)",
+        desc: "Thông tin phiên bản, kiến trúc lõi AURELIA, môi trường runtime và kiểm tra cập nhật từ GitHub."
       }
     };
 
@@ -1082,7 +1157,9 @@
       floating_orbs: DEFAULT_ORBS.slice(),
       ai_dock_width: 360,
       adblock_enabled: true,
-      google_user: ""
+      google_user: "",
+      app_version: "v0.5.6-workspace-landing",
+      app_commit: "27a1718"
     };
 
     var savedTimer = null;
@@ -1153,9 +1230,35 @@
       if (segArrow) segArrow.classList.toggle("active", logoStyle === "arrow");
 
       var brandImg = document.getElementById("zs_brand_icon");
-      if (brandImg && window.__tpResolveBrandAsset) {
-        var bSrc = window.__tpResolveBrandAsset("app", logoStyle, modalState.ui_theme);
-        if (bSrc && brandImg.getAttribute("src") !== bSrc) brandImg.src = bSrc;
+      var brandFb = document.getElementById("zs_brand_fallback");
+      var bSrc = window.__tpResolveBrandAsset ? window.__tpResolveBrandAsset("app", logoStyle, modalState.ui_theme) : null;
+      if (bSrc && brandImg) {
+        if (brandImg.getAttribute("src") !== bSrc) brandImg.src = bSrc;
+        brandImg.style.display = "block";
+        if (brandFb) brandFb.style.display = "none";
+      } else {
+        if (brandImg) brandImg.style.display = "none";
+        if (brandFb) brandFb.style.display = "flex";
+      }
+
+      var aboutImg = document.getElementById("about_brand_icon");
+      var aboutFb = document.getElementById("about_brand_fallback");
+      var aSrc = window.__tpResolveBrandAsset ? window.__tpResolveBrandAsset("app", logoStyle, modalState.ui_theme) : null;
+      if (aSrc && aboutImg) {
+        if (aboutImg.getAttribute("src") !== aSrc) aboutImg.src = aSrc;
+        aboutImg.style.display = "block";
+        if (aboutFb) aboutFb.style.display = "none";
+      } else {
+        if (aboutImg) aboutImg.style.display = "none";
+        if (aboutFb) aboutFb.style.display = "flex";
+      }
+      if (modalState.app_version) {
+        var avBadge = document.getElementById("about_ver_badge");
+        if (avBadge) avBadge.textContent = modalState.app_version;
+      }
+      if (modalState.app_commit) {
+        var acBadge = document.getElementById("about_commit_badge");
+        if (acBadge) acBadge.textContent = "Commit: " + modalState.app_commit;
       }
 
       var swFloat = document.getElementById("sw_floating_omnibox");
@@ -1481,6 +1584,61 @@
       sendRust({ cmd: "open_google_login" });
       requestCloseModal();
     }
+
+    function checkAppUpdate() {
+      var btn = document.getElementById("btn_check_update");
+      var runBtn = document.getElementById("btn_run_update");
+      var logBox = document.getElementById("about_update_log_box");
+      var logTxt = document.getElementById("about_update_log_text");
+      var desc = document.getElementById("about_update_status_desc");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳ Đang kiểm tra...</span>';
+      }
+      if (runBtn) runBtn.style.display = "none";
+      if (desc) desc.textContent = "Đang kết nối git để kiểm tra commit mới...";
+      if (logBox) logBox.style.display = "block";
+      if (logTxt) logTxt.innerHTML = '<span style="color:var(--gold-bright);">⏳ Đang kiểm tra phiên bản mới từ repository...</span>';
+      sendRust({ cmd: "check_app_update" });
+    }
+
+    function runAppUpdate() {
+      var btn = document.getElementById("btn_run_update");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ Đang chạy cập nhật...";
+      }
+      sendRust({ cmd: "run_app_update" });
+    }
+
+    window.__tpOnUpdateStatus = function (data) {
+      var btn = document.getElementById("btn_check_update");
+      var runBtn = document.getElementById("btn_run_update");
+      var logBox = document.getElementById("about_update_log_box");
+      var logTxt = document.getElementById("about_update_log_text");
+      var desc = document.getElementById("about_update_status_desc");
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<svg class="ui-ico" viewBox="0 0 16 16"><path d="M13.6 8A5.6 5.6 0 1 1 8 2.4c1.8 0 3.3.8 4.3 2.1L14 3v4.5H9.5l2.2-2.2A4.2 4.2 0 1 0 8 3.8a4.2 4.2 0 0 0 4.2 4.2z" fill="currentColor"/></svg><span>Kiểm Tra Lại</span>';
+      }
+      if (!data) return;
+      if (logBox) logBox.style.display = "block";
+      if (data.has_update) {
+        if (desc) desc.textContent = "Phát hiện phiên bản mới (" + (data.behind_count || 1) + " commit mới)!";
+        if (runBtn) runBtn.style.display = "inline-flex";
+        if (logTxt) {
+          logTxt.innerHTML = '<div style="color:#eab308; font-weight:700; margin-bottom:4px;">✨ Có phiên bản mới trên GitHub: ' + (data.remote_commit || '') + '</div>' +
+            '<div style="color:var(--text-sub);">' + (data.message || 'Bấm nút Cập Nhật & Rebuild để nâng cấp.') + '</div>';
+        }
+      } else {
+        if (desc) desc.textContent = "Bạn đang sử dụng phiên bản mới nhất.";
+        if (runBtn) runBtn.style.display = "none";
+        if (logTxt) {
+          logTxt.innerHTML = '<div style="color:#4ade80; font-weight:700;">✅ TPbrowser đã ở phiên bản mới nhất!</div>' +
+            '<div style="color:var(--text-sub); margin-top:2px;">Commit hiện tại: ' + (data.current_commit || modalState.app_commit || '27a1718') + ' • ' + (data.message || 'Mã nguồn đã đồng bộ hoàn toàn với origin/main.') + '</div>';
+        }
+      }
+    };
 
     function onBackdropClick(e) {
       if (e.target && e.target.id === "zs_backdrop") {

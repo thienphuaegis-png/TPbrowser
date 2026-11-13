@@ -73,6 +73,7 @@ pub enum ContentViewMode {
     SingleTab,
     SpiralBsp,
     ColumnsBsp,
+    RowsBsp,
 }
 
 impl ContentViewMode {
@@ -81,6 +82,7 @@ impl ContentViewMode {
             ContentViewMode::SingleTab => "single",
             ContentViewMode::SpiralBsp => "spiral",
             ContentViewMode::ColumnsBsp => "columns",
+            ContentViewMode::RowsBsp => "rows",
         }
     }
 
@@ -89,6 +91,8 @@ impl ContentViewMode {
             ContentViewMode::SpiralBsp
         } else if s.eq_ignore_ascii_case("columns") {
             ContentViewMode::ColumnsBsp
+        } else if s.eq_ignore_ascii_case("rows") {
+            ContentViewMode::RowsBsp
         } else {
             ContentViewMode::SingleTab
         }
@@ -96,9 +100,10 @@ impl ContentViewMode {
 
     pub fn next(self) -> Self {
         match self {
-            ContentViewMode::SingleTab => ContentViewMode::SpiralBsp,
-            ContentViewMode::SpiralBsp => ContentViewMode::ColumnsBsp,
-            ContentViewMode::ColumnsBsp => ContentViewMode::SingleTab,
+            ContentViewMode::SingleTab => ContentViewMode::ColumnsBsp,
+            ContentViewMode::ColumnsBsp => ContentViewMode::RowsBsp,
+            ContentViewMode::RowsBsp => ContentViewMode::SpiralBsp,
+            ContentViewMode::SpiralBsp => ContentViewMode::SingleTab,
         }
     }
 }
@@ -255,8 +260,33 @@ pub fn compute_content_panes(
     match view_mode {
         ContentViewMode::SingleTab => vec![area],
         ContentViewMode::ColumnsBsp => compute_columns_in_area(area, count, gap),
+        ContentViewMode::RowsBsp => compute_rows_in_area(area, count, gap),
         ContentViewMode::SpiralBsp => compute_spiral_in_area(area, count, master_ratio, gap),
     }
+}
+
+pub fn compute_rows_in_area(area: PaneRect, count: usize, gap: u32) -> Vec<PaneRect> {
+    let total_gap = gap.saturating_mul((count.saturating_sub(1)) as u32);
+    let avail_h = area.height.saturating_sub(total_gap).max(count as u32 * 40);
+    let row_h = avail_h / (count as u32);
+
+    let mut out = Vec::with_capacity(count);
+    let mut cur_y = area.y;
+    for i in 0..count {
+        let h = if i == count - 1 {
+            ((area.y + area.height as i32) - cur_y).max(40) as u32
+        } else {
+            row_h
+        };
+        out.push(PaneRect {
+            x: area.x,
+            y: cur_y,
+            width: area.width,
+            height: h,
+        });
+        cur_y += (h + gap) as i32;
+    }
+    out
 }
 
 pub fn compute_columns_in_area(area: PaneRect, count: usize, gap: u32) -> Vec<PaneRect> {
@@ -431,5 +461,22 @@ mod tests {
         assert_eq!(hdr.height, FB_CHAT_HEADER_HEIGHT);
         assert_eq!(body.y, hdr.y + FB_CHAT_HEADER_HEIGHT as i32);
         assert!(hdr.x + (hdr.width as i32) <= 1480 - 80);
+    }
+
+    #[test]
+    fn test_rows_split_inside_content_area() {
+        let area = PaneRect {
+            x: 0,
+            y: 0,
+            width: 1000,
+            height: 800,
+        };
+        let rects = compute_content_panes(area, ContentViewMode::RowsBsp, 2, 0.5, 4);
+        assert_eq!(rects.len(), 2);
+        assert_eq!(rects[0].x, 0);
+        assert_eq!(rects[0].width, 1000);
+        assert_eq!(rects[1].x, 0);
+        assert_eq!(rects[1].width, 1000);
+        assert!(rects[1].y > rects[0].y);
     }
 }

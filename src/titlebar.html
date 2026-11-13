@@ -446,9 +446,28 @@
     <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'toggle_tab_orientation'})" title="Đổi Tab Dọc / Tab Ngang (Alt+T)">
       <svg viewBox="0 0 16 16"><rect x="2.2" y="2.5" width="11.6" height="11" rx="1.6"/><path d="M6.2 2.5v11"/></svg>
     </button>
-    <button type="button" class="tb-ico-btn" id="btn_split_mode" onclick="sendRust({cmd:'cycle_view_mode'})" title="Chia khung BSP (Alt+M)">
-      <svg viewBox="0 0 16 16"><rect x="2.2" y="2.5" width="5" height="11" rx="1"/><rect x="8.8" y="2.5" width="5" height="5" rx="1"/><rect x="8.8" y="8.5" width="5" height="5" rx="1"/></svg>
-    </button>
+    <div style="position:relative;">
+      <button type="button" class="tb-ico-btn" id="btn_split_mode" onclick="toggleSplitPopover(event)" title="Chia khung Zen Browser (Alt+M)">
+        <svg viewBox="0 0 16 16"><rect x="2.2" y="2.5" width="5" height="11" rx="1"/><rect x="8.8" y="2.5" width="5" height="5" rx="1"/><rect x="8.8" y="8.5" width="5" height="5" rx="1"/></svg>
+      </button>
+
+      <!-- MENU ZEN SPLIT POPOVER -->
+      <div id="zen_split_popover" class="tb-no-drag" style="display:none; position:absolute; top:38px; right:0; width:280px; background:var(--tb-bg); border:1.5px solid var(--tb-gold-line); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.6); padding:12px; z-index:9999; text-align:left; font-size:12px; color:var(--tb-text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:11px; font-weight:700; color:var(--tb-gold); text-transform:uppercase; letter-spacing:0.5px;">Bố Cục Chia Khung</span>
+          <button type="button" onclick="closeSplitPopover()" style="background:none; border:none; color:var(--tb-text-sub); cursor:pointer; font-size:13px; font-weight:700;">&times;</button>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:10px;">
+          <button type="button" id="btn_mode_columns" onclick="selectSplitMode('columns')" style="background:var(--tb-bg-hover); border:1px solid var(--tb-gold-line); color:var(--tb-text); border-radius:6px; padding:6px 2px; font-size:11px; font-weight:600; cursor:pointer;">◫ 2 Cột</button>
+          <button type="button" id="btn_mode_rows" onclick="selectSplitMode('rows')" style="background:var(--tb-bg-hover); border:1px solid var(--tb-gold-line); color:var(--tb-text); border-radius:6px; padding:6px 2px; font-size:11px; font-weight:600; cursor:pointer;">⊟ 2 Hàng</button>
+          <button type="button" id="btn_mode_spiral" onclick="selectSplitMode('spiral')" style="background:var(--tb-bg-hover); border:1px solid var(--tb-gold-line); color:var(--tb-text); border-radius:6px; padding:6px 2px; font-size:11px; font-weight:600; cursor:pointer;">🌀 Xoắn Ốc</button>
+        </div>
+        <button type="button" id="btn_unsplit" onclick="sendRust({cmd:'unsplit'}); closeSplitPopover();" style="display:none; width:100%; background:rgba(239, 68, 68, 0.12); border:1px solid rgba(239, 68, 68, 0.35); color:#f87171; border-radius:6px; padding:5px 0; font-size:11px; font-weight:700; cursor:pointer; margin-bottom:10px;">◻ Hủy Chia (Về 1 Tab Toàn Màn Hình)</button>
+
+        <div style="font-size:11px; font-weight:700; color:var(--tb-gold); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Chọn Tab Ghép Đôi Cùng Tab Này</div>
+        <div id="split_tab_picker_list" style="display:flex; flex-direction:column; gap:4px; max-height:130px; overflow-y:auto; padding-right:2px;"></div>
+      </div>
+    </div>
     <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'toggle_find_bar'})" title="Tìm chữ trong trang (Ctrl+F / F3)">
       <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L13.5 13.5"/></svg>
     </button>
@@ -512,13 +531,182 @@
 
     function copyCurrentUrl() {
       var val = currentUrl || document.getElementById("tb_url_input").value || "tp://newtab";
+      sendRust({ cmd: "copy_to_clipboard", text: val });
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(val).catch(function(){});
       }
       var btn = document.getElementById("btn_copy_url");
-      var prev = btn.innerHTML;
-      btn.textContent = "✓";
-      setTimeout(function(){ btn.innerHTML = prev; }, 1100);
+      if (btn) {
+        var prev = btn.innerHTML;
+        btn.textContent = "✓";
+        btn.style.color = "#10B981";
+        setTimeout(function(){
+          btn.innerHTML = prev;
+          btn.style.color = "";
+        }, 1100);
+      }
+    }
+
+    var lastSyncState = null;
+
+    function toggleSplitPopover(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      var pop = document.getElementById("zen_split_popover");
+      if (!pop) return;
+      var isHidden = pop.style.display === "none" || !pop.style.display;
+      if (isHidden) {
+        renderSplitPopoverContent();
+        pop.style.display = "block";
+      } else {
+        pop.style.display = "none";
+      }
+    }
+
+    function closeSplitPopover() {
+      var pop = document.getElementById("zen_split_popover");
+      if (pop) pop.style.display = "none";
+    }
+
+    document.addEventListener("click", function (e) {
+      var pop = document.getElementById("zen_split_popover");
+      var btn = document.getElementById("btn_split_mode");
+      if (!pop || pop.style.display === "none") return;
+      if (e.target && (pop.contains(e.target) || (btn && btn.contains(e.target)))) return;
+      pop.style.display = "none";
+    });
+
+    function selectSplitMode(mode, pairId) {
+      sendRust({
+        cmd: "set_split_mode",
+        mode: mode,
+        pair_tab_id: typeof pairId === "number" ? pairId : (lastSyncState ? lastSyncState.paired_tab_id : null)
+      });
+      closeSplitPopover();
+    }
+
+    function pairWithTab(targetTabId) {
+      var currentMode = (lastSyncState && lastSyncState.view_mode !== "single") ? lastSyncState.view_mode : "columns";
+      sendRust({
+        cmd: "set_split_mode",
+        mode: currentMode,
+        pair_tab_id: targetTabId
+      });
+      closeSplitPopover();
+    }
+
+    function renderSplitPopoverContent() {
+      if (!lastSyncState) return;
+      var st = lastSyncState;
+      var curMode = st.view_mode || "single";
+      var btnCol = document.getElementById("btn_mode_columns");
+      var btnRow = document.getElementById("btn_mode_rows");
+      var btnSpi = document.getElementById("btn_mode_spiral");
+      var btnUnsplit = document.getElementById("btn_unsplit");
+
+      var activeBtnBorder = "1.5px solid var(--tb-gold)";
+      var activeBtnBg = "rgba(212, 175, 55, 0.18)";
+      var defaultBtnBorder = "1px solid var(--tb-gold-line)";
+      var defaultBtnBg = "var(--tb-bg-hover)";
+
+      if (btnCol) {
+        btnCol.style.border = curMode === "columns" ? activeBtnBorder : defaultBtnBorder;
+        btnCol.style.background = curMode === "columns" ? activeBtnBg : defaultBtnBg;
+      }
+      if (btnRow) {
+        btnRow.style.border = curMode === "rows" ? activeBtnBorder : defaultBtnBorder;
+        btnRow.style.background = curMode === "rows" ? activeBtnBg : defaultBtnBg;
+      }
+      if (btnSpi) {
+        btnSpi.style.border = curMode === "spiral" ? activeBtnBorder : defaultBtnBorder;
+        btnSpi.style.background = curMode === "spiral" ? activeBtnBg : defaultBtnBg;
+      }
+      if (btnUnsplit) {
+        btnUnsplit.style.display = curMode !== "single" ? "block" : "none";
+      }
+
+      var list = document.getElementById("split_tab_picker_list");
+      if (!list) return;
+      list.innerHTML = "";
+
+      var tabs = Array.isArray(st.tabs) ? st.tabs : [];
+      var activeTab = tabs[st.active_idx];
+      var pairedId = st.paired_tab_id || 0;
+
+      if (tabs.length <= 1) {
+        list.innerHTML = '<div style="font-size:11px; color:var(--tb-text-sub); padding:6px 0; text-align:center;">Mở thêm Tab mới (Ctrl+T) để ghép đôi chia khung tự do.</div>';
+        return;
+      }
+
+      for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
+        var isThisActive = i === st.active_idx;
+        var isPaired = t.id === pairedId && curMode !== "single";
+
+        var item = document.createElement("div");
+        item.style.display = "flex";
+        item.style.alignItems = "center";
+        item.style.justifyContent = "space-between";
+        item.style.gap = "6px";
+        item.style.padding = "5px 8px";
+        item.style.borderRadius = "6px";
+        item.style.background = isThisActive ? "rgba(212,175,55,0.12)" : (isPaired ? "rgba(16,185,129,0.12)" : "var(--tb-bg-hover)");
+        item.style.border = isThisActive ? "1px solid var(--tb-gold)" : (isPaired ? "1px solid #10b981" : "1px solid transparent");
+        item.style.cursor = isThisActive ? "default" : "pointer";
+
+        var left = document.createElement("div");
+        left.style.display = "flex";
+        left.style.alignItems = "center";
+        left.style.gap = "6px";
+        left.style.overflow = "hidden";
+        left.style.whiteSpace = "nowrap";
+        left.style.textOverflow = "ellipsis";
+
+        var fav = document.createElement("img");
+        fav.style.width = "13px";
+        fav.style.height = "13px";
+        fav.style.borderRadius = "3px";
+        fav.src = resolveTabFavicon(t);
+        fav.onerror = function () { this.style.display = "none"; };
+        left.appendChild(fav);
+
+        var titleSpan = document.createElement("span");
+        titleSpan.textContent = t.title || "Tab " + (i + 1);
+        titleSpan.style.fontSize = "11.5px";
+        titleSpan.style.color = isThisActive ? "var(--tb-gold)" : (isPaired ? "#34d399" : "var(--tb-text)");
+        titleSpan.style.overflow = "hidden";
+        titleSpan.style.textOverflow = "ellipsis";
+        left.appendChild(titleSpan);
+
+        item.appendChild(left);
+
+        var right = document.createElement("span");
+        right.style.fontSize = "10px";
+        right.style.fontWeight = "700";
+        if (isThisActive) {
+          right.textContent = "Hiện tại";
+          right.style.color = "var(--tb-gold)";
+        } else if (isPaired) {
+          right.textContent = "✓ Ghép đôi";
+          right.style.color = "#34d399";
+        } else {
+          right.textContent = "+ Ghép";
+          right.style.color = "var(--tb-text-sub)";
+        }
+        item.appendChild(right);
+
+        if (!isThisActive) {
+          (function (targetId) {
+            item.onclick = function () {
+              pairWithTab(targetId);
+            };
+          })(t.id);
+        }
+
+        list.appendChild(item);
+      }
     }
 
     document.body.addEventListener("mousedown", function (e) {
@@ -630,6 +818,10 @@
 
     window.__tpSyncTitlebar = function (st) {
       if (!st) return;
+      lastSyncState = st;
+      if (document.getElementById("zen_split_popover") && document.getElementById("zen_split_popover").style.display === "block") {
+        renderSplitPopoverContent();
+      }
       if (st.ui_theme) {
         currentTheme = st.ui_theme;
         document.documentElement.setAttribute("data-theme", st.ui_theme);

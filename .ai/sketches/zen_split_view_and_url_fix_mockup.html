@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Khảo Sát &amp; Thiết Kế — Chia Khung Tự Do Kiểu Zen &amp; Sửa Link / Copy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0f14;
+      color: #f3efe6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 19px;
+      color: #e5c372;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    p.sub {
+      font-size: 13px;
+      color: #9aa2b1;
+      margin-bottom: 22px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 900px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: #151821;
+      border: 1.5px solid rgba(212, 175, 55, 0.35);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .card.highlight {
+      border-color: #e5c372;
+      box-shadow: 0 4px 20px rgba(229, 195, 114, 0.14);
+    }
+    .card-head {
+      background: #1b202c;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-head h2 {
+      font-size: 13.5px;
+      color: #e5c372;
+      font-weight: 700;
+    }
+    .badge {
+      font-size: 10.5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(212, 175, 55, 0.18);
+      color: #f4d08a;
+      font-weight: 600;
+    }
+    .card-body {
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .sim-box {
+      background: #0e1017;
+      border: 1px solid #283042;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .popover-menu {
+      width: 290px;
+      background: #171b26;
+      border: 1.5px solid #d4af37;
+      border-radius: 12px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.6);
+      padding: 12px;
+    }
+    .pop-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #e5c372;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .pop-layouts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .pop-layout-btn {
+      background: #10131a;
+      border: 1px solid #333d52;
+      color: #cbd5e1;
+      border-radius: 6px;
+      padding: 7px 4px;
+      font-size: 11px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .pop-layout-btn.active {
+      border-color: #d4af37;
+      background: rgba(212, 175, 55, 0.16);
+      color: #f4d08a;
+      font-weight: 700;
+    }
+    .pop-tab-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .pop-tab-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: #10131a;
+      border: 1px solid #262e3d;
+      border-radius: 6px;
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+    .pop-tab-item:hover {
+      border-color: #d4af37;
+      background: #1a202c;
+    }
+    .pop-tab-item.paired {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.1);
+    }
+    .tag-active {
+      font-size: 9.5px;
+      background: #10b981;
+      color: #052e16;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .desc-text {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+    .desc-text b { color: #f4d08a; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .status-pill.good { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .status-pill.bad { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+  </style>
+</head>
+<body>
+  <h1><span>⚡</span> Thiết Kế &amp; Đối Soát 4 Điểm Cải Tiến Lớn Theo Chuẩn Zen Browser</h1>
+  <p class="sub">Rà soát trực tiếp từ tiến trình và profile Zen Browser thật đang chạy trên máy anh (PID 2604 • <code>C:\Program Files\Zen Browser</code>):</p>
+
+  <div class="grid-2">
+    <!-- MỤC 1 & 2: LINK & COPY -->
+    <div class="card highlight">
+      <div class="card-head">
+        <h2>1. Sửa Lỗi Hiển Thị Link (SPA) &amp; Nút Copy URL</h2>
+        <span class="badge">Lõi Trình Duyệt</span>
+      </div>
+      <div class="card-body">
+        <div class="sim-box">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:11px; color:#8e99ab; text-transform:uppercase; font-weight:700;">Thanh Địa Chỉ Titlebar</span>
+            <span class="status-pill good">Win32 Native Clipboard</span>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center; background:#181c26; padding:6px 10px; border-radius:999px; border:1px solid #333d52;">
+            <span style="color:#10b981;">🔒</span>
+            <span style="font-size:12px; color:#f3efe6; flex:1; font-family:Consolas, monospace;">https://shopee.vn/user/purchase/order/123456...</span>
+            <button style="background:#222938; border:1px solid #10b981; color:#34d399; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:700; cursor:pointer;">✓ Đã chép</button>
+          </div>
+        </div>
+        <div class="desc-text">
+          <p><b>• Nguyên nhân link chưa đúng:</b> Các trang SPA (YouTube, Shopee, Facebook, Google) đổi URL bằng <code>pushState</code>/<code>replaceState</code> mà không tải lại trang. Trước đây <code>content_agent.js</code> chỉ gửi URL lúc mở trang nên URL bị kẹt.</p>
+          <p><b>• Cách sửa triệt để:</b> Hook <code>pushState</code>, <code>replaceState</code>, <code>popstate</code> và <code>hashchange</code> trong <code>content_agent.js</code>; tự động cập nhật URL thật lên thanh trên tức thì.</p>
+          <p><b>• Sửa nút Copy link:</b> Thay vì phụ thuộc <code>navigator.clipboard</code> (bị WebView2 chặn), Rust gọi Win32 Clipboard native (<code>OpenClipboard</code> + <code>SetClipboardData</code>) bảo đảm bấm là chép 100%.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- MỤC 3: BỘ 3 NÚT AI/FB/ZALO -->
+    <div class="card highlight">
+      <div class="card-head">
+        <h2>2. Bộ 3 Nút AI / FB / Zalo Duy Nhất (Không Nhân Bản)</h2>
+        <span class="badge">Chuẩn Cửa Sổ Zen</span>
+      </div>
+      <div class="card-body">
+        <div class="sim-box">
+          <div style="font-size:11px; color:#8e99ab; text-transform:uppercase; font-weight:700; margin-bottom:8px;">Mô Phỏng 2 Tab Chia Cột (50 / 50)</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; height:120px; border:1px dashed #4b5563; border-radius:6px; padding:6px; position:relative;">
+            <div style="background:#13161f; border-radius:4px; padding:6px; font-size:11px; color:#94a3b8;">
+              Tab 1 (Shopee Đơn Hàng)
+              <div style="margin-top:20px; font-size:10px; color:#64748b;">[Đã ẩn hoàn toàn bộ 3 nút]</div>
+            </div>
+            <div style="background:#1a202c; border:1px solid #d4af37; border-radius:4px; padding:6px; font-size:11px; color:#f4d08a; position:relative;">
+              Tab 2 (Active - Shopee PAS)
+              <div style="position:absolute; bottom:6px; right:6px; display:flex; gap:4px;">
+                <span style="background:#e2be68; color:#111; width:22px; height:22px; border-radius:999px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:9.5px;">AI</span>
+                <span style="background:#38bdf8; color:#111; width:22px; height:22px; border-radius:999px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:9.5px;">FB</span>
+                <span style="background:#60a5fa; color:#111; width:22px; height:22px; border-radius:999px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:9.5px;">Zalo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="desc-text">
+          <p><b>• Hiện trạng:</b> Mỗi Tab là 1 WebView riêng nên tự đẻ ra 1 bộ 3 nút; chia 2 tab thì trên màn hình có tới 2 bộ 3 nút chạy theo từng tab.</p>
+          <p><b>• Sửa chuẩn Zen:</b> Khi chia khung (Split View), nhân Rust truyền cờ chỉ cho phép duy nhất <b>1 Tab Active</b> hiển thị cụm nút ở góc cửa sổ. Các tab khác tự ẩn triệt để, giữ đúng quy tắc <b>1 cửa sổ = 1 bộ 3 nút</b>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MỤC 4: CHIA KHUNG TỰ DO KIỂU ZEN BROWSER -->
+  <div class="card highlight">
+    <div class="card-head">
+      <h2>3. Chế Độ Chia Khung Tự Do Kiểu Zen Browser (Menu Popover Bấm Chọn Tab &amp; Bố Cục)</h2>
+      <span class="badge">Kế thừa Zen Browser</span>
+    </div>
+    <div class="card-body" style="display:grid; grid-template-columns:310px 1fr; gap:20px; align-items:start;">
+      <!-- MENU POPOVER MÔ PHỎNG -->
+      <div class="popover-menu">
+        <div class="pop-title">Bố Cục Chia Khung (Layout)</div>
+        <div class="pop-layouts">
+          <button class="pop-layout-btn active">◫ 2 Cột</button>
+          <button class="pop-layout-btn">⊟ 2 Hàng</button>
+          <button class="pop-layout-btn">🌀 Xoắn Ốc</button>
+          <button class="pop-layout-btn" style="grid-column: span 3; color:#f87171;">◻ Hủy Chia (Về 1 Tab Đơn)</button>
+        </div>
+        <div class="pop-title" style="margin-top:10px;">Chọn Tab Ghép Đôi Cùng Tab Hiện Tại</div>
+        <div class="pop-tab-list">
+          <div class="pop-tab-item paired">
+            <span class="tag-active">Hiện tại</span>
+            <span style="font-weight:600; color:#f1f5f9;">Shopee Đơn Hàng</span>
+          </div>
+          <div class="pop-tab-item paired">
+            <span style="color:#10b981; font-weight:700;">✓ Ghép</span>
+            <span>Shopee Ads &amp; PAS</span>
+          </div>
+          <div class="pop-tab-item">
+            <span style="color:#64748b;">+ Thêm</span>
+            <span>TikTok Seller Center</span>
+          </div>
+          <div class="pop-tab-item">
+            <span style="color:#64748b;">+ Thêm</span>
+            <span>tp://workspace (Landing)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- GIẢI THÍCH CHI TIẾT -->
+      <div class="desc-text" style="font-size:12.5px;">
+        <p style="margin-bottom:8px;"><b>Tại sao chia tự do của Zen lại tiện hơn nút tự động cũ?</b></p>
+        <ul style="padding-left:18px; line-height:1.7;">
+          <li><b>Không bị ép chia toàn bộ tab:</b> Nút cũ tự động gom tất cả 5–10 tab đang mở vào một lưới nhỏ xíu rất khó nhìn. Chuẩn Zen cho phép anh <b>chọn đích danh 2 tab muốn làm việc song song</b> (ví dụ: vừa xem Đơn Hàng vừa mở Tab PAS bên cạnh).</li>
+          <li><b>Lựa chọn kiểu chia theo ý muốn:</b> Bấm nút Chia Khung trên Titlebar (hoặc phím tắt <code>Alt+M</code>) sẽ thả ra <b>Menu Zen Popover</b> cho phép anh chọn ngay kiểu chia: <i>2 Cột cạnh nhau</i>, <i>2 Hàng trên dưới</i>, hoặc <i>Xoắn ốc</i>.</li>
+          <li><b>Hủy chia nhanh 1 chạm:</b> Có nút <i>"◻ Hủy Chia (Về 1 Tab Đơn)"</i> đưa tab đang làm việc về toàn màn hình bình thường mà không phải bấm vòng lặp nhiều lần.</li>
+          <li><b>Thanh phân cách kéo giãn tự do (Split Divider Resizer):</b> Ở giữa 2 tab có đường chỉ kéo giãn tỉ lệ (50/50, 70/30, 30/70) giống như thanh kéo sidebar và dock anh đã dùng.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
