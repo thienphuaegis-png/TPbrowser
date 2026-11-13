@@ -729,6 +729,26 @@
 
               <div class="setting-row">
                 <div class="setting-info">
+                  <b>Tốc Độ Mở Siêu Tốc (Chạy Ngầm Khay Hệ Thống — Startup Boost)</b>
+                  <span>Khi đóng cửa sổ (X), trình duyệt ẩn xuống khay Taskbar để lần sau bấm mở lên tức thì &lt;0.05s giống Microsoft Edge. Chuột phải icon khay để thoát hẳn.</span>
+                </div>
+                <button type="button" class="pill-switch checked" id="sw_background_mode" onclick="toggleBoolSetting('background_mode')" aria-label="Chạy ngầm khay hệ thống"></button>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Tự Động Nạp Cùng Windows (Startup Boost)</b>
+                  <span>Tự động nạp sẵn TPbrowser ngầm khi vừa đăng nhập Windows để sẵn sàng mở tức thì 1-chạm mà không cần chờ.</span>
+                </div>
+                <button type="button" class="pill-switch" id="sw_startup_boost" onclick="toggleBoolSetting('startup_boost')" aria-label="Khởi động cùng Windows"></button>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <div class="setting-row">
+                <div class="setting-info">
                   <b>Chế độ Chia Khung Đa Màn Hình (Split Views / BSP)</b>
                   <span>Xem 1 Tab toàn vùng hoặc chia khung song song để đối chiếu tài liệu và Zalo cùng lúc (Alt+M).</span>
                 </div>
@@ -1153,6 +1173,8 @@
       logo_style: "ribbon",
       floating_omnibox: true,
       startup_mode: "restore",
+      background_mode: true,
+      startup_boost: false,
       tab_orientation: "vertical",
       show_bookmarks_bar: true,
       sidebar_collapsed: false,
@@ -1287,6 +1309,10 @@
       document.getElementById("sw_sidebar_collapsed").classList.toggle("checked", !!modalState.sidebar_collapsed);
       var swBmBar = document.getElementById("sw_show_bookmarks_bar");
       if (swBmBar) swBmBar.classList.toggle("checked", modalState.show_bookmarks_bar !== false);
+      var swBgMode = document.getElementById("sw_background_mode");
+      if (swBgMode) swBgMode.classList.toggle("checked", modalState.background_mode !== false);
+      var swBoot = document.getElementById("sw_startup_boost");
+      if (swBoot) swBoot.classList.toggle("checked", !!modalState.startup_boost);
 
       var sbw = parseInt(modalState.sidebar_width || 228, 10);
       var btn180 = document.getElementById("seg_sbw_180");

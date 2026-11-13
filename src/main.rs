@@ -107,16 +107,69 @@ extern "system" {
     fn CloseClipboard() -> i32;
     fn EmptyClipboard() -> i32;
     fn SetClipboardData(u_format: u32, h_mem: isize) -> isize;
+    fn ShowWindow(hwnd: isize, n_cmd_show: i32) -> i32;
+    fn SetForegroundWindow(hwnd: isize) -> i32;
+    fn CreatePopupMenu() -> isize;
+    fn AppendMenuW(hmenu: isize, uflags: u32, uidnewitem: usize, lpnewitem: *const u16) -> i32;
+    fn TrackPopupMenu(hmenu: isize, uflags: u32, x: i32, y: i32, nreserved: i32, hwnd: isize, prc_rect: *const std::ffi::c_void) -> i32;
+    fn DestroyMenu(hmenu: isize) -> i32;
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct NOTIFYICONDATAW {
+    cb_size: u32,
+    hwnd: isize,
+    u_id: u32,
+    u_flags: u32,
+    u_callback_message: u32,
+    h_icon: isize,
+    sz_tip: [u16; 128],
+    dw_state: u32,
+    dw_state_mask: u32,
+    sz_info: [u16; 256],
+    u_version: u32,
+    sz_info_title: [u16; 64],
+    dw_info_flags: u32,
+    guid_item: [u8; 16],
+    h_balloon_icon: isize,
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "shell32")]
+extern "system" {
+    fn Shell_NotifyIconW(dw_message: u32, lp_data: *const NOTIFYICONDATAW) -> i32;
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "comctl32")]
+extern "system" {
+    fn SetWindowSubclass(
+        hwnd: isize,
+        pfn_subclass: unsafe extern "system" fn(isize, u32, usize, isize, usize, usize) -> isize,
+        uid_subclass: usize,
+        ref_data: usize,
+    ) -> i32;
+    fn DefSubclassProc(hwnd: isize, umsg: u32, wparam: usize, lparam: isize) -> isize;
+    fn RemoveWindowSubclass(
+        hwnd: isize,
+        pfn_subclass: unsafe extern "system" fn(isize, u32, usize, isize, usize, usize) -> isize,
+        uid_subclass: usize,
+    ) -> i32;
 }
 
 #[cfg(target_os = "windows")]
 #[link(name = "kernel32")]
+#[allow(dead_code)]
 extern "system" {
     fn LoadLibraryA(lp_lib_file_name: *const u8) -> isize;
     fn GetProcAddress(h_module: isize, lp_proc_name: *const u8) -> *const std::ffi::c_void;
     fn GlobalAlloc(u_flags: u32, dw_bytes: usize) -> isize;
     fn GlobalLock(h_mem: isize) -> *mut std::ffi::c_void;
     fn GlobalUnlock(h_mem: isize) -> i32;
+    fn CreateMutexA(lp_mutex_attributes: *mut std::ffi::c_void, b_initial_owner: i32, lp_name: *const u8) -> isize;
+    fn GetLastError() -> u32;
+    fn CloseHandle(hobject: isize) -> i32;
 }
 
 const CHROME_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -875,6 +928,8 @@ enum AppCmd {
     WinMinimize,
     WinToggleMaximize,
     WinClose,
+    QuitApp,
+    WakeAndShowWindow,
     CycleViewMode,
     SetSplitMode {
         mode: ContentViewMode,
@@ -1120,6 +1175,8 @@ struct TpBrowserApp {
     ui_theme: String,
     logo_style: String,
     startup_mode: String,
+    background_mode: bool,
+    startup_boost: bool,
     #[cfg(target_os = "windows")]
     hicon_big: isize,
     #[cfg(target_os = "windows")]
@@ -1137,6 +1194,58 @@ struct TpBrowserApp {
     last_ecom_auto_epoch: u64,
     next_mcp_req_id: u64,
     mcp_pending: HashMap<u64, mpsc::Sender<Result<String, String>>>,
+}
+
+#[cfg(target_os = "windows")]
+const WM_TRAYICON: u32 = 0x8000 + 101;
+#[cfg(target_os = "windows")]
+const TRAY_ID: u32 = 1001;
+
+#[cfg(target_os = "windows")]
+static TRAY_PROXY: OnceLock<EventLoopProxy<AppCmd>> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn tray_subclass_proc(
+    hwnd: isize,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+    _uid: usize,
+    _ref_data: usize,
+) -> isize {
+    if msg == WM_TRAYICON {
+        let mouse_msg = (lparam & 0xFFFF) as u32;
+        if mouse_msg == 0x0202 || mouse_msg == 0x0203 {
+            // WM_LBUTTONUP or WM_LBUTTONDBLCLK -> Hiện lại cửa sổ
+            if let Some(proxy) = TRAY_PROXY.get() {
+                let _ = proxy.send_event(AppCmd::WakeAndShowWindow);
+            }
+        } else if mouse_msg == 0x0205 {
+            // WM_RBUTTONUP -> Bật Menu Ngữ Cảnh Native Win32
+            let mut pt = WinPoint { x: 0, y: 0 };
+            GetCursorPos(&mut pt);
+            SetForegroundWindow(hwnd);
+            let hmenu = CreatePopupMenu();
+            let open_txt: Vec<u16> = "⚡ Mở TPbrowser\0".encode_utf16().collect();
+            let quit_txt: Vec<u16> = "🚪 Thoát hoàn toàn\0".encode_utf16().collect();
+            AppendMenuW(hmenu, 0, 1, open_txt.as_ptr());
+            AppendMenuW(hmenu, 0x00000800, 0, std::ptr::null()); // MF_SEPARATOR
+            AppendMenuW(hmenu, 0, 2, quit_txt.as_ptr());
+            let cmd = TrackPopupMenu(hmenu, 0x0100 | 0x0080, pt.x, pt.y, 0, hwnd, std::ptr::null());
+            DestroyMenu(hmenu);
+            if cmd == 1 {
+                if let Some(proxy) = TRAY_PROXY.get() {
+                    let _ = proxy.send_event(AppCmd::WakeAndShowWindow);
+                }
+            } else if cmd == 2 {
+                if let Some(proxy) = TRAY_PROXY.get() {
+                    let _ = proxy.send_event(AppCmd::QuitApp);
+                }
+            }
+        }
+        return 0;
+    }
+    DefSubclassProc(hwnd, msg, wparam, lparam)
 }
 
 impl TpBrowserApp {
@@ -1361,6 +1470,115 @@ impl TpBrowserApp {
             SetWindowPos(hwnd, 1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
         }
     }
+
+    #[cfg(target_os = "windows")]
+    fn init_system_tray(&self) {
+        let hwnd = self.window.hwnd() as isize;
+        let _ = TRAY_PROXY.set(self.proxy.clone());
+        unsafe {
+            SetWindowSubclass(hwnd, tray_subclass_proc, 1, 0);
+            let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
+            nid.cb_size = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+            nid.hwnd = hwnd;
+            nid.u_id = TRAY_ID;
+            nid.u_flags = 0x00000001 | 0x00000002 | 0x00000004; // NIF_MESSAGE | NIF_ICON | NIF_TIP
+            nid.u_callback_message = WM_TRAYICON;
+            nid.h_icon = if self.hicon_small != 0 {
+                self.hicon_small
+            } else if self.hicon_big != 0 {
+                self.hicon_big
+            } else {
+                SendMessageW(hwnd, 0x007F /* WM_GETICON */, 2 /* ICON_SMALL2 */, 0)
+            };
+            let tip: Vec<u16> = "TPbrowser — Trình Duyệt Cá Nhân & AI Cowork\0".encode_utf16().collect();
+            for (i, &c) in tip.iter().take(127).enumerate() {
+                nid.sz_tip[i] = c;
+            }
+            Shell_NotifyIconW(0 /* NIM_ADD */, &nid);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn init_system_tray(&self) {}
+
+    #[cfg(target_os = "windows")]
+    fn remove_system_tray(&self) {
+        let hwnd = self.window.hwnd() as isize;
+        unsafe {
+            let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
+            nid.cb_size = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+            nid.hwnd = hwnd;
+            nid.u_id = TRAY_ID;
+            Shell_NotifyIconW(2 /* NIM_DELETE */, &nid);
+            RemoveWindowSubclass(hwnd, tray_subclass_proc, 1);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn remove_system_tray(&self) {}
+
+    fn wake_and_show_window(&mut self) {
+        self.window.set_visible(true);
+        let _ = self.window.set_skip_taskbar(false);
+        self.window.set_minimized(false);
+        self.window.set_focus();
+        #[cfg(target_os = "windows")]
+        {
+            let hwnd = self.window.hwnd() as isize;
+            unsafe {
+                ShowWindow(hwnd, 9); // SW_RESTORE
+                SetForegroundWindow(hwnd);
+            }
+        }
+        if let Some(t) = self.tabs.get_mut(self.active_idx) {
+            if !t.is_loaded {
+                t.is_loaded = true;
+                let target_url = t.url.clone();
+                let _ = t.webview.load_url(&target_url);
+            }
+        }
+        self.relayout();
+        if let Some(t) = self.tabs.get(self.active_idx) {
+            let _ = t.webview.focus();
+        }
+        self.sync_all_ui();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn sync_windows_autostart(enable: bool) {
+        if let Ok(exe_path) = std::env::current_exe() {
+            let exe_str = exe_path.to_string_lossy();
+            if enable {
+                let cmd_arg = format!("\"{}\" --silent", exe_str);
+                let _ = std::process::Command::new("reg")
+                    .args([
+                        "add",
+                        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                        "/v",
+                        "TPbrowser",
+                        "/t",
+                        "REG_SZ",
+                        "/d",
+                        &cmd_arg,
+                        "/f",
+                    ])
+                    .output();
+            } else {
+                let _ = std::process::Command::new("reg")
+                    .args([
+                        "delete",
+                        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                        "/v",
+                        "TPbrowser",
+                        "/f",
+                    ])
+                    .output();
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn sync_windows_autostart(_enable: bool) {}
 
     fn new(window: Window, proxy: EventLoopProxy<AppCmd>, exe_dir: PathBuf) -> wry::Result<Self> {
         let data_dir = exe_dir.join("user_data");
@@ -1678,6 +1896,8 @@ impl TpBrowserApp {
             ui_theme: "obsidian-gold".to_string(),
             logo_style: "ribbon".to_string(),
             startup_mode: "restore".to_string(),
+            background_mode: true,
+            startup_boost: false,
             #[cfg(target_os = "windows")]
             hicon_big: 0,
             #[cfg(target_os = "windows")]
@@ -1704,6 +1924,7 @@ impl TpBrowserApp {
         app.logo_style = Self::normalize_logo_style(&app.logo_style);
         app.sync_window_titlebar_theme();
         app.sync_window_icon();
+        app.init_system_tray();
         app.load_skills();
         app.load_tasks();
         app.load_history();
@@ -2474,10 +2695,12 @@ impl TpBrowserApp {
             &self.floating_orbs_json
         };
         format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"background_mode\":{},\"startup_boost\":{},\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             Self::escape_json(&self.startup_mode),
+            self.background_mode,
+            self.startup_boost,
             self.floating_omnibox,
             self.compact_titlebar,
             self.sidebar_width,
@@ -2907,10 +3130,12 @@ impl TpBrowserApp {
             &self.floating_orbs_json
         };
         let body = format!(
-            "{{\n  \"ui_theme\": \"{}\",\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
+            "{{\n  \"ui_theme\": \"{}\",\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             Self::escape_json(&self.startup_mode),
+            self.background_mode,
+            self.startup_boost,
             self.floating_omnibox,
             self.compact_titlebar,
             self.sidebar_width,
@@ -3021,6 +3246,12 @@ impl TpBrowserApp {
             } else {
                 "restore".to_string()
             };
+        }
+        if let Some(b) = Self::extract_bool(&raw, "background_mode") {
+            self.background_mode = b;
+        }
+        if let Some(b) = Self::extract_bool(&raw, "startup_boost") {
+            self.startup_boost = b;
         }
         if let Ok(parsed) = parse_json(&raw) {
             if let Some(bm) = parsed.get("bookmarks") {
@@ -3925,7 +4156,23 @@ impl TpBrowserApp {
                 self.save_config();
                 self.save_skills();
                 self.save_session();
+                if self.background_mode {
+                    self.window.set_visible(false);
+                    let _ = self.window.set_skip_taskbar(true);
+                } else {
+                    self.remove_system_tray();
+                    self.should_exit = true;
+                }
+            }
+            AppCmd::QuitApp => {
+                self.save_config();
+                self.save_skills();
+                self.save_session();
+                self.remove_system_tray();
                 self.should_exit = true;
+            }
+            AppCmd::WakeAndShowWindow => {
+                self.wake_and_show_window();
             }
             AppCmd::CycleViewMode => {
                 self.view_mode = self.view_mode.next();
@@ -4446,6 +4693,13 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                     }
                     "show_bookmarks_bar" => {
                         self.show_bookmarks_bar = Self::parse_bool_str(&value, true);
+                    }
+                    "background_mode" => {
+                        self.background_mode = Self::parse_bool_str(&value, true);
+                    }
+                    "startup_boost" => {
+                        self.startup_boost = Self::parse_bool_str(&value, false);
+                        Self::sync_windows_autostart(self.startup_boost);
                     }
                     "view_mode" => {
                         self.view_mode = ContentViewMode::from_str(&value);
@@ -5384,6 +5638,9 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
 
     fn handle_mcp_msg(&mut self, msg: McpBridgeMsg) {
         match msg {
+            McpBridgeMsg::WakeWindow => {
+                self.wake_and_show_window();
+            }
             McpBridgeMsg::HealthCheck { reply } => {
                 let info = JsonVal::obj(vec![
                     ("ok", JsonVal::Bool(true)),
@@ -5727,6 +5984,30 @@ fn main() -> wry::Result<()> {
         std::process::exit(mcp_server::run_stdio_bridge());
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::{Read, Write};
+        let mutex_name = b"TPbrowser_SingleInstance_Mutex\0";
+        unsafe {
+            let handle = CreateMutexA(std::ptr::null_mut(), 0, mutex_name.as_ptr());
+            if handle != 0 && GetLastError() == 183 {
+                // Instance khác đã chạy -> Gửi tín hiệu đánh thức và thoát ngay trong tích tắc (<0.02s)
+                if let Ok(mut stream) = std::net::TcpStream::connect("127.0.0.1:17777") {
+                    let _ = stream.write_all(b"POST /wake HTTP/1.1
+\nHost: 127.0.0.1:17777
+\nContent-Length: 0
+\nConnection: close
+\n
+\n");
+                    let mut buf = [0u8; 128];
+                    let _ = stream.read(&mut buf);
+                    std::process::exit(0);
+                }
+            }
+        }
+    }
+
+    let is_silent = env::args().any(|a| a == "--silent");
     let event_loop = EventLoopBuilder::<AppCmd>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
@@ -5738,6 +6019,7 @@ fn main() -> wry::Result<()> {
     let window_builder = WindowBuilder::new()
         .with_title("TPbrowser — Trình Duyệt Cá Nhân & AI Cowork")
         .with_decorations(false)
+        .with_visible(!is_silent)
         .with_window_icon(TpBrowserApp::build_window_icon("ribbon", "obsidian-gold"))
         .with_inner_size(LogicalSize::new(1480, 900))
         .with_min_inner_size(LogicalSize::new(860, 560));
@@ -5748,6 +6030,10 @@ fn main() -> wry::Result<()> {
     let window = window_builder
         .build(&event_loop)
         .expect("Failed to create TPbrowser window");
+
+    if is_silent {
+        let _ = window.set_skip_taskbar(true);
+    }
 
     let mut app = TpBrowserApp::new(window, proxy, exe_dir)?;
     let mut modifiers = ModifiersState::empty();
@@ -5771,11 +6057,10 @@ fn main() -> wry::Result<()> {
         match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => {
-                    app.save_config();
-                    app.save_skills();
-                    app.save_tasks();
-                    app.save_session();
-                    *control_flow = ControlFlow::Exit;
+                    app.execute(AppCmd::WinClose);
+                    if app.should_exit {
+                        *control_flow = ControlFlow::Exit;
+                    }
                 }
                 WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                     app.relayout();

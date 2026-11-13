@@ -171,8 +171,9 @@
   </div>
 
   <script>
-    const ROADMAP_VERSION = "v0.5.9-2026-11-13-perf-boost-and-bookmarks-bar";
+    const ROADMAP_VERSION = "v0.6.0-2026-11-13-startup-boost-and-tray";
     const DEFAULT_TASKS = [
+      { id: "t24", cat: "CORE", title: "Cơ Chế Khởi Động Tức Thì Chuẩn Edge (Startup Boost, Khay Hệ Thống Native Win32, Single-Instance Mutex & Local /wake)", done: true, note: "Thêm Tray icon qua Shell_NotifyIconW + SetWindowSubclass, menu chuột phải Thoát hoàn toàn, chế độ chạy ngầm ẩn cửa sổ giữ chỗ RAM (mở lại <0.05s qua Single-Instance Mutex & POST /wake), và tùy chọn nạp cùng Windows (HKCU Run --silent)." },
       { id: "t22", cat: "CORE", title: "Tối Ưu Tốc Độ Mở App Tức Thì (<0.1s), Khử Bão Relayout, Triệt Tiêu Git Sync UI & Ngủ Đông Sleeping Tabs", done: true, note: "Loại bỏ lệnh gọi git rev-parse đồng bộ trên UI Thread (tiết kiệm 766ms), khử bão 7 lần relayout lúc boot chỉ gom về 1 lần ở boot_settle, lazy sync Settings Modal khi bấm Alt+, tắt preload Messenger/Zalo ngầm và đưa tab nền vào trạng thái ngủ đông nhẹ." },
       { id: "t23", cat: "UI", title: "Thanh Bookmark Tab Ngang Chuẩn AURELIA (28px, Ctrl+Shift+B, Co Giãn Titlebar 40px/68px)", done: true, note: "Hàng lối tắt trang web yêu thích viền vàng đồng dưới thanh tab ngang, phím tắt Ctrl+Shift+B, switch Cài đặt và titlebar_height tự động co giãn 40px/68px." },
       { id: "t21", cat: "UI", title: "Kế Thừa Zen Browser: Chia Khung Tự Do (Popover Chọn Tab & 3 Bố Cục), Sửa Link SPA, Copy Native & Khử Trùng Bộ 3 Nút", done: true, note: "Thêm Menu Popover Zen trên Titlebar (chọn 2 Cột / 2 Hàng / Xoắn Ốc / Hủy chia, ghép đôi tab tự do), hook pushState/popstate đồng bộ URL thật, nút Copy qua Win32 Native Clipboard, và cờ ẩn bộ 3 nút trên tab phụ khi chia khung." },

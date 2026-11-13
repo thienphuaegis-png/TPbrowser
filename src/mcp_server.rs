@@ -29,6 +29,7 @@ pub enum McpBridgeMsg {
     HealthCheck {
         reply: mpsc::Sender<String>,
     },
+    WakeWindow,
 }
 
 pub fn mcp_port() -> u16 {
@@ -121,6 +122,11 @@ where
             .recv_timeout(Duration::from_secs(3))
             .unwrap_or_else(|_| r#"{"ok":true,"app":"TPbrowser"}"#.to_string());
         return write_http_resp(&mut stream, 200, "OK", "application/json", &info);
+    }
+
+    if path == "/wake" {
+        dispatch(McpBridgeMsg::WakeWindow);
+        return write_http_resp(&mut stream, 200, "OK", "application/json", r#"{"ok":true,"woken":true}"#);
     }
 
     if path == "/mcp" {
