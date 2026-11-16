@@ -171,8 +171,9 @@
   </div>
 
   <script>
-    const ROADMAP_VERSION = "v0.9.4-2026-11-16-url-bar-history-suggestions";
+    const ROADMAP_VERSION = "v0.9.5-2026-11-16-camoufox-scan-toggle";
     const DEFAULT_TASKS = [
+      { id: "camoufox-scan-toggle", cat: "ECOM", title: "Công tắc Cài Đặt: Chế Độ Quét An Toàn Nâng Cao (chuẩn bị Camoufox)", done: true, note: "Thêm field camoufox_enabled: bool (default false) + toggle UI ở tab Bảo Mật & uBlock, persist config.json, đồng bộ 2 chiều settings_modal.html. Mặc định tắt = không tốn RAM/khởi động chậm. Chưa nối logic spawn/kill Camoufox thật (đánh dấu TODO trong main.rs)." },
       { id: "github-updater", cat: "CORE", title: "Updater máy khách: kiểm tra GitHub API và tải thẳng bản EXE mới", done: true, note: "Không còn phụ thuộc Git/Cargo/source tree: lấy commit nguồn qua GitHub API, tải TPbrowser.exe mới, tự thoát/thay binary/mở lại. Đã build/push a5bf425; cần live test trên máy sạch." },
       { id: "window-geometry-recovery", cat: "CORE", title: "Window Sync & Recovery: lưu và khôi phục kích thước cửa sổ", done: true, note: "Lưu window_width/window_height vào config.json, khôi phục khi mở lại, clamp 860–3840 x 560–2160 và sync lại UI khi resize/DPI đổi. Unit + full Rust tests pass; live restart/DPI chưa xác minh." },
       { id: "url-bar-history-suggestions", cat: "CORE", title: "URL bar nâng cao lượt đầu: gợi ý tab, bookmark và history", done: true, note: "Dùng datalist native trong unified titlebar, lấy state thật từ tabs/bookmarks/history, dedupe tối đa 30 URL; giữ nguyên @ai và navigate_active. Chưa live verify WebView2." },

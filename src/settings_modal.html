@@ -944,6 +944,25 @@
                 <span class="kbd-badge" id="bdg_adblock_state">ĐANG BẢO VỆ</span>
               </div>
             </div>
+
+            <div class="setting-group">
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-bright);">Quét Dữ Liệu Sàn TMĐT (Workspace)</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Chế Độ Quét An Toàn Nâng Cao</b>
+                  <span>Bật thêm một tiến trình nền chuyên quét Shopee/TikTok chống bị chặn tốt hơn khi bấm "Quét" ở Không Gian Làm Việc TMĐT. Tắt thì trình duyệt chạy đúng như hiện tại, không tốn thêm RAM. Lần đầu bật cần chuẩn bị dữ liệu nền (~470MB, chỉ 1 lần).</span>
+                </div>
+                <button type="button" class="pill-switch" id="sw_camoufox_enabled" onclick="toggleBoolSetting('camoufox_enabled')" aria-label="Chế độ quét an toàn nâng cao"></button>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <b>Trạng thái</b>
+                  <span id="lbl_camoufox_detail">Đang tắt — trình duyệt chạy ở trạng thái tối ưu mặc định, không có tiến trình phụ nào chạy nền.</span>
+                </div>
+                <span class="kbd-badge" id="bdg_camoufox_state">ĐANG TẮT</span>
+              </div>
+            </div>
           </div>
 
           <!-- 6. SHORTCUTS -->
@@ -1190,6 +1209,7 @@
       floating_orbs: DEFAULT_ORBS.slice(),
       ai_dock_width: 360,
       adblock_enabled: true,
+      camoufox_enabled: false,
       google_user: "",
       app_version: "v0.5.6-workspace-landing",
       app_commit: "dev"
@@ -1366,6 +1386,13 @@
       document.getElementById("lbl_adblock_detail").textContent = adOn
         ? "Đang bật: uBlock Origin Lite MV3 • ABPVN List (vie-1) • Anti-Popunder Shield • YouTube Auto-Skip"
         : "Khiên lọc DOM & Auto-Skip đang tạm tắt theo lựa chọn của anh (bấm công tắc để bật lại ngay).";
+
+      var cfOn = !!modalState.camoufox_enabled;
+      document.getElementById("sw_camoufox_enabled").classList.toggle("checked", cfOn);
+      document.getElementById("bdg_camoufox_state").textContent = cfOn ? "ĐANG BẬT" : "ĐANG TẮT";
+      document.getElementById("lbl_camoufox_detail").textContent = cfOn
+        ? "Đang bật — tiến trình quét nền đang sẵn sàng phục vụ nút \"Quét\" ở Không Gian Làm Việc TMĐT."
+        : "Đang tắt — trình duyệt chạy ở trạng thái tối ưu mặc định, không có tiến trình phụ nào chạy nền.";
     }
 
     function escapeOrbHtml(s) {

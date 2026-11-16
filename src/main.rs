@@ -1263,6 +1263,7 @@ struct TpBrowserApp {
     shopee_pas_json: String,
     tiktok_json: String,
     ecom_auto_scan: bool,
+    camoufox_enabled: bool,
     ecom_status_text: String,
     ecom_logs: Vec<String>,
     last_ecom_auto_epoch: u64,
@@ -1996,6 +1997,7 @@ impl TpBrowserApp {
             shopee_pas_json: String::new(),
             tiktok_json: String::new(),
             ecom_auto_scan: false,
+            camoufox_enabled: Self::extract_bool(&pre_cfg, "camoufox_enabled").unwrap_or(false),
             ecom_status_text: "Sẵn sàng — bấm \"Quét Tất Cả Ngầm\" để bắt đầu".to_string(),
             ecom_logs: vec!["• Khởi tạo Không Gian Làm Việc TMĐT TPbrowser.".to_string()],
             last_ecom_auto_epoch: 0,
@@ -3004,7 +3006,7 @@ impl TpBrowserApp {
             &self.floating_orbs_json
         };
         format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"background_mode\":{},\"startup_boost\":{},\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"background_mode\":{},\"startup_boost\":{},\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"camoufox_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             Self::escape_json(&self.startup_mode),
@@ -3027,6 +3029,7 @@ impl TpBrowserApp {
             orbs_raw,
             self.ai_dock_width,
             self.adblock_enabled,
+            self.camoufox_enabled,
             Self::escape_json(&self.google_user),
             self.chat_channel.as_str(),
             self.unread_ai,
@@ -3473,7 +3476,7 @@ impl TpBrowserApp {
             .collect::<Vec<_>>()
             .join(",");
         let body = format!(
-            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"window_width\": {},\n  \"window_height\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
+            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"window_width\": {},\n  \"window_height\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"camoufox_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.active_workspace_id),
             workspaces_json,
@@ -3495,6 +3498,7 @@ impl TpBrowserApp {
             self.always_show_floating_orbs,
             orbs_raw,
             self.adblock_enabled,
+            self.camoufox_enabled,
             Self::escape_json(&self.ai_provider),
             Self::escape_json(&self.ai_api_key),
             Self::escape_json(&self.ai_model),
@@ -3570,6 +3574,9 @@ impl TpBrowserApp {
         if let Some(b) = Self::extract_bool(&raw, "adblock_enabled") {
             self.adblock_enabled = b;
             ADBLOCK_ENABLED.store(b, Ordering::Relaxed);
+        }
+        if let Some(b) = Self::extract_bool(&raw, "camoufox_enabled") {
+            self.camoufox_enabled = b;
         }
         if let Some(v) = Self::extract_field_str(&raw, "ai_provider") {
             self.ai_provider = v;
@@ -5210,6 +5217,10 @@ impl TpBrowserApp {
                         let b = Self::parse_bool_str(&value, true);
                         self.adblock_enabled = b;
                         ADBLOCK_ENABLED.store(b, Ordering::Relaxed);
+                    }
+                    "camoufox_enabled" => {
+                        self.camoufox_enabled = Self::parse_bool_str(&value, false);
+                        // TODO: khi true, spawn/connect Camoufox server nền; khi false, kill tiến trình đó.
                     }
                     "google_user" => {
                         self.google_user = value;
