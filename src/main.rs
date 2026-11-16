@@ -202,7 +202,7 @@ pub const APP_GIT_COMMIT: &str = match option_env!("TP_GIT_COMMIT") {
     Some(commit) => commit,
     None => "dev",
 };
-const UPDATE_API_URL: &str = "https://api.github.com/repos/thienphuaegis-png/TPbrowser/commits/main";
+const UPDATE_API_URL: &str = "https://api.github.com/repos/thienphuaegis-png/TPbrowser/commits?path=src/main.rs&per_page=1";
 const UPDATE_BINARY_URL: &str = "https://github.com/thienphuaegis-png/TPbrowser/raw/refs/heads/main/TPbrowser.exe";
 
 const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
@@ -2972,7 +2972,7 @@ impl TpBrowserApp {
 
     fn fetch_remote_git_commit() -> Result<String, String> {
         let command = format!(
-            "$ProgressPreference='SilentlyContinue'; (Invoke-RestMethod -Uri '{UPDATE_API_URL}' -Headers @{{'User-Agent'='TPbrowser'}}).sha"
+            "$ProgressPreference='SilentlyContinue'; (Invoke-RestMethod -Uri '{UPDATE_API_URL}' -Headers @{{'User-Agent'='TPbrowser'}})[0].sha"
         );
         let output = std::process::Command::new("powershell.exe")
             .args([
