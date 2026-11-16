@@ -389,6 +389,45 @@ pub fn compute_spiral_in_area(
     rects
 }
 
+pub const GLANCE_HEADER_HEIGHT: u32 = 34;
+
+/// Tính 3 vùng cho Zen Glance (Xem Nhanh Nổi): màn nền mờ toàn cửa sổ (backdrop),
+/// thanh tiêu đề thẻ nổi (header) và phần nội dung trang web (body) — thẻ căn giữa,
+/// tối đa 960x720, tối thiểu chiếm 60% kích thước cửa sổ hiện tại.
+pub fn compute_glance_rects(window_w: u32, window_h: u32) -> (PaneRect, PaneRect, PaneRect) {
+    let safe_w = window_w.max(320);
+    let safe_h = window_h.max(240);
+
+    let backdrop = PaneRect {
+        x: 0,
+        y: 0,
+        width: safe_w,
+        height: safe_h,
+    };
+
+    let card_w = ((safe_w as f32) * 0.8).round() as u32;
+    let card_w = card_w.clamp(320, 960).min(safe_w.saturating_sub(24));
+    let card_h = ((safe_h as f32) * 0.8).round() as u32;
+    let card_h = card_h.clamp(240, 720).min(safe_h.saturating_sub(24));
+
+    let card_x = ((safe_w as i32) - (card_w as i32)) / 2;
+    let card_y = ((safe_h as i32) - (card_h as i32)) / 2;
+
+    let header = PaneRect {
+        x: card_x,
+        y: card_y,
+        width: card_w,
+        height: GLANCE_HEADER_HEIGHT.min(card_h),
+    };
+    let body = PaneRect {
+        x: card_x,
+        y: card_y + header.height as i32,
+        width: card_w,
+        height: card_h.saturating_sub(header.height).max(80),
+    };
+    (backdrop, header, body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,6 +500,25 @@ mod tests {
         assert_eq!(hdr.height, FB_CHAT_HEADER_HEIGHT);
         assert_eq!(body.y, hdr.y + FB_CHAT_HEADER_HEIGHT as i32);
         assert!(hdr.x + (hdr.width as i32) <= 1480 - 80);
+    }
+
+    #[test]
+    fn test_glance_rects_centered_and_clamped() {
+        let (backdrop, header, body) = compute_glance_rects(1440, 900);
+        assert_eq!(backdrop.width, 1440);
+        assert_eq!(backdrop.height, 900);
+        assert_eq!(header.width, body.width);
+        assert_eq!(header.height, GLANCE_HEADER_HEIGHT);
+        assert_eq!(body.y, header.y + GLANCE_HEADER_HEIGHT as i32);
+        // Card phải nằm căn giữa cửa sổ
+        assert!(header.x > 0 && header.x < 1440);
+        assert!(header.width <= 960);
+
+        // Cửa sổ rất nhỏ vẫn phải có kích thước tối thiểu hợp lệ, không âm
+        let (small_bd, small_hdr, small_body) = compute_glance_rects(320, 240);
+        assert_eq!(small_bd.width, 320);
+        assert!(small_hdr.width <= 320);
+        assert!(small_body.height > 0);
     }
 
     #[test]

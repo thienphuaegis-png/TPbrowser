@@ -1,7 +1,7 @@
 # Plan: Sửa Toàn Diện Lỗi Nút Cài Đặt & Ổn Định Khởi Động TPbrowser
 
 **Ngày:** 2026-11-12  
-**Trạng thái:** Chờ anh Phú chốt `clarify` & duyệt  
+**Trạng thái:** ĐÃ TRIỂN KHAI & unit-test verify; live UI settings pass vẫn cần kiểm tra riêng
 **Mockup chẩn đoán:** `.ai/sketches/2026-11-12-settings-and-startup-fix.html`
 
 ---

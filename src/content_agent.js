@@ -142,6 +142,23 @@
     };
   }
 
+  // Zen Glance: bắt ở pointerdown để Alt+Click không bị WebView/website nuốt mất click.
+  function openGlanceFromAltClick(e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    var link = e.target && e.target.closest && e.target.closest("a[href]");
+    if (!link) return;
+    var href = link.getAttribute("href") || "";
+    if (!href || href.indexOf("javascript:") === 0 || href.indexOf("#") === 0) return;
+    try {
+      var resolved = new URL(href, window.location.href).href;
+      if (resolved.indexOf("http://") !== 0 && resolved.indexOf("https://") !== 0) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      sendRust({ cmd: "open_glance", url: resolved, title: (link.textContent || "").trim().slice(0, 80) || resolved });
+    } catch (_) {}
+  }
+  window.addEventListener("pointerdown", openGlanceFromAltClick, true);
+
   // Bắt sự kiện Click khi đang bật chế độ "🔴 Làm mẫu (Record)"
   window.addEventListener(
     "click",
@@ -322,7 +339,7 @@
           var idx = parseInt(code.slice(-1), 10) - 1;
           e.preventDefault();
           e.stopImmediatePropagation();
-          sendRust({ cmd: "focus_index", index: idx });
+          sendRust({ cmd: "focus_visible_index", index: idx });
           return;
         } else if (!e.shiftKey && (code === "Digit9" || code === "Numpad9")) {
           e.preventDefault();

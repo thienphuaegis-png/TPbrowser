@@ -19,21 +19,27 @@
     --tb-omni-border: rgba(212, 175, 55, 0.36);
     --tb-accent-grad: linear-gradient(135deg, #E2BE68 0%, #B5872E 100%);
     --tb-accent-fg: #140F05;
+    --tb-gold: #E2BE68;
+    --tb-gold-line: rgba(212, 175, 55, 0.30);
+    --tb-bg-hover: rgba(255, 255, 255, 0.08);
   }
 
   html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
     color-scheme: light;
     --tb-bg: linear-gradient(180deg, #FBF8F2 0%, #F2ECE0 100%);
     --tb-border: rgba(154, 107, 22, 0.32);
-    --tb-text: #8A5E10;
-    --tb-sub: #61533E;
-    --tb-btn-bg: rgba(154, 107, 22, 0.08);
-    --tb-btn-hover: rgba(154, 107, 22, 0.16);
+    --tb-text: #18130C;
+    --tb-sub: #4A3E2D;
+    --tb-btn-bg: rgba(24, 19, 12, 0.06);
+    --tb-btn-hover: rgba(24, 19, 12, 0.14);
     --tb-btn-fg: #18130C;
     --tb-omni-bg: #FFFFFF;
-    --tb-omni-border: rgba(154, 107, 22, 0.38);
-    --tb-accent-grad: linear-gradient(135deg, #C79535 0%, #9A6B16 100%);
+    --tb-omni-border: rgba(24, 19, 12, 0.28);
+    --tb-accent-grad: linear-gradient(135deg, #A8741A 0%, #7A510B 100%);
     --tb-accent-fg: #FFFFFF;
+    --tb-gold: #8A5E10;
+    --tb-gold-line: rgba(154, 107, 22, 0.32);
+    --tb-bg-hover: rgba(24, 19, 12, 0.08);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -461,6 +467,7 @@
 </style>
 </head>
 <body>
+  <div id="command_bar_overlay" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(5,7,10,.58);align-items:flex-start;justify-content:center;padding-top:8vh"><div style="width:min(640px,92vw);max-height:78vh;overflow:hidden;border:1px solid var(--tb-gold-line);border-radius:14px;background:var(--tb-omni-bg);color:var(--tb-text);box-shadow:0 24px 80px #0009"><input id="command_bar_input" autocomplete="off" placeholder="Tìm tab, workspace hoặc lệnh…" style="width:100%;padding:16px 18px;border:0;border-bottom:1px solid var(--tb-gold-line);outline:none;background:transparent;color:inherit;font:inherit;font-size:16px;user-select:text"><div id="command_bar_results" role="listbox" style="max-height:60vh;overflow:auto;padding:8px"></div></div></div>
   <div class="tb-main-bar">
     <div class="tb-brand">
     <div class="tb-monogram tb-no-drag" onclick="sendRust({cmd:'open_settings_modal', section:'look_feel'})" title="TPbrowser — Cài Đặt (Alt+,)">
@@ -501,10 +508,12 @@
   <div class="tb-drag-spacer" title="Kéo để di chuyển cửa sổ"></div>
 
   <div class="tb-right-tools tb-no-drag">
-    <button type="button" class="tb-ico-btn pill" id="btn_workspace" onclick="sendRust({cmd:'open_workspace'})" title="Không gian làm việc Shopee &amp; TikTok (Alt+W)">
+    <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'open_workspace'})" title="Mở trang không gian Shopee &amp; TikTok (Alt+W)">
       <svg viewBox="0 0 16 16"><rect x="2.2" y="2.5" width="5" height="5" rx="1"/><rect x="8.8" y="2.5" width="5" height="5" rx="1"/><rect x="2.2" y="8.5" width="5" height="5" rx="1"/><path d="M9.2 13V9.5M11.3 13V8.8M13.4 13v-2.4"/></svg>
     </button>
-    <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:false})" title="Mở Tab mới (Ctrl+T)">
+    <select id="workspace_picker" class="tb-ico-btn pill tb-no-drag" aria-label="Workspace hiện tại" title="Chọn workspace" onchange="sendRust({cmd:'set_active_workspace', workspace_id:this.value})" style="height:30px; max-width:150px; padding:0 8px; font:inherit; color:var(--tb-text); background:var(--tb-btn-bg); border:1px solid var(--tb-gold-line); border-radius:8px;"></select>
+    <button type="button" class="tb-ico-btn" onclick="createWorkspaceFromPicker()" title="Tạo workspace mới" aria-label="Tạo workspace mới">+</button>
+    <button type="button" class="tb-ico-btn" onclick="openTabInContainer()" title="Mở Tab mới trong container (Ctrl+T)">
       <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
     </button>
     <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'reopen_closed_tab'})" title="Mở lại Tab vừa đóng (Ctrl+Shift+T)">
@@ -584,6 +593,18 @@
           window.ipc.postMessage(JSON.stringify(payload));
         }
       } catch (_) {}
+    }
+
+    function createWorkspaceFromPicker() {
+      var name = window.prompt("Tên workspace mới:");
+      if (name === null || !name.trim()) return;
+      sendRust({ cmd: "create_workspace", name: name.trim() });
+    }
+
+    function openTabInContainer() {
+      var id = window.prompt("Container ID (để trống dùng default):", "default");
+      if (id === null) return;
+      sendRust({cmd:"new_tab", url:"tp://newtab", isolated:false, container_id:id.trim() || "default"});
     }
 
     function submitUrl(e) {
@@ -874,7 +895,7 @@
           var item = document.createElement("div");
           item.className = "tb-tab-item tb-no-drag" + (idx === activeIdx ? " active" : "");
           item.title = t.title || t.url || "";
-          item.onclick = function() { sendRust({ cmd: "focus_index", index: idx }); };
+          item.onclick = function() { sendRust({ cmd: "focus_index", index: t.native_idx }); };
 
           var favUrl = resolveTabFavicon(t);
           if (favUrl) {
@@ -903,7 +924,7 @@
 
           var span = document.createElement("span");
           span.className = "tb-tab-title";
-          span.textContent = t.title || (t.url === "tp://newtab" ? "Trang Bắt Đầu" : (t.url === "tp://workspace" ? "Sàn TMĐT" : t.url));
+          span.textContent = (t.title || (t.url === "tp://newtab" ? "Trang Bắt Đầu" : (t.url === "tp://workspace" ? "Sàn TMĐT" : t.url))) + " · " + (t.container_id || "default");
           item.appendChild(span);
 
           if (tabs.length > 1) {
@@ -914,7 +935,7 @@
             cls.title = "Đóng tab (Ctrl+W)";
             cls.onclick = function(ev) {
               ev.stopPropagation();
-              sendRust({ cmd: "close_index", index: idx });
+              sendRust({ cmd: "close_index", index: t.native_idx });
             };
             item.appendChild(cls);
           }
@@ -923,6 +944,15 @@
       }
     }
 
+    var commandBarFocus=null, commandBarItems=[], commandBarSelected=0;
+    function closeCommandBar(){var o=document.getElementById("command_bar_overlay");if(!o||o.style.display==="none")return;o.style.display="none";var f=commandBarFocus;commandBarFocus=null;if(f&&f.isConnected)f.focus();}
+    function renderCommandBar(){var s=lastSyncState||{},i=document.getElementById("command_bar_input"),b=document.getElementById("command_bar_results"),q=i.value.trim().toLocaleLowerCase();var tabs=(s.tabs||[]).map(function(t){return{label:t.title||t.url||"Tab",detail:"Tab",id:t.id,cmd:"focus_tab_by_id"};}),ws=(s.workspaces||[]).map(function(w){return{label:w.name||w.id,detail:"Workspace",id:w.id,cmd:"set_active_workspace"};}),activeTab=(s.tabs||[])[s.active_idx||0],cs=[{label:"Back",cmd:"nav_back"},{label:"Forward",cmd:"nav_forward"},{label:"Reload",cmd:"reload"},{label:"New Tab",cmd:"new_tab"},{label:"Close Tab",cmd:"close_tab_by_id",id:activeTab&&activeTab.id}].map(function(x){x.detail="Lệnh";return x;});commandBarItems=tabs.concat(ws,cs).filter(function(x){return!q||(x.label+" "+x.detail).toLocaleLowerCase().includes(q);});commandBarSelected=Math.max(0,Math.min(commandBarSelected,commandBarItems.length-1));b.replaceChildren();commandBarItems.forEach(function(x,n){var r=document.createElement("div");r.setAttribute("role","option");r.setAttribute("aria-selected",String(n===commandBarSelected));r.textContent=x.label+" · "+x.detail;r.style.cssText="padding:10px 12px;border-radius:8px;cursor:pointer;background:"+(n===commandBarSelected?"var(--tb-bg-hover)":"transparent");r.onclick=function(){activateCommandBar(n);};b.appendChild(r);});}
+    function activateCommandBar(n){var x=commandBarItems[n];if(!x)return;if(x.cmd==="focus_tab_by_id")sendRust({cmd:x.cmd,tab_id:x.id});else if(x.cmd==="set_active_workspace")sendRust({cmd:x.cmd,workspace_id:x.id});else if(x.cmd==="new_tab")sendRust({cmd:"new_tab",url:"tp://newtab",isolated:false});else if(x.cmd==="close_tab_by_id"){if(x.id==null)return;sendRust({cmd:x.cmd,tab_id:x.id});}else if(x.cmd==="nav_back"||x.cmd==="nav_forward"||x.cmd==="reload")sendRust({cmd:x.cmd});else return;closeCommandBar();}
+    function openCommandBar(){var o=document.getElementById("command_bar_overlay"),i=document.getElementById("command_bar_input");commandBarFocus=document.activeElement;o.style.display="flex";i.value="";renderCommandBar();i.focus();}
+    document.getElementById("command_bar_input").addEventListener("input",function(){commandBarSelected=0;renderCommandBar();});
+    document.getElementById("command_bar_input").addEventListener("keydown",function(e){if(e.key==="Escape"){e.preventDefault();closeCommandBar();}else if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();if(commandBarItems.length)commandBarSelected=(commandBarSelected+(e.key==="ArrowDown"?1:-1)+commandBarItems.length)%commandBarItems.length;renderCommandBar();}else if(e.key==="Enter"){e.preventDefault();activateCommandBar(commandBarSelected);}});
+    document.getElementById("command_bar_overlay").addEventListener("mousedown",function(e){if(e.target===this)closeCommandBar();});
+    window.__tpOpenCommandBar=openCommandBar;
     window.__tpSyncTitlebar = function (st) {
       if (!st) return;
       lastSyncState = st;
@@ -946,6 +976,19 @@
       }
       if (Array.isArray(st.bookmarks)) {
         renderBookmarksBar(st.bookmarks);
+      }
+      if (Array.isArray(st.workspaces)) {
+        var picker = document.getElementById("workspace_picker");
+        if (picker) {
+          while (picker.firstChild) picker.removeChild(picker.firstChild);
+          st.workspaces.forEach(function (workspace) {
+            var option = document.createElement("option");
+            option.value = workspace.id || "default";
+            option.textContent = workspace.name || "Default";
+            picker.appendChild(option);
+          });
+          picker.value = st.active_workspace_id || (st.workspaces[0] && st.workspaces[0].id) || "default";
+        }
       }
       if (Array.isArray(st.tabs)) {
         renderHorizontalTopTabs(st.tabs, typeof st.active_idx === "number" ? st.active_idx : 0);

@@ -1,7 +1,7 @@
 # Plan: Màn Hình Làm Việc Riêng (Shopee / TikTok) & AI Worker Tab Chạy Ngầm
 
 **Ngày:** 2026-11-12  
-**Trạng thái:** Đã chốt phương án qua `clarify` — chờ anh Phú gật đầu để triển khai code  
+**Trạng thái:** ĐÃ TRIỂN KHAI — đã live smoke verify qua MCP trên `tp://workspace`
 **Mockup trực quan:** `.ai/sketches/2026-11-12-workspace-ecommerce-workers.html`
 
 ---

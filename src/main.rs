@@ -20,9 +20,9 @@ use json_mini::{parse_json, JsonVal};
 use mcp_server::McpBridgeMsg;
 
 use layout::{
-    compute_content_panes, compute_fb_chat_popup_rect_with_hdr, compute_shell_layout,
-    AiDisplayMode, ContentViewMode, TabOrientation, DEFAULT_LEFT_SIDEBAR_WIDTH,
-    FB_CHAT_HEADER_HEIGHT, RIGHT_AI_DOCK_WIDTH,
+    compute_content_panes, compute_fb_chat_popup_rect_with_hdr, compute_glance_rects,
+    compute_shell_layout, AiDisplayMode, ContentViewMode, TabOrientation,
+    DEFAULT_LEFT_SIDEBAR_WIDTH, FB_CHAT_HEADER_HEIGHT, GLANCE_HEADER_HEIGHT, RIGHT_AI_DOCK_WIDTH,
 };
 #[cfg(target_os = "windows")]
 use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
@@ -184,6 +184,11 @@ const TITLEBAR_HTML: &str = include_str!("titlebar.html");
 const DOCK_RESIZER_HTML: &str = include_str!("dock_resizer.html");
 const SIDEBAR_RESIZER_HTML: &str = include_str!("sidebar_resizer.html");
 const SETTINGS_MODAL_HTML: &str = include_str!("settings_modal.html");
+const GLANCE_HEADER_HTML: &str = include_str!("glance_header.html");
+const GLANCE_BACKDROP_HTML: &str = r##"<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>
+*{margin:0;padding:0;}
+html,body{width:100%;height:100%;background:rgba(8,9,12,0.52);cursor:default;}
+</style></head><body onmousedown="try{if(window.ipc&&window.ipc.postMessage){window.ipc.postMessage(JSON.stringify({cmd:'close_glance'}));}}catch(_){}"></body></html>"##;
 const CONTENT_AGENT_JS: &str = include_str!("content_agent.js");
 const ECOM_AGENTS_JS: &str = include_str!("ecom_agents.js");
 const MOTION_JS: &str = include_str!("../assets/vendor/motion.js");
@@ -512,7 +517,7 @@ const SHELL_SHORTCUTS_JS: &str = r##"(function(){
       } else if ((code === "Digit0" || code === "Numpad0") && !e.shiftKey) {
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "zoom_reset" });
       } else if (!e.shiftKey && /^(Digit|Numpad)[1-8]$/.test(code)) {
-        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "focus_index", index: parseInt(code.slice(-1), 10) - 1 });
+        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "focus_visible_index", index: parseInt(code.slice(-1), 10) - 1 });
       } else if (!e.shiftKey && (code === "Digit9" || code === "Numpad9")) {
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "focus_last_tab" });
       }
@@ -830,7 +835,7 @@ fn brand_assets_js() -> &'static str {
                     "  var k = (kind === \"logo\") ? \"logo\" : \"app\";\n",
                     "  var s = (logoStyle === \"arrow\") ? \"arrow\" : \"ribbon\";\n",
                     "  var isLight = (uiTheme === \"carrara-light\" || uiTheme === \"warm-paper\" || uiTheme === \"light\");\n",
-                    "  var t = isLight ? \"light\" : \"dark\";\n",
+                    "  var t = isLight ? \"dark\" : \"light\";\n",
                     "  var key = k + \"_\" + s + \"_\" + t;\n",
                     "  return (window.__TP_BRAND_ASSETS && window.__TP_BRAND_ASSETS[key]) || \"\";\n",
                     "}};\n",
@@ -918,6 +923,8 @@ impl ChatChannel {
 
 #[derive(Debug, Clone)]
 enum AppCmd {
+    OpenCommandBar,
+    ToggleTabPinned,
     ToggleTabOrientation,
     ToggleBookmarksBar,
     ToggleSidebarCollapse,
@@ -983,8 +990,11 @@ enum AppCmd {
     NewTab {
         url: String,
         isolated: bool,
+        container_id: Option<String>,
     },
     FocusIndex(usize),
+    NextMruTab,
+    FocusVisibleIndex(usize),
     FocusLastTab,
     NextTab,
     PrevTab,
@@ -1004,6 +1014,14 @@ enum AppCmd {
     GetHistory,
     ClearHistory,
     OpenWorkspace,
+    SetActiveWorkspace(String),
+    CreateWorkspace(String),
+    OpenGlance {
+        url: String,
+        title: String,
+    },
+    CloseGlance,
+    GlanceOpenInTab,
     RunEcomScan {
         scope: String,
     },
@@ -1098,14 +1116,53 @@ enum AppCmd {
     },
 }
 
+const DEFAULT_WORKSPACE_ID: &str = "default";
+
+#[derive(Default)]
+struct AltKeyState {
+    left: bool,
+    right: bool,
+    k_down: bool,
+}
+
+impl AltKeyState {
+    fn should_open_command_bar(&self, key: KeyCode, pressed: bool) -> bool {
+        pressed && key == KeyCode::KeyK && !self.k_down && self.right && !self.left
+    }
+
+    fn update(&mut self, key: KeyCode, pressed: bool) {
+        match key {
+            KeyCode::AltLeft => self.left = pressed,
+            KeyCode::AltRight => self.right = pressed,
+            KeyCode::KeyK => self.k_down = pressed,
+            _ => {}
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Workspace {
+    id: String,
+    name: String,
+}
+
+impl Workspace {
+    fn default_workspace() -> Self {
+        Self { id: DEFAULT_WORKSPACE_ID.to_string(), name: "Default".to_string() }
+    }
+}
+
 struct BrowserTab {
     id: u64,
+    container_id: String,
+    workspace_id: String,
     profile_name: String,
     url: String,
     title: String,
     favicon_url: String,
     worker_kind: Option<String>,
     worker_status: String,
+    pinned: bool,
     is_loaded: bool,
     webview: WebView,
 }
@@ -1128,9 +1185,21 @@ struct TpBrowserApp {
     custom_popup_id: String,
     custom_popup_title: String,
     custom_popup_url: String,
+    glance_backdrop_shell: Option<WebView>,
+    glance_header_shell: Option<WebView>,
+    glance_body_shell: Option<WebView>,
+    glance_open: bool,
+    glance_url: String,
+    glance_title: String,
     chat_channel: ChatChannel,
     tabs: Vec<BrowserTab>,
     active_idx: usize,
+    mru_tab_ids: Vec<u64>,
+    mru_cycle_ids: Option<Vec<u64>>,
+    mru_cycle_pos: usize,
+    mru_focus_in_progress: bool,
+    workspaces: Vec<Workspace>,
+    active_workspace_id: String,
     tab_orientation: TabOrientation,
     sidebar_collapsed: bool,
     titlebar_hover: bool,
@@ -1270,10 +1339,10 @@ impl TpBrowserApp {
         let is_light = Self::normalize_theme(ui_theme) == "carrara-light";
         let is_arrow = Self::normalize_logo_style(logo_style) == "arrow";
         let bytes = match (is_arrow, is_light) {
-            (false, false) => WIN_RIBBON_DARK_RGBA,
-            (false, true) => WIN_RIBBON_LIGHT_RGBA,
-            (true, false) => WIN_ARROW_DARK_RGBA,
-            (true, true) => WIN_ARROW_LIGHT_RGBA,
+            (false, false) => WIN_RIBBON_LIGHT_RGBA,
+            (false, true) => WIN_RIBBON_DARK_RGBA,
+            (true, false) => WIN_ARROW_LIGHT_RGBA,
+            (true, true) => WIN_ARROW_DARK_RGBA,
         };
         Icon::from_rgba(bytes.to_vec(), 64, 64).ok()
     }
@@ -1290,10 +1359,10 @@ impl TpBrowserApp {
             let is_light = Self::normalize_theme(&self.ui_theme) == "carrara-light";
             let is_arrow = Self::normalize_logo_style(&self.logo_style) == "arrow";
             let png = match (is_arrow, is_light) {
-                (false, false) => APP_RIBBON_DARK_PNG,
-                (false, true) => APP_RIBBON_LIGHT_PNG,
-                (true, false) => APP_ARROW_DARK_PNG,
-                (true, true) => APP_ARROW_LIGHT_PNG,
+                (false, false) => APP_RIBBON_LIGHT_PNG,
+                (false, true) => APP_RIBBON_DARK_PNG,
+                (true, false) => APP_ARROW_LIGHT_PNG,
+                (true, true) => APP_ARROW_DARK_PNG,
             };
             unsafe {
                 let h_big = CreateIconFromResourceEx(
@@ -1850,9 +1919,21 @@ impl TpBrowserApp {
             custom_popup_id: String::new(),
             custom_popup_title: String::new(),
             custom_popup_url: String::new(),
+            glance_backdrop_shell: None,
+            glance_header_shell: None,
+            glance_body_shell: None,
+            glance_open: false,
+            glance_url: String::new(),
+            glance_title: String::new(),
             chat_channel: ChatChannel::Ai,
             tabs: Vec::new(),
             active_idx: 0,
+            mru_tab_ids: Vec::new(),
+            mru_cycle_ids: None,
+            mru_cycle_pos: 0,
+            mru_focus_in_progress: false,
+            workspaces: vec![Workspace::default_workspace()],
+            active_workspace_id: DEFAULT_WORKSPACE_ID.to_string(),
             tab_orientation: TabOrientation::VerticalLeft,
             sidebar_collapsed: false,
             titlebar_hover: false,
@@ -2045,6 +2126,85 @@ impl TpBrowserApp {
         }
     }
 
+    fn ensure_glance_shells(&mut self, url: &str, title: &str) {
+        self.glance_url = url.to_string();
+        self.glance_title = title.to_string();
+        let shared_env = self.tab_shell.environment();
+
+        if let Some(body) = &self.glance_body_shell {
+            let _ = body.load_url(url);
+        } else {
+            let proxy_body = self.proxy.clone();
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env.clone())
+                .with_profile_name("default".to_string())
+                .with_user_agent(CHROME_USER_AGENT)
+                .with_autoplay(true)
+                .with_clipboard(true)
+                .with_theme(Theme::Light)
+                .with_visible(false)
+                .with_initialization_script(SHELL_SHORTCUTS_JS)
+                .with_url(url)
+                .with_ipc_handler(move |req| {
+                    Self::handle_ipc(&proxy_body, req.body());
+                })
+                .with_bounds(Rect {
+                    position: LogicalPosition::new(0, 0).into(),
+                    size: LogicalSize::new(600, 400).into(),
+                })
+                .build_as_child(&self.window)
+            {
+                let _ = wv.set_memory_usage_level(MemoryUsageLevel::Normal);
+                self.glance_body_shell = Some(wv);
+            }
+        }
+
+        if self.glance_header_shell.is_none() {
+            let proxy_hdr = self.proxy.clone();
+            let header_html = inject_ui_html(GLANCE_HEADER_HTML, &self.ui_theme);
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env.clone())
+                .with_profile_name("default".to_string())
+                .with_transparent(true)
+                .with_theme(Theme::Light)
+                .with_visible(false)
+                .with_html(header_html)
+                .with_ipc_handler(move |req| {
+                    Self::handle_ipc(&proxy_hdr, req.body());
+                })
+                .with_bounds(Rect {
+                    position: LogicalPosition::new(0, 0).into(),
+                    size: LogicalSize::new(600, GLANCE_HEADER_HEIGHT).into(),
+                })
+                .build_as_child(&self.window)
+            {
+                self.glance_header_shell = Some(wv);
+            }
+        }
+
+        if self.glance_backdrop_shell.is_none() {
+            let proxy_bd = self.proxy.clone();
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env)
+                .with_profile_name("default".to_string())
+                .with_transparent(true)
+                .with_theme(Theme::Light)
+                .with_visible(false)
+                .with_html(GLANCE_BACKDROP_HTML)
+                .with_ipc_handler(move |req| {
+                    Self::handle_ipc(&proxy_bd, req.body());
+                })
+                .with_bounds(Rect {
+                    position: LogicalPosition::new(0, 0).into(),
+                    size: LogicalSize::new(600, 400).into(),
+                })
+                .build_as_child(&self.window)
+            {
+                self.glance_backdrop_shell = Some(wv);
+            }
+        }
+    }
+
     fn normalize_url(input: &str) -> String {
         let trimmed = input.trim();
         if trimmed.is_empty()
@@ -2102,8 +2262,32 @@ impl TpBrowserApp {
         clean.split('/').next().unwrap_or(url).to_string()
     }
 
+    fn normalize_container_id(value: &str) -> String {
+        let id = value.trim();
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+            "default".to_string()
+        } else { id.to_string() }
+    }
+
+    fn container_profile_name(container_id: &str) -> String {
+        if container_id == "default" {
+            "default".to_string()
+        } else {
+            format!("container_{}", container_id)
+        }
+    }
+
+    fn visible_tab_indices(&self) -> Vec<usize> {
+        self.tabs
+            .iter()
+            .enumerate()
+            .filter(|(_, tab)| tab.workspace_id == self.active_workspace_id)
+            .map(|(idx, _)| idx)
+            .collect()
+    }
+
     fn add_tab(&mut self, raw_url: &str, isolated: bool) {
-        self.add_tab_internal(raw_url, isolated, true, None, None, false);
+        self.add_tab_internal(raw_url, isolated, true, None, None, false, None);
     }
 
     fn add_worker_tab(&mut self, raw_url: &str, worker_kind: &str, custom_title: Option<&str>) -> Option<u64> {
@@ -2114,6 +2298,7 @@ impl TpBrowserApp {
             Some(worker_kind.to_string()),
             custom_title.map(|s| s.to_string()),
             false,
+            None,
         )
     }
 
@@ -2125,12 +2310,16 @@ impl TpBrowserApp {
         worker_kind: Option<String>,
         custom_title: Option<String>,
         lazy: bool,
+        container_id: Option<String>,
     ) -> Option<u64> {
         if self.tabs.len() >= 14 {
             return None;
         }
         let tab_id = NEXT_TAB_ID.fetch_add(1, Ordering::SeqCst);
-        let profile_name = if isolated {
+        let container_id = container_id.as_deref().map(Self::normalize_container_id).unwrap_or_else(|| "default".to_string());
+        let profile_name = if container_id != "default" {
+            Self::container_profile_name(&container_id)
+        } else if isolated {
             self.profile_counter += 1;
             format!("acc_{}", self.profile_counter)
         } else {
@@ -2231,6 +2420,7 @@ impl TpBrowserApp {
                     let _ = proxy_popup.send_event(AppCmd::NewTab {
                         url: popup_url,
                         isolated: false,
+                        container_id: None,
                     });
                     NewWindowResponse::Deny
                 }
@@ -2276,17 +2466,23 @@ impl TpBrowserApp {
             let is_loaded = !should_sleep_load;
             self.tabs.push(BrowserTab {
                 id: tab_id,
+                container_id,
+                workspace_id: self.active_workspace_id.clone(),
                 profile_name,
                 url,
                 title,
                 favicon_url: String::new(),
                 worker_kind,
                 worker_status: if is_worker { "Đang chạy ngầm".to_string() } else { String::new() },
+                pinned: false,
                 is_loaded,
                 webview,
             });
             if !is_worker {
                 self.active_idx = self.tabs.len() - 1;
+                self.mru_tab_ids.retain(|id| *id != tab_id);
+                self.mru_tab_ids.insert(0, tab_id);
+                self.mru_cycle_ids = None;
             }
             if sync_now {
                 self.relayout();
@@ -2352,7 +2548,11 @@ impl TpBrowserApp {
             let _ = self.sidebar_resizer_shell.set_visible(false);
         }
 
-        let total = self.tabs.len();
+        let total = self
+            .tabs
+            .iter()
+            .filter(|tab| tab.workspace_id == self.active_workspace_id)
+            .count();
         if total > 0 {
             if self.view_mode == ContentViewMode::SingleTab || total == 1 {
                 if let Some(active_tab) = self.tabs.get(self.active_idx) {
@@ -2376,6 +2576,11 @@ impl TpBrowserApp {
                     Self::send_webview_to_back(&active_tab.webview);
                 }
                 for (idx, tab) in self.tabs.iter().enumerate() {
+                    if tab.workspace_id != self.active_workspace_id {
+                        let _ = tab.webview.set_visible(false);
+                        let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
+                        continue;
+                    }
                     if idx == self.active_idx {
                         continue;
                     }
@@ -2404,11 +2609,24 @@ impl TpBrowserApp {
                 }
             } else {
                 let paired_idx_opt = self.split_paired_tab_id.and_then(|pid| {
-                    self.tabs.iter().position(|t| t.id == pid && t.id != self.tabs[self.active_idx].id)
+                    self.tabs.iter().position(|t| {
+                        t.workspace_id == self.active_workspace_id
+                            && t.id == pid
+                            && t.id != self.tabs[self.active_idx].id
+                    })
                 }).or_else(|| {
-                    if total > 1 {
-                        let next_i = if self.active_idx + 1 < total { self.active_idx + 1 } else { self.active_idx.saturating_sub(1) };
-                        Some(next_i)
+                    let visible_indices = self.visible_tab_indices();
+                    if visible_indices.len() > 1 {
+                        let active_pos = visible_indices
+                            .iter()
+                            .position(|idx| *idx == self.active_idx)
+                            .unwrap_or(0);
+                        let pair_pos = if active_pos + 1 < visible_indices.len() {
+                            active_pos + 1
+                        } else {
+                            active_pos.saturating_sub(1)
+                        };
+                        visible_indices.get(pair_pos).copied()
                     } else {
                         None
                     }
@@ -2424,6 +2642,11 @@ impl TpBrowserApp {
                         4,
                     );
                     for (idx, tab) in self.tabs.iter().enumerate() {
+                        if tab.workspace_id != self.active_workspace_id {
+                            let _ = tab.webview.set_visible(false);
+                            let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
+                            continue;
+                        }
                         if idx == self.active_idx {
                             if let Some(r) = rects.get(0) {
                                 let _ = tab.webview.set_visible(true);
@@ -2459,14 +2682,20 @@ impl TpBrowserApp {
                         self.master_ratio,
                         4,
                     );
-                    for (idx, tab) in self.tabs.iter().enumerate() {
-                        if let Some(r) = rects.get(idx) {
+                    let mut pane_idx = 0usize;
+                    for tab in &self.tabs {
+                        if tab.workspace_id != self.active_workspace_id {
+                            let _ = tab.webview.set_visible(false);
+                            let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
+                            continue;
+                        }
+                        if let Some(r) = rects.get(pane_idx) {
                             let _ = tab.webview.set_visible(true);
                             let _ = tab.webview.set_bounds(Rect {
                                 position: LogicalPosition::new(r.x, r.y).into(),
                                 size: LogicalSize::new(r.width, r.height).into(),
                             });
-                            let _ = tab.webview.set_memory_usage_level(if idx == self.active_idx {
+                            let _ = tab.webview.set_memory_usage_level(if tab.id == self.tabs[self.active_idx].id {
                                 MemoryUsageLevel::Normal
                             } else {
                                 MemoryUsageLevel::Low
@@ -2474,6 +2703,7 @@ impl TpBrowserApp {
                             #[cfg(target_os = "windows")]
                             Self::send_webview_to_back(&tab.webview);
                         }
+                        pane_idx += 1;
                     }
                 }
             }
@@ -2645,6 +2875,54 @@ impl TpBrowserApp {
         } else {
             let _ = self.settings_shell.set_visible(false);
         }
+
+        if self.glance_open {
+            let (bd_r, hdr_r, body_r) = compute_glance_rects(logical.width, logical.height);
+            if let Some(bd) = &self.glance_backdrop_shell {
+                let _ = bd.set_visible(true);
+                let _ = bd.set_bounds(Rect {
+                    position: LogicalPosition::new(bd_r.x, bd_r.y).into(),
+                    size: LogicalSize::new(bd_r.width.max(1), bd_r.height.max(1)).into(),
+                });
+                #[cfg(target_os = "windows")]
+                Self::bring_webview_to_front(bd);
+            }
+            if let Some(hdr) = &self.glance_header_shell {
+                let _ = hdr.set_visible(true);
+                let _ = hdr.set_bounds(Rect {
+                    position: LogicalPosition::new(hdr_r.x, hdr_r.y).into(),
+                    size: LogicalSize::new(hdr_r.width.max(1), hdr_r.height.max(1)).into(),
+                });
+                #[cfg(target_os = "windows")]
+                Self::bring_webview_to_front(hdr);
+            }
+            if let Some(body) = &self.glance_body_shell {
+                let _ = body.set_visible(true);
+                let _ = body.set_bounds(Rect {
+                    position: LogicalPosition::new(body_r.x, body_r.y).into(),
+                    size: LogicalSize::new(body_r.width.max(1), body_r.height.max(1)).into(),
+                });
+                #[cfg(target_os = "windows")]
+                Self::bring_webview_to_front(body);
+            }
+        } else {
+            if let Some(bd) = &self.glance_backdrop_shell {
+                let _ = bd.set_visible(false);
+            }
+            if let Some(hdr) = &self.glance_header_shell {
+                let _ = hdr.set_visible(false);
+            }
+            if let Some(body) = &self.glance_body_shell {
+                let _ = body.set_visible(false);
+            }
+        }
+
+        for tab in &self.tabs {
+            if tab.workspace_id != self.active_workspace_id {
+                let _ = tab.webview.set_visible(false);
+                let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
+            }
+        }
         let dur = t0.elapsed().as_secs_f64() * 1000.0;
         if dur > 5.0 {
             Self::log_perf("relayout (bounds)", dur);
@@ -2756,18 +3034,28 @@ impl TpBrowserApp {
     fn sync_all_ui(&self) {
         let t0 = Instant::now();
         let mut tabs_json = Vec::new();
-        for t in &self.tabs {
+        let visible_tabs: Vec<(usize, &BrowserTab)> = self.tabs.iter().enumerate()
+            .filter(|(_, t)| t.workspace_id == self.active_workspace_id)
+            .collect();
+        for (native_idx, t) in &visible_tabs {
             tabs_json.push(format!(
-                "{{\"id\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\",\"worker_kind\":\"{}\"}}",
+                "{{\"id\":{},\"native_idx\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"worker_kind\":\"{}\",\"pinned\":{}}}",
                 t.id,
+                native_idx,
                 Self::escape_json(&t.url),
                 Self::escape_json(&t.title),
                 Self::escape_json(&t.favicon_url),
                 Self::escape_json(&t.profile_name),
-                Self::escape_json(t.worker_kind.as_deref().unwrap_or(""))
+                Self::escape_json(&t.container_id),
+                Self::escape_json(t.worker_kind.as_deref().unwrap_or("")),
+                t.pinned
             ));
         }
         let tabs_arr_str = tabs_json.join(",");
+        let visible_active_idx = visible_tabs
+            .iter()
+            .position(|(idx, _)| *idx == self.active_idx)
+            .unwrap_or(0);
 
         // -1. Đồng bộ Thanh Trên Hợp Nhất (Unified Top Bar)
         let active_title = self
@@ -2783,15 +3071,20 @@ impl TpBrowserApp {
         let is_bookmarked = !active_url.starts_with("tp://") && self.bookmarks_json.contains(active_url);
         let tb_title = format!("TPbrowser — {}", active_title);
         let paired_tab_id_val = self.split_paired_tab_id.unwrap_or(0);
+        let workspaces_json = self.workspaces.iter().map(|workspace| {
+            format!("{{\"id\":\"{}\",\"name\":\"{}\"}}", Self::escape_json(&workspace.id), Self::escape_json(&workspace.name))
+        }).collect::<Vec<_>>().join(",");
         let tb_state = format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"show_bookmarks_bar\":{},\"bookmarks\":{},\"active_idx\":{},\"tabs\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"show_bookmarks_bar\":{},\"bookmarks\":{},\"active_idx\":{},\"tabs\":[{}],\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             self.tab_orientation.as_str(),
             self.show_bookmarks_bar,
             &self.bookmarks_json,
-            self.active_idx,
+            visible_active_idx,
             tabs_arr_str,
+            Self::escape_json(&self.active_workspace_id),
+            workspaces_json,
             Self::escape_json(&tb_title),
             Self::escape_json(active_url),
             is_bookmarked,
@@ -2839,15 +3132,17 @@ impl TpBrowserApp {
         ));
 
         // 1. Đồng bộ Thanh Quản Lý Tab (Dọc)
+        let shell_active_idx = visible_tabs.iter().position(|(idx, _)| *idx == self.active_idx).unwrap_or(0);
         let shell_state = format!(
-            "{{\"orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ai_working\":{},\"active_idx\":{},\"google_user\":\"{}\",\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"adblock_enabled\":{},\"tabs\":[{}]}}",
+            "{{\"orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ai_working\":{},\"active_idx\":{},\"active_workspace_id\":\"{}\",\"google_user\":\"{}\",\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"adblock_enabled\":{},\"tabs\":[{}]}}",
             self.tab_orientation.as_str(),
             self.sidebar_collapsed,
             self.view_mode.as_str(),
             self.ai_mode.as_str(),
             self.chat_channel.as_str(),
             self.ai_working,
-            self.active_idx,
+            shell_active_idx,
+            Self::escape_json(&self.active_workspace_id),
             Self::escape_json(&self.google_user),
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
@@ -2860,7 +3155,7 @@ impl TpBrowserApp {
         ));
 
         // 2. Đồng bộ Cụm Bong Bóng Góc Phải (AI / FB / Zalo / Custom) & Trang Chủ trên mọi Tab
-        let is_split = self.view_mode != ContentViewMode::SingleTab && self.tabs.len() > 1;
+        let is_split = self.view_mode != ContentViewMode::SingleTab && visible_tabs.len() > 1;
         let orbs_raw = if self.floating_orbs_json.trim().is_empty() {
             "[]"
         } else {
@@ -2959,8 +3254,8 @@ impl TpBrowserApp {
         };
         self.window.set_title(&format!(
             "TPbrowser [Tab {}/{} • {} • {}]",
-            self.active_idx + 1,
-            self.tabs.len().max(1),
+            visible_active_idx + 1,
+            visible_tabs.len().max(1),
             tab_mode_lbl,
             ai_lbl
         ));
@@ -3129,9 +3424,23 @@ impl TpBrowserApp {
         } else {
             &self.floating_orbs_json
         };
+        let workspaces_json = self
+            .workspaces
+            .iter()
+            .map(|workspace| {
+                format!(
+                    "{{\"id\":\"{}\",\"name\":\"{}\"}}",
+                    Self::escape_json(&workspace.id),
+                    Self::escape_json(&workspace.name)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
         let body = format!(
-            "{{\n  \"ui_theme\": \"{}\",\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
+            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
             Self::escape_json(&self.ui_theme),
+            Self::escape_json(&self.active_workspace_id),
+            workspaces_json,
             Self::escape_json(&self.logo_style),
             Self::escape_json(&self.startup_mode),
             self.background_mode,
@@ -3170,6 +3479,22 @@ impl TpBrowserApp {
         let Ok(raw) = fs::read_to_string(cfg_path) else {
             return;
         };
+        self.active_workspace_id = Self::extract_field_str(&raw, "active_workspace_id")
+            .unwrap_or_else(|| DEFAULT_WORKSPACE_ID.to_string());
+        if let Ok(val) = parse_json(&raw) {
+            if let Some(items) = val.get("workspaces").and_then(|v| v.as_arr()) {
+                let loaded: Vec<Workspace> = items.iter().filter_map(|item| {
+                    Some(Workspace {
+                        id: item.get("id")?.as_str()?.to_string(),
+                        name: item.get("name")?.as_str()?.to_string(),
+                    })
+                }).collect();
+                if !loaded.is_empty() { self.workspaces = loaded; }
+            }
+        }
+        if !self.workspaces.iter().any(|w| w.id == self.active_workspace_id) {
+            self.active_workspace_id = DEFAULT_WORKSPACE_ID.to_string();
+        }
         if let Some(v) = Self::extract_field_str(&raw, "tab_orientation") {
             self.tab_orientation = TabOrientation::from_str(&v);
         }
@@ -3374,6 +3699,17 @@ impl TpBrowserApp {
         }
     }
 
+    fn sync_glance_view(&self) {
+        if let Some(hdr) = &self.glance_header_shell {
+            let js = format!(
+                "window.dispatchEvent(new CustomEvent('tp_config_changed', {{detail:{{\"ui_theme\":\"{}\",\"title\":\"{}\"}}}}));",
+                Self::escape_json(&self.ui_theme),
+                Self::escape_json(&self.glance_title)
+            );
+            let _ = hdr.evaluate_script(&js);
+        }
+    }
+
     fn sync_workspace_view(&self) {
         let mut workers = Vec::new();
         for t in &self.tabs {
@@ -3511,6 +3847,17 @@ impl TpBrowserApp {
         }
     }
 
+    fn serialize_session_tab(url: &str, profile: &str, container_id: &str, workspace_id: &str, pinned: bool) -> String {
+        format!(
+            "{{\"url\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"workspace_id\":\"{}\",\"pinned\":{}}}",
+            Self::escape_json(url),
+            Self::escape_json(profile),
+            Self::escape_json(container_id),
+            Self::escape_json(workspace_id),
+            pinned
+        )
+    }
+
     fn save_session(&self) {
         let t0 = Instant::now();
         let session_path = self.exe_dir.join("session.json");
@@ -3524,20 +3871,29 @@ impl TpBrowserApp {
             if idx == self.active_idx {
                 saved_active_idx = user_idx;
             }
-            tabs_arr.push(format!(
-                "{{\"url\":\"{}\",\"profile\":\"{}\"}}",
-                Self::escape_json(&t.url),
-                Self::escape_json(&t.profile_name)
+            tabs_arr.push(Self::serialize_session_tab(
+                &t.url,
+                &t.profile_name,
+                &t.container_id,
+                &t.workspace_id,
+                t.pinned,
             ));
             user_idx += 1;
         }
         if tabs_arr.is_empty() {
-            tabs_arr.push("{\"url\":\"tp://newtab\",\"profile\":\"default\"}".to_string());
+            tabs_arr.push(Self::serialize_session_tab(
+                "tp://newtab",
+                "default",
+                "default",
+                &self.active_workspace_id,
+                false,
+            ));
         }
         let body = format!(
-            "{{\n  \"view_mode\": \"{}\",\n  \"active_idx\": {},\n  \"tabs\": [\n    {}\n  ]\n}}",
+            "{{\n  \"view_mode\": \"{}\",\n  \"active_idx\": {},\n  \"active_workspace_id\": \"{}\",\n  \"tabs\": [\n    {}\n  ]\n}}",
             self.view_mode.as_str(),
             saved_active_idx,
+            Self::escape_json(&self.active_workspace_id),
             tabs_arr.join(",\n    ")
         );
         std::thread::spawn(move || {
@@ -3567,6 +3923,11 @@ impl TpBrowserApp {
                     }
                 }
                 saved_active_idx = val.get("active_idx").and_then(|v| v.as_u64()).map(|n| n as usize);
+                if let Some(id) = val.get("active_workspace_id").and_then(|v| v.as_str()) {
+                    if self.workspaces.iter().any(|w| w.id == id) {
+                        self.active_workspace_id = id.to_string();
+                    }
+                }
                 let target_active = saved_active_idx.unwrap_or(0);
                 if let Some(arr) = val.get("tabs").and_then(|v| v.as_arr()) {
                     for (i, item) in arr.iter().enumerate() {
@@ -3577,7 +3938,16 @@ impl TpBrowserApp {
                                 .map(|p| p != "default")
                                 .unwrap_or(false);
                             let lazy = i != target_active;
-                            self.add_tab_internal(u, isolated, false, None, None, lazy);
+                            let container_id = item.get("container_id").and_then(|v| v.as_str()).map(Self::normalize_container_id);
+                            self.add_tab_internal(u, isolated, false, None, None, lazy, container_id);
+                            if let Some(tab) = self.tabs.last_mut() {
+
+                                let workspace_id = item.get("workspace_id").and_then(|v| v.as_str()).unwrap_or(DEFAULT_WORKSPACE_ID);
+                                tab.workspace_id = if self.workspaces.iter().any(|w| w.id == workspace_id) {
+                                    workspace_id.to_string()
+                                } else { DEFAULT_WORKSPACE_ID.to_string() };
+                                tab.pinned = item.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false);
+                            }
                         }
                     }
                 }
@@ -3591,18 +3961,30 @@ impl TpBrowserApp {
                     let trimmed = line.trim();
                     if trimmed.starts_with("{\"url\":\"") {
                         if let Some(u) = Self::extract_string(trimmed, "\"url\":\"") {
-                            self.add_tab_internal(&u, false, false, None, None, false);
+                            self.add_tab_internal(&u, false, false, None, None, false, None);
                         }
                     }
                 }
             }
         }
         if self.tabs.is_empty() {
-            self.add_tab_internal("tp://newtab", false, false, None, None, false);
+            self.add_tab_internal("tp://newtab", false, false, None, None, false, None);
         }
         if let Some(idx) = saved_active_idx {
             if idx < self.tabs.len() {
                 self.active_idx = idx;
+            }
+        }
+        if self.tabs.get(self.active_idx).map(|tab| tab.workspace_id.as_str())
+            != Some(self.active_workspace_id.as_str())
+        {
+            if let Some(visible_idx) = self.tabs.iter().position(|tab| {
+                tab.workspace_id == self.active_workspace_id
+            }) {
+                self.active_idx = visible_idx;
+            } else {
+                self.add_tab_internal("tp://newtab", false, false, None, None, false, None);
+                self.active_idx = self.tabs.len().saturating_sub(1);
             }
         }
         self.relayout();
@@ -3730,6 +4112,8 @@ impl TpBrowserApp {
         let tab_id = Self::extract_u64(body, "\"tab_id\":").unwrap_or(0);
         if body.contains("\"cmd\":\"toggle_bookmarks_bar\"") {
             let _ = proxy.send_event(AppCmd::ToggleBookmarksBar);
+        } else if body.contains("\"cmd\":\"toggle_tab_pinned\"") {
+            let _ = proxy.send_event(AppCmd::ToggleTabPinned);
         } else if body.contains("\"cmd\":\"toggle_tab_orientation\"") {
             let _ = proxy.send_event(AppCmd::ToggleTabOrientation);
         } else if body.contains("\"cmd\":\"toggle_sidebar_collapse\"") {
@@ -3826,6 +4210,16 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::CloseSettingsModal);
         } else if body.contains("\"cmd\":\"toggle_settings_modal\"") {
             let _ = proxy.send_event(AppCmd::ToggleSettingsModal);
+        } else if body.contains("\"cmd\":\"open_glance\"") {
+            let url = Self::extract_field_str(body, "url").unwrap_or_default();
+            let title = Self::extract_field_str(body, "title").unwrap_or_default();
+            if !url.trim().is_empty() {
+                let _ = proxy.send_event(AppCmd::OpenGlance { url, title });
+            }
+        } else if body.contains("\"cmd\":\"close_glance\"") {
+            let _ = proxy.send_event(AppCmd::CloseGlance);
+        } else if body.contains("\"cmd\":\"glance_open_in_tab\"") {
+            let _ = proxy.send_event(AppCmd::GlanceOpenInTab);
         } else if body.contains("\"cmd\":\"check_app_update\"") {
             let _ = proxy.send_event(AppCmd::CheckAppUpdate);
         } else if body.contains("\"cmd\":\"run_app_update\"") {
@@ -3871,7 +4265,12 @@ impl TpBrowserApp {
         } else if body.contains("\"cmd\":\"new_tab\"") {
             let url = Self::extract_string(body, "\"url\":\"").unwrap_or_else(|| "tp://newtab".to_string());
             let isolated = body.contains("\"isolated\":true");
-            let _ = proxy.send_event(AppCmd::NewTab { url, isolated });
+            let container_id = Self::extract_string(body, "\"container_id\":\"");
+            let _ = proxy.send_event(AppCmd::NewTab { url, isolated, container_id });
+        } else if body.contains("\"cmd\":\"focus_visible_index\"") {
+            if let Some(idx) = Self::extract_u64(body, "\"index\":") {
+                let _ = proxy.send_event(AppCmd::FocusVisibleIndex(idx as usize));
+            }
         } else if body.contains("\"cmd\":\"focus_index\"") {
             if let Some(idx) = Self::extract_u64(body, "\"index\":") {
                 let _ = proxy.send_event(AppCmd::FocusIndex(idx as usize));
@@ -3924,6 +4323,18 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::GetHistory);
         } else if body.contains("\"cmd\":\"clear_history\"") {
             let _ = proxy.send_event(AppCmd::ClearHistory);
+        } else if body.contains("\"cmd\":\"set_active_workspace\"") {
+            if let Ok(val) = parse_json(body) {
+                if let Some(id) = val.get("workspace_id").and_then(|v| v.as_str()) {
+                    let _ = proxy.send_event(AppCmd::SetActiveWorkspace(id.to_string()));
+                }
+            }
+        } else if body.contains("\"cmd\":\"create_workspace\"") {
+            if let Ok(val) = parse_json(body) {
+                if let Some(name) = val.get("name").and_then(|v| v.as_str()) {
+                    let _ = proxy.send_event(AppCmd::CreateWorkspace(name.to_string()));
+                }
+            }
         } else if body.contains("\"cmd\":\"open_workspace\"") {
             let _ = proxy.send_event(AppCmd::OpenWorkspace);
         } else if body.contains("\"cmd\":\"run_ecom_scan\"") {
@@ -4106,6 +4517,18 @@ impl TpBrowserApp {
 
     fn execute(&mut self, cmd: AppCmd) {
         match cmd {
+            AppCmd::ToggleTabPinned => {
+                if let Some(tab) = self.tabs.get_mut(self.active_idx) {
+                    tab.pinned = !tab.pinned;
+                    self.sync_all_ui();
+                    self.save_session();
+                }
+            }
+            AppCmd::OpenCommandBar => {
+                let _ = self.titlebar_shell.evaluate_script(
+                    "if (window.__tpOpenCommandBar) window.__tpOpenCommandBar();",
+                );
+            }
             AppCmd::ToggleBookmarksBar => {
                 self.show_bookmarks_bar = !self.show_bookmarks_bar;
                 self.relayout();
@@ -4176,13 +4599,22 @@ impl TpBrowserApp {
             }
             AppCmd::CycleViewMode => {
                 self.view_mode = self.view_mode.next();
-                if self.view_mode != ContentViewMode::SingleTab && self.split_paired_tab_id.is_none() && self.tabs.len() > 1 {
-                    let next_idx = if self.active_idx + 1 < self.tabs.len() {
-                        self.active_idx + 1
-                    } else {
-                        self.active_idx.saturating_sub(1)
-                    };
-                    self.split_paired_tab_id = Some(self.tabs[next_idx].id);
+                if self.view_mode != ContentViewMode::SingleTab && self.split_paired_tab_id.is_none() && self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id).count() > 1 {
+                    let visible_indices = self.visible_tab_indices();
+                                        if visible_indices.len() > 1 {
+                                                            let active_pos = visible_indices
+                                                                .iter()
+                                                                .position(|idx| *idx == self.active_idx)
+                                                                .unwrap_or(0);
+                                                            let next_pos = if active_pos + 1 < visible_indices.len() {
+                                                                active_pos + 1
+                                                            } else {
+                                                                active_pos.saturating_sub(1)
+                                                            };
+                                                            if let Some(next_idx) = visible_indices.get(next_pos) {
+                                                                self.split_paired_tab_id = Some(self.tabs[*next_idx].id);
+                                                            }
+                                                        }
                 }
                 self.relayout();
                 self.sync_all_ui();
@@ -4196,13 +4628,22 @@ impl TpBrowserApp {
                     self.split_paired_tab_id = None;
                 } else if let Some(pid) = pair_tab_id {
                     self.split_paired_tab_id = Some(pid);
-                } else if self.split_paired_tab_id.is_none() && self.tabs.len() > 1 {
-                    let next_idx = if self.active_idx + 1 < self.tabs.len() {
-                        self.active_idx + 1
-                    } else {
-                        self.active_idx.saturating_sub(1)
-                    };
-                    self.split_paired_tab_id = Some(self.tabs[next_idx].id);
+                } else if self.split_paired_tab_id.is_none() && self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id).count() > 1 {
+                    let visible_indices = self.visible_tab_indices();
+                                        if visible_indices.len() > 1 {
+                                                            let active_pos = visible_indices
+                                                                .iter()
+                                                                .position(|idx| *idx == self.active_idx)
+                                                                .unwrap_or(0);
+                                                            let next_pos = if active_pos + 1 < visible_indices.len() {
+                                                                active_pos + 1
+                                                            } else {
+                                                                active_pos.saturating_sub(1)
+                                                            };
+                                                            if let Some(next_idx) = visible_indices.get(next_pos) {
+                                                                self.split_paired_tab_id = Some(self.tabs[*next_idx].id);
+                                                            }
+                                                        }
                 }
                 self.relayout();
                 self.sync_all_ui();
@@ -4799,11 +5240,49 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                 self.sync_ai_config_to_panel(false);
                 self.broadcast_config_changed();
             }
-            AppCmd::NewTab { url, isolated } => {
-                self.add_tab(&url, isolated);
+            AppCmd::NewTab { url, isolated, container_id } => {
+                let id = container_id.as_deref().map(Self::normalize_container_id);
+                self.add_tab_internal(&url, isolated, true, None, None, false, id);
+            }
+            AppCmd::FocusVisibleIndex(visible_idx) => {
+                if let Some(native_idx) = self.visible_tab_indices().get(visible_idx).copied() {
+                    self.execute(AppCmd::FocusIndex(native_idx));
+                }
+            }
+            AppCmd::NextMruTab => {
+                let active_id = self.tabs.get(self.active_idx).map(|tab| tab.id);
+                if self.mru_cycle_ids.is_none() {
+                    let mut candidates: Vec<u64> = self.mru_tab_ids.iter().copied().filter(|id| {
+                        Some(*id) != active_id && self.tabs.iter().any(|tab| tab.id == *id && tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none())
+                    }).collect();
+                    if candidates.is_empty() {
+                        candidates = self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none() && Some(tab.id) != active_id).map(|tab| tab.id).collect();
+                    }
+                    self.mru_cycle_ids = Some(candidates);
+                    self.mru_cycle_pos = 0;
+                }
+                if let Some(ids) = self.mru_cycle_ids.as_ref() {
+                    if !ids.is_empty() {
+                        let id = ids[self.mru_cycle_pos % ids.len()];
+                        self.mru_cycle_pos = (self.mru_cycle_pos + 1) % ids.len();
+                        if let Some(index) = self.tabs.iter().position(|tab| tab.id == id && tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none()) {
+                            self.mru_focus_in_progress = true;
+                            self.execute(AppCmd::FocusIndex(index));
+                            self.mru_focus_in_progress = false;
+                        }
+                    }
+                }
             }
             AppCmd::FocusIndex(idx) => {
-                if idx < self.tabs.len() {
+                if idx < self.tabs.len() && self.tabs[idx].workspace_id == self.active_workspace_id {
+                    let tab_id = self.tabs[idx].id;
+                    if self.tabs[idx].worker_kind.is_none() && !self.mru_focus_in_progress {
+                        self.mru_tab_ids.retain(|id| *id != tab_id);
+                        self.mru_tab_ids.insert(0, tab_id);
+                    }
+                    if !self.mru_focus_in_progress {
+                        self.mru_cycle_ids = None;
+                    }
                     self.active_idx = idx;
                     // Đánh thức tab nếu đang ở trạng thái ngủ đông (Lazy Loading)
                     if let Some(t) = self.tabs.get_mut(self.active_idx) {
@@ -4822,25 +5301,34 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                 }
             }
             AppCmd::FocusLastTab => {
-                if !self.tabs.is_empty() {
-                    let last = self.tabs.len() - 1;
+                if let Some(last) = self.visible_tab_indices().last().copied() {
                     self.execute(AppCmd::FocusIndex(last));
                 }
             }
             AppCmd::NextTab => {
-                if self.tabs.len() > 1 {
-                    let next = (self.active_idx + 1) % self.tabs.len();
-                    self.execute(AppCmd::FocusIndex(next));
+                let visible_indices = self.visible_tab_indices();
+                if visible_indices.len() > 1 {
+                    let active_pos = visible_indices
+                        .iter()
+                        .position(|idx| *idx == self.active_idx)
+                        .unwrap_or(0);
+                    let next_pos = (active_pos + 1) % visible_indices.len();
+                    self.execute(AppCmd::FocusIndex(visible_indices[next_pos]));
                 }
             }
             AppCmd::PrevTab => {
-                if self.tabs.len() > 1 {
-                    let prev = if self.active_idx == 0 {
-                        self.tabs.len() - 1
+                let visible_indices = self.visible_tab_indices();
+                if visible_indices.len() > 1 {
+                    let active_pos = visible_indices
+                        .iter()
+                        .position(|idx| *idx == self.active_idx)
+                        .unwrap_or(0);
+                    let prev_pos = if active_pos == 0 {
+                        visible_indices.len() - 1
                     } else {
-                        self.active_idx - 1
+                        active_pos - 1
                     };
-                    self.execute(AppCmd::FocusIndex(prev));
+                    self.execute(AppCmd::FocusIndex(visible_indices[prev_pos]));
                 }
             }
             AppCmd::FocusTabById(tab_id) => {
@@ -4855,7 +5343,10 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                 }
             }
             AppCmd::CloseIndex(idx) => {
-                if self.tabs.len() > 1 && idx < self.tabs.len() {
+                if self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id).count() > 1
+                    && idx < self.tabs.len()
+                    && self.tabs[idx].workspace_id == self.active_workspace_id
+                {
                     let removed_id = self.tabs[idx].id;
                     if self.ai_worker_tab_id == Some(removed_id) {
                         self.ai_worker_tab_id = None;
@@ -4868,7 +5359,9 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                         }
                     }
                     self.tabs.remove(idx);
-                    if self.active_idx >= self.tabs.len() {
+                    if idx < self.active_idx {
+                        self.active_idx = self.active_idx.saturating_sub(1);
+                    } else if self.active_idx >= self.tabs.len() {
                         self.active_idx = self.tabs.len() - 1;
                     }
                     self.relayout();
@@ -4997,6 +5490,40 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                 self.save_history();
                 self.sync_history_view();
             }
+            AppCmd::CreateWorkspace(name) => {
+                let name = name.trim();
+                if !name.is_empty() {
+                    let id = format!("workspace-{}", std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+                    if !self.workspaces.iter().any(|workspace| workspace.id == id) {
+                        self.workspaces.push(Workspace { id: id.clone(), name: name.to_string() });
+                        self.active_workspace_id = id;
+                        self.active_idx = 0;
+                        self.view_mode = ContentViewMode::SingleTab;
+                        self.split_paired_tab_id = None;
+                        self.relayout();
+                        self.sync_all_ui();
+                        self.save_config();
+                        self.save_session();
+                    }
+                }
+            }
+            AppCmd::SetActiveWorkspace(workspace_id) => {
+                if self.workspaces.iter().any(|workspace| workspace.id == workspace_id) {
+                    self.active_workspace_id = workspace_id;
+                    if let Some(idx) = self.tabs.iter().position(|tab| tab.workspace_id == self.active_workspace_id) {
+                        self.active_idx = idx;
+                    } else {
+                        self.active_idx = 0;
+                        self.view_mode = ContentViewMode::SingleTab;
+                        self.split_paired_tab_id = None;
+                    }
+                    self.relayout();
+                    self.sync_all_ui();
+                    self.save_config();
+                    self.save_session();
+                }
+            }
             AppCmd::OpenWorkspace => {
                 if let Some(pos) = self.tabs.iter().position(|t| t.url == "tp://workspace") {
                     self.execute(AppCmd::FocusIndex(pos));
@@ -5004,6 +5531,34 @@ elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe
                     self.add_tab("tp://workspace", false);
                 }
                 self.sync_workspace_view();
+            }
+            AppCmd::OpenGlance { url, title } => {
+                let norm_url = Self::normalize_url(&url);
+                let display_title = if title.trim().is_empty() {
+                    norm_url.clone()
+                } else {
+                    title
+                };
+                self.ensure_glance_shells(&norm_url, &display_title);
+                self.glance_open = true;
+                self.relayout();
+                self.sync_glance_view();
+            }
+            AppCmd::CloseGlance => {
+                if self.glance_open {
+                    self.glance_open = false;
+                    self.relayout();
+                    if let Some(t) = self.tabs.get(self.active_idx) {
+                        let _ = t.webview.focus();
+                    }
+                }
+            }
+            AppCmd::GlanceOpenInTab => {
+                if self.glance_open && !self.glance_url.is_empty() {
+                    let url = self.glance_url.clone();
+                    self.execute(AppCmd::CloseGlance);
+                    self.add_tab(&url, false);
+                }
             }
             AppCmd::RunEcomScan { scope } => {
                 let s = scope.to_lowercase();
@@ -6037,6 +6592,7 @@ fn main() -> wry::Result<()> {
 
     let mut app = TpBrowserApp::new(window, proxy, exe_dir)?;
     let mut modifiers = ModifiersState::empty();
+    let mut alt_keys = AltKeyState::default();
 
     let proxy_mcp = app.proxy.clone();
     mcp_server::start_http_server(move |msg| {
@@ -6068,15 +6624,23 @@ fn main() -> wry::Result<()> {
                 WindowEvent::ModifiersChanged(new_mods) => {
                     modifiers = new_mods;
                 }
-                WindowEvent::KeyboardInput {
-                    event:
-                        KeyEvent {
-                            physical_key,
-                            state: ElementState::Pressed,
-                            ..
-                        },
-                    ..
-                } => {
+                WindowEvent::Focused(false) => alt_keys = AltKeyState::default(),
+                WindowEvent::KeyboardInput { event: KeyEvent { physical_key, state, .. }, .. } => {
+                    let pressed = state == ElementState::Pressed;
+                    if alt_keys.should_open_command_bar(physical_key, pressed) {
+                        let _ = app.proxy.send_event(AppCmd::OpenCommandBar);
+                    }
+                    alt_keys.update(physical_key, pressed);
+                    if !pressed {
+                        if matches!(physical_key, KeyCode::ControlLeft | KeyCode::ControlRight) {
+                            app.mru_cycle_ids = None;
+                            if let Some(id) = app.tabs.get(app.active_idx).filter(|tab| tab.worker_kind.is_none()).map(|tab| tab.id) {
+                                app.mru_tab_ids.retain(|existing| *existing != id);
+                                app.mru_tab_ids.insert(0, id);
+                            }
+                        }
+                        return;
+                    }
                     if physical_key == KeyCode::F5 && !modifiers.alt_key() && !modifiers.shift_key() {
                         if modifiers.control_key() {
                             app.execute(AppCmd::HardReloadActive);
@@ -6096,6 +6660,8 @@ fn main() -> wry::Result<()> {
                         app.execute(AppCmd::FocusUrlBar);
                     } else if physical_key == KeyCode::Escape && app.settings_open {
                         app.execute(AppCmd::CloseSettingsModal);
+                    } else if physical_key == KeyCode::Escape && app.glance_open {
+                        app.execute(AppCmd::CloseGlance);
                     } else if modifiers.control_key() && !modifiers.alt_key() {
                         match physical_key {
                             KeyCode::KeyT if modifiers.shift_key() => {
@@ -6104,12 +6670,13 @@ fn main() -> wry::Result<()> {
                             KeyCode::KeyT if !modifiers.shift_key() => app.execute(AppCmd::NewTab {
                                 url: "tp://newtab".to_string(),
                                 isolated: false,
+                                container_id: None,
                             }),
                             KeyCode::KeyW | KeyCode::F4 if !modifiers.shift_key() => {
                                 app.execute(AppCmd::CloseActiveTab)
                             }
                             KeyCode::Tab if modifiers.shift_key() => app.execute(AppCmd::PrevTab),
-                            KeyCode::Tab => app.execute(AppCmd::NextTab),
+                            KeyCode::Tab => app.execute(AppCmd::NextMruTab),
                             KeyCode::PageDown if !modifiers.shift_key() => {
                                 app.execute(AppCmd::NextTab)
                             }
@@ -6192,6 +6759,7 @@ fn main() -> wry::Result<()> {
                             KeyCode::KeyP => app.execute(AppCmd::NewTab {
                                 url: "tp://newtab".to_string(),
                                 isolated: true,
+                                container_id: None,
                             }),
                             KeyCode::KeyW => app.execute(AppCmd::OpenWorkspace),
                             _ => {}
@@ -6219,6 +6787,23 @@ fn main() -> wry::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn right_alt_k_signal_requires_right_alt_only() {
+        let mut state = super::AltKeyState::default();
+        assert!(!state.should_open_command_bar(super::KeyCode::KeyK, true));
+        state.update(super::KeyCode::AltLeft, true);
+        assert!(!state.should_open_command_bar(super::KeyCode::KeyK, true));
+        state.update(super::KeyCode::AltLeft, false);
+        state.update(super::KeyCode::AltRight, true);
+        assert!(state.should_open_command_bar(super::KeyCode::KeyK, true));
+        assert!(!state.should_open_command_bar(super::KeyCode::KeyK, false));
+        state.update(super::KeyCode::AltRight, false);
+        assert!(!state.should_open_command_bar(super::KeyCode::KeyK, true));
+        state.update(super::KeyCode::AltRight, true);
+        state.update(super::KeyCode::AltLeft, true);
+        assert!(!state.should_open_command_bar(super::KeyCode::KeyK, true));
+    }
+
     use super::*;
 
     #[test]
@@ -6287,6 +6872,18 @@ mod tests {
         assert_eq!(APP_VERSION, "0.5.6");
         assert_eq!(APP_FULL_VERSION, "v0.5.6-workspace-landing");
         assert!(injected.contains("Motion"));
+    }
+
+    #[test]
+    fn test_glance_preview_assets_and_actions() {
+        assert!(GLANCE_HEADER_HTML.contains("glance_open_in_tab"));
+        assert!(GLANCE_HEADER_HTML.contains("close_glance"));
+        assert!(GLANCE_HEADER_HTML.contains("Escape"));
+        assert!(GLANCE_BACKDROP_HTML.contains("close_glance"));
+        assert!(CONTENT_AGENT_JS.contains("open_glance"));
+        assert!(CONTENT_AGENT_JS.contains("pointerdown"));
+        assert!(TAB_SHELL_HTML.contains("fallbackWebFavicon"));
+        assert!(NEWTAB_HTML.contains("repeat(auto-fit, minmax(120px, 1fr))"));
     }
 
     #[test]
@@ -6421,5 +7018,73 @@ mod tests {
         assert!(AI_PANEL_HTML.contains("quick_worker_tab"));
         assert_eq!(TpBrowserApp::normalize_url("tp://workspace"), "tp://workspace");
         assert_eq!(TpBrowserApp::title_from_url("tp://workspace"), "Không gian TMĐT");
+    }
+
+    #[test]
+    fn test_workspace_session_roundtrip_and_legacy_default() {
+        let session = format!(
+            "{{\"active_workspace_id\":\"research\",\"tabs\":[{},{}]}}",
+            TpBrowserApp::serialize_session_tab("https://example.com", "default", "default", "research", false),
+            TpBrowserApp::serialize_session_tab("https://example.org", "default", "shopping", "personal", false),
+        );
+        let value = parse_json(&session).expect("workspace session should parse");
+        assert_eq!(
+            value.get("active_workspace_id").and_then(|v| v.as_str()),
+            Some("research")
+        );
+        let tabs = value.get("tabs").and_then(|v| v.as_arr()).expect("tabs array");
+        assert_eq!(
+            tabs[0].get("container_id").and_then(|v| v.as_str()),
+            Some("default")
+        );
+        assert_eq!(
+            tabs[1].get("container_id").and_then(|v| v.as_str()),
+            Some("shopping")
+        );
+        assert_eq!(
+            tabs[0].get("workspace_id").and_then(|v| v.as_str()),
+            Some("research")
+        );
+        assert_eq!(
+            tabs[1].get("workspace_id").and_then(|v| v.as_str()),
+            Some("personal")
+        );
+
+        let persisted_pins = parse_json(r#"{"tabs":[{"url":"https://example.com","pinned":true},{"url":"https://example.org","pinned":false}]}"#)
+            .expect("pinned tab session should parse");
+        let persisted_tabs = persisted_pins.get("tabs").and_then(|v| v.as_arr()).expect("tabs array");
+        assert_eq!(persisted_tabs[0].get("pinned").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(persisted_tabs[1].get("pinned").and_then(|v| v.as_bool()), Some(false));
+
+        let legacy = parse_json(r#"{"tabs":[{"url":"https://example.com"}]}"#)
+            .expect("legacy session should parse");
+        assert_eq!(
+            legacy
+                .get("tabs")
+                .and_then(|v| v.as_arr())
+                .and_then(|tabs| tabs[0].get("container_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("default"),
+            "default"
+        );
+        assert!(legacy.get("active_workspace_id").is_none());
+        assert!(legacy
+            .get("tabs")
+            .and_then(|v| v.as_arr())
+            .and_then(|tabs| tabs[0].get("workspace_id"))
+            .is_none());
+        assert_eq!(DEFAULT_WORKSPACE_ID, "default");
+    }
+
+    #[test]
+    fn test_container_id_validation_and_stable_profile_mapping() {
+        assert_eq!(TpBrowserApp::normalize_container_id("work-1"), "work-1");
+        assert_eq!(TpBrowserApp::normalize_container_id(""), "default");
+        assert_eq!(TpBrowserApp::normalize_container_id("bad/name"), "default");
+        assert_eq!(TpBrowserApp::normalize_container_id("  "), "default");
+        assert_eq!(TpBrowserApp::container_profile_name("default"), "default");
+        assert_eq!(TpBrowserApp::container_profile_name("work-1"), "container_work-1");
+        assert_eq!(TpBrowserApp::container_profile_name("work-1"), TpBrowserApp::container_profile_name("work-1"));
+        assert_ne!(TpBrowserApp::container_profile_name("work-1"), TpBrowserApp::container_profile_name("personal"));
     }
 }
