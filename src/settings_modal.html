@@ -1073,7 +1073,7 @@
               <div style="font-size: 11.5px; color: var(--text-sub); margin-top: 2px;">Trình Duyệt Tối Giản AURELIA • Vàng Đồng &amp; Thép Đen</div>
               <div style="margin-top: 10px; display:flex; justify-content:center; gap: 8px; flex-wrap: wrap;">
                 <span class="kbd-badge" id="about_ver_badge" style="background: rgba(212, 175, 55, 0.15); border-color: var(--gold-line-strong); color: var(--gold-bright); font-weight: 700;">v0.5.6-workspace-landing</span>
-                <span class="kbd-badge" id="about_commit_badge">Commit: 27a1718</span>
+                <span class="kbd-badge" id="about_commit_badge">Commit: loading...</span>
                 <span class="kbd-badge" style="color:#38bdf8;">Rust + wry</span>
               </div>
             </div>
@@ -1192,7 +1192,7 @@
       adblock_enabled: true,
       google_user: "",
       app_version: "v0.5.6-workspace-landing",
-      app_commit: "27a1718"
+      app_commit: "dev"
     };
 
     var savedTimer = null;
@@ -1674,7 +1674,7 @@
         if (runBtn) runBtn.style.display = "none";
         if (logTxt) {
           logTxt.innerHTML = '<div style="color:#4ade80; font-weight:700;">✅ TPbrowser đã ở phiên bản mới nhất!</div>' +
-            '<div style="color:var(--text-sub); margin-top:2px;">Commit hiện tại: ' + (data.current_commit || modalState.app_commit || '27a1718') + ' • ' + (data.message || 'Mã nguồn đã đồng bộ hoàn toàn với origin/main.') + '</div>';
+            '<div style="color:var(--text-sub); margin-top:2px;">Commit hiện tại: ' + (data.current_commit || modalState.app_commit || 'dev') + ' • ' + (data.message || 'Mã nguồn đã đồng bộ hoàn toàn với GitHub.') + '</div>';
         }
       }
     };

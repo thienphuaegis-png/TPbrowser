@@ -77,6 +77,17 @@ fn build_windows_icon_res(ico: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn main() {
+    let git_commit = std::process::Command::new("git")
+        .args(["rev-parse", "--short=7", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|commit| !commit.is_empty())
+        .unwrap_or_else(|| "dev".to_string());
+    println!("cargo:rustc-env=TP_GIT_COMMIT={git_commit}");
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs/heads/main");
     println!("cargo:rerun-if-changed=assets/icons/tpbrowser.ico");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;

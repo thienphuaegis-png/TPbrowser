@@ -198,7 +198,12 @@ const BOOKMARKS_BAR_HEIGHT: u32 = 28;
 pub const APP_VERSION: &str = "0.5.6";
 pub const APP_CODENAME: &str = "workspace-landing";
 pub const APP_FULL_VERSION: &str = "v0.5.6-workspace-landing";
-pub const APP_GIT_COMMIT: &str = "441e841";
+pub const APP_GIT_COMMIT: &str = match option_env!("TP_GIT_COMMIT") {
+    Some(commit) => commit,
+    None => "dev",
+};
+const UPDATE_API_URL: &str = "https://api.github.com/repos/thienphuaegis-png/TPbrowser/commits/main";
+const UPDATE_BINARY_URL: &str = "https://github.com/thienphuaegis-png/TPbrowser/raw/refs/heads/main/TPbrowser.exe";
 
 const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
   try {
@@ -2965,6 +2970,32 @@ impl TpBrowserApp {
         APP_GIT_COMMIT.to_string()
     }
 
+    fn fetch_remote_git_commit() -> Result<String, String> {
+        let command = format!(
+            "$ProgressPreference='SilentlyContinue'; (Invoke-RestMethod -Uri '{UPDATE_API_URL}' -Headers @{{'User-Agent'='TPbrowser'}}).sha"
+        );
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command.as_str(),
+            ])
+            .output()
+            .map_err(|err| err.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+        let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if commit.is_empty() {
+            Err("GitHub trả về commit rỗng.".to_string())
+        } else {
+            Ok(commit)
+        }
+    }
+
     fn build_config_payload_json(&self, open_section: Option<&str>) -> String {
         let sec = open_section.unwrap_or("");
         let orbs_raw = if self.floating_orbs_json.trim().is_empty() {
@@ -5000,61 +5031,27 @@ impl TpBrowserApp {
                 let proxy = self.proxy.clone();
                 std::thread::spawn(move || {
                     let current_commit = Self::get_current_git_commit();
-                    let fetch_res = std::process::Command::new("git")
-                        .args(["fetch", "origin", "main", "--quiet"])
-                        .output();
-
-                    let (has_update, remote_commit, behind_count, message) = if fetch_res.is_err() {
-                        (
-                            false,
-                            current_commit.clone(),
-                            0,
-                            "Không thể kết nối tới remote git (offline hoặc thiếu quyền mạng).".to_string(),
-                        )
-                    } else {
-                        let rev_out = std::process::Command::new("git")
-                            .args(["rev-parse", "--short", "origin/main"])
-                            .output();
-                        let remote_hash = rev_out
-                            .ok()
-                            .and_then(|o| {
-                                if o.status.success() {
-                                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                                    if !s.is_empty() {
-                                        Some(s)
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                }
-                            })
-                            .unwrap_or_else(|| current_commit.clone());
-
-                        let log_out = std::process::Command::new("git")
-                            .args(["log", "HEAD..origin/main", "--oneline"])
-                            .output();
-                        let lines = log_out
-                            .ok()
-                            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
-                            .unwrap_or(0);
-
-                        if lines > 0 && current_commit != remote_hash {
-                            (
+                    let (has_update, remote_commit, behind_count, message) =
+                        match Self::fetch_remote_git_commit() {
+                            Ok(remote_hash) if !remote_hash.starts_with(&current_commit) => (
                                 true,
                                 remote_hash,
-                                lines,
-                                format!("Có {} commit mới trên origin/main.", lines),
-                            )
-                        } else {
-                            (
+                                1,
+                                "Có bản cập nhật mới trên GitHub.".to_string(),
+                            ),
+                            Ok(remote_hash) => (
+                                false,
+                                remote_hash,
+                                0,
+                                "Mã nguồn hiện tại đã là bản mới nhất trên GitHub.".to_string(),
+                            ),
+                            Err(err) => (
                                 false,
                                 current_commit.clone(),
                                 0,
-                                "Mã nguồn hiện tại đã đồng bộ hoàn toàn với origin/main.".to_string(),
-                            )
-                        }
-                    };
+                                format!("Không thể kiểm tra GitHub: {err}"),
+                            ),
+                        };
 
                     let _ = proxy.send_event(AppCmd::AppUpdateResult {
                         has_update,
@@ -5084,17 +5081,21 @@ impl TpBrowserApp {
                 let _ = self.settings_shell.evaluate_script(&js);
             }
             AppCmd::RunAppUpdate => {
-                let _ = std::process::Command::new("cmd")
-                    .args([
-                        "/c",
-                        "start",
-                        "TPbrowser Updater",
-                        "cmd",
-                        "/c",
-                        "chcp 65001 >nul && echo Dang keo code moi tu GitHub... && git pull origin main && echo Dang build ban Release... && cargo build --release && copy /y target\
-elease\\TPbrowser.exe TPbrowser.exe && echo [HOAN TAT] Da cap nhat TPbrowser.exe thanh cong! Bam phim bat ky de thoat... && pause",
-                    ])
-                    .spawn();
+                if let Ok(current_exe) = env::current_exe() {
+                    let target = current_exe.to_string_lossy().replace('\'', "''");
+                    let script_path = env::temp_dir().join(format!("tpbrowser-update-{}.ps1", std::process::id()));
+                    let script = format!(
+                        "$ErrorActionPreference='Stop'\n$target='{target}'\n$temp=$target+'.download'\n$ProgressPreference='SilentlyContinue'\nInvoke-WebRequest -UseBasicParsing -Uri '{UPDATE_BINARY_URL}' -OutFile $temp\nfor ($i=0; $i -lt 30; $i++) {{ try {{ Move-Item -Force $temp $target; break }} catch {{ Start-Sleep -Seconds 1 }} }}\nStart-Process -FilePath $target\nRemove-Item -LiteralPath $PSCommandPath -Force\n"
+                    );
+                    if fs::write(&script_path, script).is_ok() {
+                        let _ = std::process::Command::new("powershell.exe")
+                            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+                            .arg(&script_path)
+                            .spawn();
+                        self.remove_system_tray();
+                        self.should_exit = true;
+                    }
+                }
             }
             AppCmd::SaveSetting { key, value } => {
                 match key.as_str() {
