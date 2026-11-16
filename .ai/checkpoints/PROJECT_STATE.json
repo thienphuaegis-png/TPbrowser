@@ -1,11 +1,11 @@
 {
   "project": "TPbrowser",
   "version": "0.1.0",
-  "git_commit": "48790b6",
-  "updated_at": "2026-11-16 16:10:09",
+  "git_commit": "a5bf425",
+  "updated_at": "2026-11-16 16:41:24",
   "codegraph_ast": {
     "files": 9,
-    "nodes": 500,
+    "nodes": 503,
     "edges": 2
   },
   "codegraph_commands": {

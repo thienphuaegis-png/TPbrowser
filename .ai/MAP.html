@@ -171,8 +171,9 @@
   </div>
 
   <script>
-    const ROADMAP_VERSION = "v0.9.1-2026-11-16-command-bar-mru-done";
+    const ROADMAP_VERSION = "v0.9.2-2026-11-16-github-updater-fixed";
     const DEFAULT_TASKS = [
+      { id: "github-updater", cat: "CORE", title: "Updater máy khách: kiểm tra GitHub API và tải thẳng bản EXE mới", done: true, note: "Không còn phụ thuộc Git/Cargo/source tree: lấy commit nguồn qua GitHub API, tải TPbrowser.exe mới, tự thoát/thay binary/mở lại. Đã build/push a5bf425; cần live test trên máy sạch." },
       { id: "zen-command-bar", cat: "UI", title: "Zen Command Bar MVP: Right Alt+K, tìm tab/workspace và lệnh trình duyệt", done: true, note: "Hoàn tất chuỗi native Right Alt state, overlay titlebar, tìm bằng stable tab_id/workspace_id và IPC Back/Forward/Reload/New Tab/Close Tab. Chưa live verify child-WebView focus và overlay extent." },
       { id: "zen-mru", cat: "CORE", title: "Zen Recently-used Tab Switcher: Ctrl+Tab theo MRU", done: true, note: "Đã triển khai runtime-only bằng stable tab_id, chỉ tab cùng workspace hiện tại; Ctrl+Shift+Tab và persistence giữ nguyên." },
       { id: "zen-workspaces", cat: "UI", title: "Zen Workspaces: state, persistence, picker, filtering và tạo workspace", done: true, note: "Đã triển khai và smoke verify qua MCP; workspace model/config-session persistence, picker, lọc tab và tạo workspace; giữ nguyên tp://workspace." },
