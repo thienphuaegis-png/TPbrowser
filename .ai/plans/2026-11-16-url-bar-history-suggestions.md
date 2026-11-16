@@ -22,3 +22,12 @@
 - Không đổi ranking/fuzzy search nâng cao.
 - Không sửa bookmark folders/tags.
 - Không live-claim WebView2 UI trước khi anh test binary.
+
+## Next after live verification
+
+1. **URL bar phase 2:** fuzzy ranking and keyboard-selected suggestion rows, while preserving `@ai ...` and direct URL/search normalization.
+2. **Bookmarks folders/tags/keywords:** model + persistence first, then management UI; do not mix with split view.
+3. **Split View nâng cao:** chọn đúng hai tab, 2 cột/2 hàng/spiral, unsplit and duplicate-widget suppression.
+4. **Feasibility riêng:** Downloads/PiP/Reader/Translation trên WebView2; chỉ code capability có API evidence.
+
+Tomorrow's first test is the current binary: focus URL bar, type a known part of a tab/bookmark/history URL, choose a suggestion with Enter, then verify `@ai ...` still dispatches as an AI prompt.

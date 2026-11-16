@@ -13,7 +13,7 @@
 - Đã sửa updater cho máy đã đóng gói: kiểm tra commit nguồn qua GitHub API, tải thẳng `TPbrowser.exe`, tự thoát/thay binary/mở lại; không còn phụ thuộc Git/Cargo/source tree trên máy khách.
 - Build mới đã push: `a5bf425`; commit nguồn updater `f99eead` + `df28735`; checksum `TPbrowser.exe`: `1c2ac1ddbc359b102b7951918ad85f6640ba4726e59ff248cd1036fdf1285c10`.
 - Bổ sung Window Geometry Recovery: lưu `window_width/window_height` vào `config.json`, khôi phục khi mở lại, clamp theo kích thước tối thiểu/tối đa và đồng bộ UI sau resize/DPI change; chưa claim live restart trên máy khách.
-- URL bar nâng cao lượt đầu: titlebar nhận gợi ý thật từ tab đang mở, bookmarks và history; dedupe tối đa 30 URL qua native state, giữ nguyên `@ai ...` và `navigate_active`; chưa claim live WebView2 UI.
+- URL bar nâng cao lượt đầu: titlebar nhận gợi ý thật từ tab đang mở, bookmarks và history; dedupe tối đa 30 URL qua native state, giữ nguyên `@ai ...` và `navigate_active`; chưa claim live WebView2 UI. Đã commit/push `2488a07`; binary mới checksum `623bdc06fb7af065fcedab3befa2d8aebafa92b09406688577037cf6bf1338ef`.
 - Triển khai và vừa harden Zen Glance (Xem Nhanh Nổi): Alt+Click bắt ở `pointerdown` capture để không bị WebView nuốt, 3 webview con `glance_backdrop_shell`/`glance_header_shell`/`glance_body_shell`, Escape/click backdrop đóng và nút mở Tab lớn.
 - Sửa UI theo live screenshot: bookmark grid New Tab responsive khi có AI dock; tab web giữ favicon thật nếu có và dùng globe SVG fallback thay vì chấm xám khi favicon lỗi.
 - Đã hoàn tất chuỗi Zen P0 được phép triển khai: Workspaces (state, persistence, picker, filtering, create), Essentials/Pinned Tabs (pin/unpin + persistence), và Container Tabs (identity/persistence + mở tab theo container).
