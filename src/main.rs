@@ -3106,12 +3106,13 @@ impl TpBrowserApp {
             format!("{{\"id\":\"{}\",\"name\":\"{}\"}}", Self::escape_json(&workspace.id), Self::escape_json(&workspace.name))
         }).collect::<Vec<_>>().join(",");
         let tb_state = format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"show_bookmarks_bar\":{},\"bookmarks\":{},\"active_idx\":{},\"tabs\":[{}],\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"show_bookmarks_bar\":{},\"bookmarks\":{},\"history\":{},\"active_idx\":{},\"tabs\":[{}],\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             self.tab_orientation.as_str(),
             self.show_bookmarks_bar,
             &self.bookmarks_json,
+            if self.history_json.trim().is_empty() { "[]" } else { &self.history_json },
             visible_active_idx,
             tabs_arr_str,
             Self::escape_json(&self.active_workspace_id),

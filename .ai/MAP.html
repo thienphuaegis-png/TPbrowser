@@ -171,10 +171,11 @@
   </div>
 
   <script>
-    const ROADMAP_VERSION = "v0.9.3-2026-11-16-window-geometry-recovery";
+    const ROADMAP_VERSION = "v0.9.4-2026-11-16-url-bar-history-suggestions";
     const DEFAULT_TASKS = [
       { id: "github-updater", cat: "CORE", title: "Updater máy khách: kiểm tra GitHub API và tải thẳng bản EXE mới", done: true, note: "Không còn phụ thuộc Git/Cargo/source tree: lấy commit nguồn qua GitHub API, tải TPbrowser.exe mới, tự thoát/thay binary/mở lại. Đã build/push a5bf425; cần live test trên máy sạch." },
       { id: "window-geometry-recovery", cat: "CORE", title: "Window Sync & Recovery: lưu và khôi phục kích thước cửa sổ", done: true, note: "Lưu window_width/window_height vào config.json, khôi phục khi mở lại, clamp 860–3840 x 560–2160 và sync lại UI khi resize/DPI đổi. Unit + full Rust tests pass; live restart/DPI chưa xác minh." },
+      { id: "url-bar-history-suggestions", cat: "CORE", title: "URL bar nâng cao lượt đầu: gợi ý tab, bookmark và history", done: true, note: "Dùng datalist native trong unified titlebar, lấy state thật từ tabs/bookmarks/history, dedupe tối đa 30 URL; giữ nguyên @ai và navigate_active. Chưa live verify WebView2." },
       { id: "zen-command-bar", cat: "UI", title: "Zen Command Bar MVP: Right Alt+K, tìm tab/workspace và lệnh trình duyệt", done: true, note: "Hoàn tất chuỗi native Right Alt state, overlay titlebar, tìm bằng stable tab_id/workspace_id và IPC Back/Forward/Reload/New Tab/Close Tab. Chưa live verify child-WebView focus và overlay extent." },
       { id: "zen-mru", cat: "CORE", title: "Zen Recently-used Tab Switcher: Ctrl+Tab theo MRU", done: true, note: "Đã triển khai runtime-only bằng stable tab_id, chỉ tab cùng workspace hiện tại; Ctrl+Shift+Tab và persistence giữ nguyên." },
       { id: "zen-workspaces", cat: "UI", title: "Zen Workspaces: state, persistence, picker, filtering và tạo workspace", done: true, note: "Đã triển khai và smoke verify qua MCP; workspace model/config-session persistence, picker, lọc tab và tạo workspace; giữ nguyên tp://workspace." },
