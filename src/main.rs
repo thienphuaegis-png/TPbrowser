@@ -3450,6 +3450,10 @@ impl TpBrowserApp {
 
     fn save_config(&self) {
         let cfg_path = self.exe_dir.join("config.json");
+        let scale = self.window.scale_factor();
+        let logical_size = self.window.inner_size().to_logical::<u32>(scale);
+        let window_width = logical_size.width.max(320);
+        let window_height = logical_size.height.max(240);
         let orbs_raw = if self.floating_orbs_json.trim().is_empty() {
             "[]"
         } else {
@@ -3468,7 +3472,7 @@ impl TpBrowserApp {
             .collect::<Vec<_>>()
             .join(",");
         let body = format!(
-            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
+            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"window_width\": {},\n  \"window_height\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.active_workspace_id),
             workspaces_json,
@@ -3484,6 +3488,8 @@ impl TpBrowserApp {
             self.view_mode.as_str(),
             self.ai_mode.as_str(),
             self.ai_dock_width,
+            window_width,
+            window_height,
             self.show_unread_badges,
             self.always_show_floating_orbs,
             orbs_raw,
@@ -4089,6 +4095,16 @@ impl TpBrowserApp {
         let rest = json[start..].trim_start();
         let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
         digits.parse().ok()
+    }
+
+    fn persisted_window_size(json: &str) -> (u32, u32) {
+        let width = Self::extract_u64(json, "\"window_width\":")
+            .map(|value| (value as u32).clamp(860, 3840))
+            .unwrap_or(1480);
+        let height = Self::extract_u64(json, "\"window_height\":")
+            .map(|value| (value as u32).clamp(560, 2160))
+            .unwrap_or(900);
+        (width, height)
     }
 
     fn extract_string(json: &str, key: &str) -> Option<String> {
@@ -6571,13 +6587,16 @@ fn main() -> wry::Result<()> {
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
+    let saved_window_size = fs::read_to_string(exe_dir.join("config.json"))
+        .map(|raw| TpBrowserApp::persisted_window_size(&raw))
+        .unwrap_or((1480, 900));
 
     let window_builder = WindowBuilder::new()
         .with_title("TPbrowser — Trình Duyệt Cá Nhân & AI Cowork")
         .with_decorations(false)
         .with_visible(!is_silent)
         .with_window_icon(TpBrowserApp::build_window_icon("ribbon", "obsidian-gold"))
-        .with_inner_size(LogicalSize::new(1480, 900))
+        .with_inner_size(LogicalSize::new(saved_window_size.0, saved_window_size.1))
         .with_min_inner_size(LogicalSize::new(860, 560));
 
     #[cfg(target_os = "windows")]
@@ -6621,6 +6640,7 @@ fn main() -> wry::Result<()> {
                 }
                 WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                     app.relayout();
+                    app.sync_all_ui();
                 }
                 WindowEvent::ModifiersChanged(new_mods) => {
                     modifiers = new_mods;
@@ -6806,6 +6826,17 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn persisted_window_size_restores_and_clamps_geometry() {
+        assert_eq!(TpBrowserApp::persisted_window_size(
+            r#"{"window_width": 1920, "window_height": 1080}"#
+        ), (1920, 1080));
+        assert_eq!(TpBrowserApp::persisted_window_size(
+            r#"{"window_width": 640, "window_height": 300}"#
+        ), (860, 560));
+        assert_eq!(TpBrowserApp::persisted_window_size("{}"), (1480, 900));
+    }
 
     #[test]
     fn test_extract_bool_and_field_str() {

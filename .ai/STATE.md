@@ -1,6 +1,6 @@
 # STATE.md — TPbrowser (`D:\Projects_Hermes\TPbrowser`)
 
-**Checkpoint:** `v0.9.2-2026-11-16-github-updater-fixed` (2026-11-16)
+**Checkpoint:** `v0.9.3-2026-11-16-window-geometry-recovery` (2026-11-16)
 **Dự án:** `TPbrowser` — Trình duyệt cá nhân Rust (`tao` + `wry` / WebView2), giao diện **AURELIA**, **Đổi Logo & Toàn Bộ Icon Giao Diện Sáng Sang Tối Sắc Nét & Nổi Bật Tối Đa**, **Cơ chế Startup Boost chuẩn Microsoft Edge (Khay Hệ Thống Native Win32, Single-Instance Mutex & Local /wake Endpoint, Chạy ngầm mở tức thì < 0.05s, Tự khởi động cùng Windows)**, Thanh Bookmark Tab Ngang (28px viền vàng, Ctrl+Shift+B, Titlebar động 40px/68px), Tối ưu 70% RAM & Lazy Sleeping Tabs.
 
 ---
@@ -12,6 +12,7 @@
 - MRU `t_ab0a18c5` đã hoàn tất: Ctrl+Tab chạy theo runtime MRU bằng stable `tab_id`, lọc workspace hiện tại, resolve native index chỉ lúc focus; Ctrl+Shift+Tab giữ đường cũ.
 - Đã sửa updater cho máy đã đóng gói: kiểm tra commit nguồn qua GitHub API, tải thẳng `TPbrowser.exe`, tự thoát/thay binary/mở lại; không còn phụ thuộc Git/Cargo/source tree trên máy khách.
 - Build mới đã push: `a5bf425`; commit nguồn updater `f99eead` + `df28735`; checksum `TPbrowser.exe`: `1c2ac1ddbc359b102b7951918ad85f6640ba4726e59ff248cd1036fdf1285c10`.
+- Bổ sung Window Geometry Recovery: lưu `window_width/window_height` vào `config.json`, khôi phục khi mở lại, clamp theo kích thước tối thiểu/tối đa và đồng bộ UI sau resize/DPI change; chưa claim live restart trên máy khách.
 - Triển khai và vừa harden Zen Glance (Xem Nhanh Nổi): Alt+Click bắt ở `pointerdown` capture để không bị WebView nuốt, 3 webview con `glance_backdrop_shell`/`glance_header_shell`/`glance_body_shell`, Escape/click backdrop đóng và nút mở Tab lớn.
 - Sửa UI theo live screenshot: bookmark grid New Tab responsive khi có AI dock; tab web giữ favicon thật nếu có và dùng globe SVG fallback thay vì chấm xám khi favicon lỗi.
 - Đã hoàn tất chuỗi Zen P0 được phép triển khai: Workspaces (state, persistence, picker, filtering, create), Essentials/Pinned Tabs (pin/unpin + persistence), và Container Tabs (identity/persistence + mở tab theo container).
@@ -28,6 +29,7 @@
 - **Command Bar chain**: focused Right Alt+K test `1 passed`; `cargo check` pass; `node --check` titlebar script pass; `git diff --check` pass. Chưa live smoke verify child-WebView focus/overlay extent.
 - **MRU**: full Rust suite `22 passed; 0 failed`; focused Right Alt test `1 passed`; `cargo check` và `git diff --check` pass. Không thay đổi persistence.
 - **GitHub updater**: `cargo test` `22 passed; 0 failed`, `cargo check`, release build pass; PowerShell GitHub API probe trả về commit nguồn `df287358bdc0ae3f8ec8b4348a3937963e6c537a`; binary mới đã push và remote `origin/main` trùng `a5bf425`.
+- **Window Geometry Recovery**: focused geometry test `1 passed`; full Rust suite `23 passed; 0 failed`; `cargo check`, `cargo build --release`, `git diff --check` pass. Binary checksum mới: `fc751a00e056078ecb9f830a1a1d72067f87af4b7545c3d136ebc93a81e81244`.
 - **Checkpoint Integrity**: `codegraph.cmd sync . && python scripts/generate_checkpoint.py && pytest -q tests/test_checkpoint_integrity.py` → `4 passed; 0 failed`.
 - **Rust Unit Tests (`cargo test`)**: `21 passed; 0 failed` (thêm kiểm thử hình học, Glance action, pointerdown, favicon fallback và grid responsive).
 - **JavaScript syntax (`node --check src/content_agent.js`)**: pass.
@@ -60,5 +62,6 @@
 - [x] Container identity/persistence và mở tab theo container.
 - [x] Glance preview — Alt+Click mở thẻ nổi xem nhanh, ESC/click-outside đóng, nút mở ra Tab lớn; pointerdown capture đã harden.
 - [ ] Chưa test manual UI Glance thật trên WebView2 (chỉ verify qua cargo test + cargo check + release build).
-- [ ] Xác minh live updater trên một máy khách sạch (không Git/Rust), sau đó mới mở phase Zen tiếp theo.
+- [ ] Xác minh live updater trên một máy khách sạch (không Git/Rust).
+- [ ] Live verify Window Geometry Recovery: đổi kích thước/DPI, đóng/mở lại và kiểm tra config/session thật.
 - [ ] Các phase Zen khác — chưa lập/dispatch card khi đang pause.
