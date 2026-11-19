@@ -16,9 +16,9 @@
 | Recently-used Tab Switcher | Chưa làm | Chưa có task/card riêng |
 | URL bar nâng cao | Chưa làm đầy đủ | Chưa có task/card riêng |
 | Bookmark folders/tags/keywords | Chưa làm | Chưa có task/card riêng |
-| Split View nâng cao | Mới có BSP cơ bản | Cần đối chiếu với Zen: chọn tab đích danh, layout, unsplit |
+| Split View nâng cao | Đã harden UI contract | `src/titlebar.html` chỉ cho ghép 2 tab người dùng hợp lệ; hỗ trợ 2 cột/2 hàng/spiral, unsplit; live WebView2 chưa xác minh |
 | Downloads / PiP / Reader / Translation | Chưa đánh giá khả năng WebView2 và chưa làm | Cần feasibility card riêng |
-| Spaces routing / Boosts / Mods | Chưa làm | Cần thiết kế riêng, không gộp vào browser core |
+| Spaces routing / Boosts / Mods | Spaces routing slice đã làm; Boosts/Mods chưa làm | `src/tab_shell.html` có picker CRUD; `src/main.rs` giữ stable workspace IDs, lọc tab và persistence; Boosts/Mods vẫn cần feasibility riêng |
 
 ## Thứ tự triển khai bắt buộc
 
@@ -29,9 +29,9 @@ Mỗi card chỉ có một hành vi người dùng hoàn chỉnh, tối đa 2–
 3. **Recently-used Tab Switcher** — Ctrl+Tab/Alt+Tab theo MRU, giữ mapping native index/visible index.
 4. **URL bar nâng cao** — omnibox history/search/suggestions và route SPA; tách khỏi command bar.
 5. **Bookmark folders/tags/keywords** — model + persistence trước, UI quản lý sau.
-6. **Split View nâng cao** — chọn đúng hai tab, 2 cột/2 hàng/spiral, unsplit và ẩn widget trùng.
+6. **Split View nâng cao** — chọn đúng hai tab, 2 cột/2 hàng/spiral, unsplit và ẩn widget trùng. *(UI contract đã harden; còn live smoke.)*
 7. **Downloads/PiP/Reader/Translation feasibility** — khảo sát API WebView2 trước, chỉ triển khai capability có bằng chứng.
-8. **Spaces routing/Boosts/Mods** — phase cuối, không giả lập Firefox extension ecosystem.
+8. **Spaces routing/Boosts/Mods** — Spaces routing picker CRUD đã triển khai slice đầu; Boosts/Mods vẫn là phase cuối, không giả lập Firefox extension ecosystem.
 
 ## Ngoài phạm vi lượt đầu
 

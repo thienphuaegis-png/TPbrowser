@@ -74,14 +74,90 @@
   body.mode-vertical.collapsed .hide-when-collapsed { display: none !important; }
   body.mode-vertical.collapsed .v-header { justify-content: center; padding: 4px 0; }
   body.mode-vertical.collapsed .v-tab-item { justify-content: center; padding: 8px 4px; }
-  body.mode-vertical.collapsed .v-footer { align-items: center; }
 
   .v-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 2px 4px 6px 4px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 2px 4px 4px;
   }
+  .v-divider {
+    height: 1px;
+    background: var(--border-col);
+    margin: 4px 2px;
+    flex-shrink: 0;
+  }
+  .v-newtab-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px dashed var(--border-col);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s var(--ease-ui), color 0.15s var(--ease-ui), border-color 0.15s var(--ease-ui);
+    margin-bottom: 2px;
+    flex-shrink: 0;
+  }
+  .v-newtab-btn:hover {
+    background: var(--bg-card);
+    border-style: solid;
+    border-color: var(--accent);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-soft);
+  }
+  body.mode-vertical.collapsed .v-newtab-btn {
+    justify-content: center;
+    padding: 8px 4px;
+    border-radius: 8px;
+  }
+  body.mode-vertical.collapsed .v-newtab-btn span {
+    display: none;
+  }
+  .v-window-row { display: flex; align-items: center; min-height: 28px; gap: 3px; }
+  .v-window-controls { display: flex; align-items: center; gap: 2px; }
+  .v-window-btn { width: 26px; height: 26px; justify-content: center; padding: 0; border-radius: 7px; }
+  .v-window-btn.close:hover { color: #fff; background: #c42b1c; border-color: #c42b1c; }
+  .v-drag-region { flex: 1; min-width: 8px; height: 26px; }
+  .vertical-brand { width: 26px; height: 26px; padding: 0; border-radius: 7px; overflow: hidden; justify-content: center; }
+  .vertical-brand-img { display: none; width: 20px; height: 20px; object-fit: contain; }
+  .vertical-brand-fallback { width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-grad); color: var(--accent-fg); font-family: var(--font-heading); font-weight: 700; font-size: 11px; }
+  .v-header-actions { display: flex; justify-content: flex-end; gap: 3px; }
+  .tab-section { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-shrink: 0; }
+  .tab-section[hidden] { display: none; }
+  .extension-tab-list { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
+  .pinned-tab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 4px; max-height: 120px; overflow-y: auto; }
+  .pinned-tab-grid .v-tab-item { justify-content: center; padding: 7px; border-radius: 8px; }
+  .pinned-tab-grid .tab-fav { width: 16px; height: 16px; }
+  .space-section { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 4px 2px; border-top: 1px solid var(--border-col); flex-shrink: 0; }
+  .space-section-label, .tab-section-label { color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }
+  .space-switcher { position: relative; min-width: 0; }
+  .space-toggle { width: 100%; max-width: none; justify-content: space-between; overflow: hidden; text-overflow: ellipsis; }
+  .space-popover { display: none; position: absolute; bottom: calc(100% + 7px); left: 0; z-index: 20; width: min(250px, calc(100vw - 28px)); padding: 8px; border: 1px solid var(--border-col); border-radius: 12px; background: var(--bg-card); box-shadow: var(--shadow-card); }
+  .vertical-context-menu { display: none; position: fixed; z-index: 60; width: 154px; padding: 4px; border: 1px solid var(--border-col); border-radius: 9px; background: var(--bg-card); box-shadow: var(--shadow-card); }
+  .vertical-context-menu.open { display: flex; flex-direction: column; gap: 2px; }
+  .vertical-context-menu button { border: 0; border-radius: 6px; background: transparent; color: var(--text-primary); padding: 7px 9px; text-align: left; font: inherit; cursor: pointer; }
+  .vertical-context-menu button:hover { background: var(--bg-subtle); }
+  .space-popover.open { display: block; }
+  .space-picker-title { padding: 3px 5px 7px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }
+  .space-list { display: flex; flex-direction: column; gap: 3px; max-height: 230px; overflow-y: auto; }
+  .space-item { display: flex; align-items: center; gap: 4px; border-radius: 8px; }
+  .space-item.active { background: var(--accent-soft); }
+  .space-select { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--text-primary); text-align: left; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 11.5px; }
+  .space-select:hover { background: var(--bg-subtle); }
+  .space-item.active .space-select { color: var(--accent-text); font-weight: 700; }
+  .space-action { width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; }
+  .space-action:hover { background: var(--bg-subtle); color: var(--text-primary); }
+  .space-action.delete:hover { color: #ef4444; }
+  .space-create { display: flex; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-col); }
+  .space-create input { flex: 1; min-width: 0; border: 1px solid var(--border-col); border-radius: 7px; background: var(--bg-main); color: var(--text-primary); padding: 6px 8px; outline: none; user-select: text; font-size: 11px; }
+  .space-create input:focus { border-color: var(--accent); }
+  .space-create button { border: 0; border-radius: 7px; background: var(--accent-grad); color: var(--accent-fg); padding: 0 9px; cursor: pointer; font-weight: 700; }
   .brand-box {
     display: flex;
     align-items: center;
@@ -257,6 +333,7 @@
   /* Danh sách Tab Dọc tinh tế */
   .v-tab-list {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -286,6 +363,13 @@
     border-color: var(--border-col);
     box-shadow: var(--shadow-soft);
   }
+  .v-tab-item.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .v-tab-item.grouped::before { content: ""; width: 3px; align-self: stretch; border-radius: 999px; background: var(--accent); }
+  .tab-selection-actions { display: none; gap: 4px; padding: 5px 8px; }
+  .tab-selection-actions.visible { display: flex; }
+  .tab-selection-actions button { flex: 1; font-size: 10px; }
+  .worker-section { flex-shrink: 0; border-top: 1px solid var(--border-col); margin-top: 6px; padding-top: 5px; }
+  .worker-section-label { display: block; padding: 0 10px 4px; font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
   .tab-fav {
     width: 15px;
     height: 15px;
@@ -405,56 +489,7 @@
     transform: scale(0.96);
   }
 
-  .v-footer {
-    padding-top: 8px;
-    border-top: 1px solid var(--border-col);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .google-card {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 10px 5px 6px;
-    border-radius: 999px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-col);
-    cursor: pointer;
-    transition: border-color 0.14s var(--ease-ui), transform 0.14s var(--ease-ui);
-  }
-  .google-card:hover {
-    border-color: var(--accent);
-  }
-  .google-card:active {
-    transform: scale(0.98);
-  }
-  .g-Badge {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-weight: 700;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-  .g-info { flex: 1; min-width: 0; }
-  .g-name {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .g-status {
-    font-size: 9.5px;
-    color: var(--text-muted);
-  }
+
   .ai-toggle-btn {
     background: var(--bg-card);
     border: 1px solid var(--border-col);
@@ -596,30 +631,63 @@
   <!-- GIAO DIỆN TAB DỌC BÊN TAY TRÁI -->
   <div id="vertical_root">
     <div class="v-header">
-      <div class="brand-box">
-        <span class="brand-title hide-when-collapsed" style="font-size:12px; letter-spacing:0.8px; color:var(--accent-text);">TABS</span>
-      </div>
-      <div style="display:flex; gap:3px;">
-        <button class="ghost-btn hide-when-collapsed" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:false})" title="Tab mới (Ctrl+T)">
-          <svg class="ui-ico" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
+      <div class="v-window-row">
+        <button class="ghost-btn vertical-brand" id="vertical_brand" type="button" onclick="sendRust({cmd:'open_settings_modal', section:'look_feel'})" title="Menu & Cài đặt (Alt+,)" aria-label="Menu & Cài đặt">
+          <span class="vertical-brand-fallback" id="vertical_brand_fallback">TP</span>
+          <img class="vertical-brand-img" id="vertical_brand_img" alt="" />
         </button>
-        <button class="ghost-btn hide-when-collapsed" onclick="sendRust({cmd:'toggle_tab_orientation'})" title="Chuyển sang Tab Ngang (Alt+T)">
-          <svg class="ui-ico" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1.6"/><path d="M2 6h12"/></svg>
-        </button>
-        <button class="ghost-btn" id="btn_collapse_side" onclick="sendRust({cmd:'toggle_sidebar_collapse'})" title="Thu gọn / Mở rộng thanh Tab (Alt+S)">«</button>
+        <div class="v-drag-region" onmousedown="if(event.button===0)sendRust({cmd:'drag_window'})" title="Kéo để di chuyển cửa sổ"></div>
+        <div class="v-window-controls">
+          <button class="ghost-btn v-window-btn" type="button" onclick="sendRust({cmd:'win_minimize'})" title="Thu nhỏ" aria-label="Thu nhỏ"><svg class="ui-ico" viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+          <button class="ghost-btn v-window-btn" type="button" onclick="sendRust({cmd:'win_toggle_maximize'})" title="Phóng to / Khôi phục" aria-label="Phóng to / Khôi phục"><svg class="ui-ico" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/></svg></button>
+          <button class="ghost-btn v-window-btn close" type="button" onclick="sendRust({cmd:'win_close'})" title="Đóng TPbrowser" aria-label="Đóng TPbrowser"><svg class="ui-ico" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+        </div>
       </div>
     </div>
 
+    <form class="v-controls hide-when-collapsed" onsubmit="submitUrlVertical(event)">
+      <div class="url-form">
+        <input id="v_url_input" autocomplete="off" spellcheck="false" placeholder="Tìm kiếm hoặc nhập địa chỉ" aria-label="Địa chỉ trang" />
+        <button type="submit" title="Mở địa chỉ">→</button>
+      </div>
+    </form>
+    <section class="tab-section hide-when-collapsed" id="v_pinned_section" hidden>
+      <div id="v_pinned_grid" class="pinned-tab-grid"></div>
+    </section>
+    <div class="v-divider hide-when-collapsed"></div>
+    <button class="v-newtab-btn" type="button" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:false})" title="Tab mới (Ctrl+T)">
+      <svg class="ui-ico" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
+      <span>Tab mới</span>
+    </button>
+    <div id="v_selection_actions" class="tab-selection-actions hide-when-collapsed" aria-label="Thao tác tab đã chọn">
+      <button type="button" class="small-pill-btn" onclick="sendRust({ cmd: 'group_selected_tabs' })">Nhóm</button>
+      <button id="v_split_drop_target" type="button" class="small-pill-btn" onclick="sendRust({ cmd: 'split_selected_tabs' })" ondragover="event.preventDefault()" ondrop="var id=Number(event.dataTransfer.getData('text/tp-tab-id'));if(id)sendRust({ cmd: 'split_tab_group', tab_ids: [id] })">Tách</button>
+      <button type="button" class="small-pill-btn" onclick="sendRust({ cmd: 'scan_selected_tabs' })">Quét</button>
+    </div>
     <div id="v_tab_list" class="v-tab-list"></div>
 
-    <div class="v-footer">
-      <div class="google-card" onclick="sendRust({cmd:'open_google_login'})" title="Tài khoản Google">
-        <div class="g-Badge" id="v_g_avatar">G</div>
-        <div class="g-info hide-when-collapsed">
-          <div class="g-name" id="v_g_name">Đăng nhập Google</div>
-          <div class="g-status" id="v_g_status">Bấm để kết nối</div>
+    <div class="space-section hide-when-collapsed">
+      <span class="space-section-label">Spaces</span>
+      <div class="space-switcher">
+        <button class="ghost-btn space-toggle" id="space_toggle" type="button" aria-haspopup="true" aria-expanded="false" title="Chọn Space">Default ▾</button>
+        <div class="space-popover" id="space_popover" role="dialog" aria-label="Spaces">
+          <div class="space-picker-title">Spaces</div>
+          <div class="space-list" id="space_list"></div>
+          <form class="space-create" id="space_create_form">
+            <input id="space_create_name" maxlength="64" autocomplete="off" placeholder="Tên Space mới" aria-label="Tên Space mới" />
+            <button type="submit" title="Tạo Space">+</button>
+          </form>
         </div>
       </div>
+    </div>
+    <section class="tab-section worker-section hide-when-collapsed" id="v_worker_section" hidden>
+      <span class="worker-section-label">Worker</span>
+      <div id="v_worker_list" class="extension-tab-list"></div>
+    </section>
+    <div id="vertical_context_menu" class="vertical-context-menu" role="menu" aria-label="Điều hướng trang">
+      <button type="button" role="menuitem" onclick='sendRust({ cmd: "nav_back" }); closeVerticalContextMenu();'>Quay lại</button>
+      <button type="button" role="menuitem" onclick='sendRust({ cmd: "nav_forward" }); closeVerticalContextMenu();'>Đi tới</button>
+      <button type="button" role="menuitem" onclick='sendRust({ cmd: "reload" }); closeVerticalContextMenu();'>Tải lại</button>
     </div>
   </div>
 
@@ -651,6 +719,24 @@
       );
     }
 
+    function renderVerticalBrand() {
+      var image = document.getElementById("vertical_brand_img");
+      var fallback = document.getElementById("vertical_brand_fallback");
+      var asset = window.__tpResolveBrandAsset ? window.__tpResolveBrandAsset("app", currentLogoStyle, currentTheme) : "";
+      image.style.display = "none";
+      fallback.style.display = "inline-flex";
+      if (!asset) return;
+      image.onload = function() {
+        image.style.display = "block";
+        fallback.style.display = "none";
+      };
+      image.onerror = function() {
+        image.style.display = "none";
+        fallback.style.display = "inline-flex";
+      };
+      image.src = asset;
+    }
+
     function sendRust(payload) {
       try {
         if (window.ipc && typeof window.ipc.postMessage === "function") {
@@ -658,6 +744,24 @@
         }
       } catch (_) {}
     }
+
+    var verticalRoot = document.getElementById("vertical_root");
+    var verticalContextMenu = document.getElementById("vertical_context_menu");
+    function closeVerticalContextMenu() {
+      verticalContextMenu.classList.remove("open");
+    }
+    verticalRoot.addEventListener("contextmenu", function(event) {
+      event.preventDefault();
+      verticalContextMenu.style.left = Math.min(event.clientX, window.innerWidth - 162) + "px";
+      verticalContextMenu.style.top = Math.min(event.clientY, window.innerHeight - 110) + "px";
+      verticalContextMenu.classList.add("open");
+    });
+    document.addEventListener("mousedown", function(event) {
+      if (!verticalContextMenu.contains(event.target)) closeVerticalContextMenu();
+    });
+    document.addEventListener("keydown", function(event) {
+      if (event.key === "Escape") closeVerticalContextMenu();
+    });
 
     function cycleThemeQuick() {
       var next = (currentTheme === "obsidian-gold") ? "carrara-light" : "obsidian-gold";
@@ -696,6 +800,90 @@
         .replace(/"/g, "&quot;");
     }
 
+    function closeSpacePicker() {
+      var popover = document.getElementById("space_popover");
+      var toggle = document.getElementById("space_toggle");
+      popover.classList.remove("open");
+      toggle.setAttribute("aria-expanded", "false");
+    }
+
+    function renderSpaces(state) {
+      var spaces = Array.isArray(state.workspaces) ? state.workspaces : [];
+      var activeId = String(state.active_workspace_id || "");
+      var list = document.getElementById("space_list");
+      var label = document.getElementById("space_toggle");
+      list.textContent = "";
+      var activeName = "Default";
+      for (var i = 0; i < spaces.length; i++) {
+        (function(space) {
+          if (!space || typeof space.id !== "string" || typeof space.name !== "string") return;
+          if (space.id === activeId) activeName = space.name;
+          var row = document.createElement("div");
+          row.className = "space-item" + (space.id === activeId ? " active" : "");
+          var select = document.createElement("button");
+          select.type = "button";
+          select.className = "space-select";
+          select.textContent = space.name;
+          select.title = space.name;
+          select.onclick = function() {
+            closeSpacePicker();
+            sendRust({ cmd: "set_active_workspace", workspace_id: space.id });
+          };
+          row.appendChild(select);
+          var rename = document.createElement("button");
+          rename.type = "button";
+          rename.className = "space-action";
+          rename.textContent = "✎";
+          rename.title = "Đổi tên Space";
+          rename.setAttribute("aria-label", rename.title);
+          rename.onclick = function() {
+            var next = window.prompt("Tên Space", space.name);
+            if (next !== null && next.trim()) sendRust({ cmd: "rename_workspace", workspace_id: space.id, name: next.trim() });
+          };
+          row.appendChild(rename);
+          if (space.id !== "default") {
+            var remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "space-action delete";
+            remove.textContent = "×";
+            remove.title = "Xóa Space; tab sẽ chuyển về Default";
+            remove.setAttribute("aria-label", remove.title);
+            remove.onclick = function() {
+              if (window.confirm("Xóa Space '" + space.name + "'? Tab của Space này sẽ chuyển về Default.")) {
+                closeSpacePicker();
+                sendRust({ cmd: "delete_workspace", workspace_id: space.id });
+              }
+            };
+            row.appendChild(remove);
+          }
+          list.appendChild(row);
+        })(spaces[i]);
+      }
+      label.textContent = activeName + " ▾";
+      label.title = "Chọn Space: " + activeName;
+    }
+
+    document.getElementById("space_toggle").onclick = function() {
+      var popover = document.getElementById("space_popover");
+      var open = !popover.classList.contains("open");
+      popover.classList.toggle("open", open);
+      this.setAttribute("aria-expanded", String(open));
+      if (open) document.getElementById("space_create_name").focus();
+    };
+    document.getElementById("space_create_form").onsubmit = function(event) {
+      event.preventDefault();
+      var input = document.getElementById("space_create_name");
+      var name = input.value.trim();
+      if (!name) return;
+      input.value = "";
+      closeSpacePicker();
+      sendRust({ cmd: "create_workspace", name: name });
+    };
+    document.addEventListener("pointerdown", function(event) {
+      var picker = document.querySelector(".space-switcher");
+      if (picker && !picker.contains(event.target)) closeSpacePicker();
+    });
+
     window.__tpSyncShellState = function (state) {
       if (!state) return;
       if (state.ui_theme) {
@@ -714,41 +902,48 @@
         body.classList.add("mode-vertical");
       }
 
-      if (state.sidebar_collapsed) {
-        body.classList.add("collapsed");
-        document.getElementById("btn_collapse_side").textContent = "»";
-      } else {
-        body.classList.remove("collapsed");
-        document.getElementById("btn_collapse_side").textContent = "«";
-      }
+      body.classList.toggle("collapsed", !!state.sidebar_collapsed);
+      renderVerticalBrand();
 
       var tabs = state.tabs || [];
       var activeIdx = state.active_idx || 0;
+      renderSpaces(state);
 
-      var gUser = state.google_user || "";
-      if (gUser) {
-        document.getElementById("v_g_avatar").textContent = gUser.charAt(0).toUpperCase();
-        document.getElementById("v_g_name").textContent = gUser;
-        document.getElementById("v_g_status").textContent = "Đã đồng bộ Google";
-      } else {
-        document.getElementById("v_g_avatar").textContent = "G";
-        document.getElementById("v_g_name").textContent = "Đăng nhập Google";
-        document.getElementById("v_g_status").textContent = "Bấm để kết nối";
+
+
+      function isWorkerTab(t) {
+        return !!t.worker_kind;
       }
 
-      var vListEl = document.getElementById("v_tab_list");
-      vListEl.innerHTML = "";
-      for (var i = 0; i < tabs.length; i++) {
-        (function(idx, t) {
-          var isAct = idx === activeIdx;
+      function renderVerticalTab(t, isAct, iconOnly) {
           var title = t.title || (t.url === "tp://newtab" ? "Không gian bắt đầu" : t.url);
           if (title === "Trang Bắt Đầu Trắng") title = "Không gian bắt đầu";
           var favUrl = resolveTabFavicon(t);
 
           var row = document.createElement("div");
-          row.className = "v-tab-item " + (isAct ? "active" : "");
+          row.className = "v-tab-item " + (isAct ? "active " : "") + (t.selected ? "selected " : "") + (t.group_id ? "grouped" : "");
           row.title = title;
-          row.onclick = function() { sendRust({ cmd: "focus_index", index: t.native_idx }); };
+          if (!t.worker_kind) {
+            row.draggable = true;
+            row.addEventListener("dragstart", function(event) {
+              event.dataTransfer.setData("text/tp-tab-id", String(t.id));
+              event.dataTransfer.effectAllowed = "move";
+            });
+            row.addEventListener("dragover", function(event) {
+              var sourceId = event.dataTransfer.getData("text/tp-tab-id");
+              if (sourceId && Number(sourceId) !== t.id) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }
+            });
+            row.addEventListener("drop", function(event) {
+              var sourceId = Number(event.dataTransfer.getData("text/tp-tab-id"));
+              if (sourceId && sourceId !== t.id) { event.preventDefault(); sendRust({ cmd: "group_tabs", source_id: sourceId, target_id: t.id }); }
+            });
+          }
+          row.onclick = function(event) {
+            if (t.worker_kind) { sendRust({ cmd: "focus_tab_by_id", tab_id: t.id }); return; }
+            var mode = event.ctrlKey || event.metaKey ? "toggle" : (event.shiftKey ? "range" : "replace");
+            sendRust({ cmd: "set_tab_selection", tab_id: t.id, mode: mode });
+            if (mode === "replace") sendRust({ cmd: "focus_tab_by_id", tab_id: t.id });
+          };
 
           if (favUrl) {
             var img = document.createElement("img");
@@ -774,9 +969,9 @@
           tDiv.className = "tab-title";
           tDiv.textContent = title;
           meta.appendChild(tDiv);
-          row.appendChild(meta);
+          if (!iconOnly) row.appendChild(meta);
 
-          if (isAct) {
+          if (isAct && !iconOnly && !t.worker_kind) {
             var pin = document.createElement("button");
             pin.className = "tab-pin hide-when-collapsed";
             pin.title = t.pinned ? "Bỏ ghim tab hiện tại" : "Ghim tab hiện tại";
@@ -797,27 +992,51 @@
             row.appendChild(pin);
           }
 
-          if (t.worker_kind === "bot" || t.worker_kind === "ai") {
+          if (!iconOnly && (t.worker_kind === "bot" || t.worker_kind === "ai")) {
             var wb = document.createElement("span");
             wb.className = "tab-worker-badge hide-when-collapsed " + t.worker_kind;
             wb.textContent = t.worker_kind === "ai" ? "AI" : "BOT";
             row.appendChild(wb);
           }
 
-          if (tabs.length > 1) {
+          if (!iconOnly) {
             var cls = document.createElement("button");
             cls.className = "tab-close hide-when-collapsed";
             cls.textContent = "×";
             cls.title = "Đóng tab";
             cls.onclick = function(ev) {
               ev.stopPropagation();
-              sendRust({ cmd: "close_index", index: t.native_idx });
+              sendRust({ cmd: "close_tab_by_id", tab_id: t.id });
             };
             row.appendChild(cls);
           }
-          vListEl.appendChild(row);
-        })(i, tabs[i]);
+          return row;
       }
+
+      var workerTabs = tabs.filter(isWorkerTab);
+      var pinnedTabs = tabs.filter(function(t) { return !isWorkerTab(t) && !!t.pinned; });
+      var normalTabs = tabs.filter(function(t) { return !isWorkerTab(t) && !t.pinned; });
+      var pinnedSection = document.getElementById("v_pinned_section");
+      var pinnedGrid = document.getElementById("v_pinned_grid");
+      var vListEl = document.getElementById("v_tab_list");
+      var workerSection = document.getElementById("v_worker_section");
+      var workerList = document.getElementById("v_worker_list");
+      var selectionActions = document.getElementById("v_selection_actions");
+      pinnedGrid.innerHTML = "";
+      vListEl.innerHTML = "";
+      workerList.innerHTML = "";
+      pinnedSection.hidden = pinnedTabs.length === 0;
+      workerSection.hidden = workerTabs.length === 0;
+      selectionActions.classList.toggle("visible", normalTabs.some(function(t) { return !!t.selected; }));
+      pinnedTabs.forEach(function(t) {
+        pinnedGrid.appendChild(renderVerticalTab(t, tabs.indexOf(t) === activeIdx, true));
+      });
+      normalTabs.forEach(function(t) {
+        vListEl.appendChild(renderVerticalTab(t, tabs.indexOf(t) === activeIdx, false));
+      });
+      workerTabs.forEach(function(t) {
+        workerList.appendChild(renderVerticalTab(t, tabs.indexOf(t) === activeIdx, false));
+      });
     };
 
     /*__TP_BOOTSTRAP_JS__*/

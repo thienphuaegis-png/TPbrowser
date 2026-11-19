@@ -485,9 +485,6 @@
     <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'reload'})" title="Tải lại trang (Ctrl+R / F5)">
       <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.3-3.3M13 2.8v2.5h-2.5"/></svg>
     </button>
-    <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'go_home'})" title="Trang chủ (Alt+Home)">
-      <svg viewBox="0 0 16 16"><path d="M2.5 7.5L8 2.8l5.5 4.7v5.7H9.8V9.6H6.2v3.6H2.5z"/></svg>
-    </button>
   </div>
 
   <form class="tb-omni-form tb-no-drag" onsubmit="submitUrl(event)">
@@ -512,16 +509,11 @@
     <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'open_workspace'})" title="Mở trang không gian Shopee &amp; TikTok (Alt+W)">
       <svg viewBox="0 0 16 16"><rect x="2.2" y="2.5" width="5" height="5" rx="1"/><rect x="8.8" y="2.5" width="5" height="5" rx="1"/><rect x="2.2" y="8.5" width="5" height="5" rx="1"/><path d="M9.2 13V9.5M11.3 13V8.8M13.4 13v-2.4"/></svg>
     </button>
-    <select id="workspace_picker" class="tb-ico-btn pill tb-no-drag" aria-label="Workspace hiện tại" title="Chọn workspace" onchange="sendRust({cmd:'set_active_workspace', workspace_id:this.value})" style="height:30px; max-width:150px; padding:0 8px; font:inherit; color:var(--tb-text); background:var(--tb-btn-bg); border:1px solid var(--tb-gold-line); border-radius:8px;"></select>
-    <button type="button" class="tb-ico-btn" onclick="createWorkspaceFromPicker()" title="Tạo workspace mới" aria-label="Tạo workspace mới">+</button>
-    <button type="button" class="tb-ico-btn" onclick="openTabInContainer()" title="Mở Tab mới trong container (Ctrl+T)">
+    <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'new_tab', url:'tp://newtab', isolated:false})" title="Mở Tab mới (Ctrl+T)">
       <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
     </button>
     <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'reopen_closed_tab'})" title="Mở lại Tab vừa đóng (Ctrl+Shift+T)">
       <svg viewBox="0 0 16 16"><path d="M3.5 6.5H7V3M3.7 6.5A5 5 0 1 1 4.2 11.5"/></svg>
-    </button>
-    <button type="button" class="tb-ico-btn" onclick="sendRust({cmd:'toggle_tab_orientation'})" title="Đổi Tab Dọc / Tab Ngang (Alt+T)">
-      <svg viewBox="0 0 16 16"><rect x="2.2" y="2.5" width="11.6" height="11" rx="1.6"/><path d="M6.2 2.5v11"/></svg>
     </button>
     <div style="position:relative;">
       <button type="button" class="tb-ico-btn" id="btn_split_mode" onclick="toggleSplitPopover(event)" title="Chia khung Zen Browser (Alt+M)">
@@ -596,16 +588,8 @@
       } catch (_) {}
     }
 
-    function createWorkspaceFromPicker() {
-      var name = window.prompt("Tên workspace mới:");
-      if (name === null || !name.trim()) return;
-      sendRust({ cmd: "create_workspace", name: name.trim() });
-    }
-
-    function openTabInContainer() {
-      var id = window.prompt("Container ID (để trống dùng default):", "default");
-      if (id === null) return;
-      sendRust({cmd:"new_tab", url:"tp://newtab", isolated:false, container_id:id.trim() || "default"});
+    function openTabInContainer(containerId) {
+      sendRust({cmd:"new_tab", url:"tp://newtab", isolated:false, container_id:containerId || "default"});
     }
 
     function submitUrl(e) {
@@ -670,22 +654,43 @@
       pop.style.display = "none";
     });
 
-    function selectSplitMode(mode, pairId) {
-      sendRust({
-        cmd: "set_split_mode",
-        mode: mode,
-        pair_tab_id: typeof pairId === "number" ? pairId : (lastSyncState ? lastSyncState.paired_tab_id : null)
+    function selectableSplitTabs(st) {
+      var tabs = st && Array.isArray(st.tabs) ? st.tabs : [];
+      return tabs.filter(function (tab) {
+        return tab && !tab.worker_kind && typeof tab.id === "number" && Number.isSafeInteger(tab.id) && tab.id > 0;
       });
+    }
+
+    function selectedSplitPair(st) {
+      if (!st) return null;
+      var activeTab = Array.isArray(st.tabs) ? st.tabs[st.active_idx] : null;
+      if (!activeTab || activeTab.worker_kind) return null;
+      var pairId = st.paired_tab_id;
+      return selectableSplitTabs(st).find(function (tab) {
+        return tab.id === pairId && tab.id !== activeTab.id;
+      }) || null;
+    }
+
+    function selectSplitMode(mode) {
+      var pair = selectedSplitPair(lastSyncState);
+      if (!pair) {
+        renderSplitPopoverContent();
+        return;
+      }
+      sendRust({ cmd: "set_split_mode", mode: mode, pair_tab_id: pair.id });
       closeSplitPopover();
     }
 
     function pairWithTab(targetTabId) {
+      var candidates = selectableSplitTabs(lastSyncState);
+      var activeTab = lastSyncState && Array.isArray(lastSyncState.tabs) ? lastSyncState.tabs[lastSyncState.active_idx] : null;
+      var pair = candidates.find(function (tab) { return tab.id === targetTabId && (!activeTab || tab.id !== activeTab.id); });
+      if (!pair) {
+        renderSplitPopoverContent();
+        return;
+      }
       var currentMode = (lastSyncState && lastSyncState.view_mode !== "single") ? lastSyncState.view_mode : "columns";
-      sendRust({
-        cmd: "set_split_mode",
-        mode: currentMode,
-        pair_tab_id: targetTabId
-      });
+      sendRust({ cmd: "set_split_mode", mode: currentMode, pair_tab_id: pair.id });
       closeSplitPopover();
     }
 
@@ -723,18 +728,34 @@
       if (!list) return;
       list.innerHTML = "";
 
-      var tabs = Array.isArray(st.tabs) ? st.tabs : [];
-      var activeTab = tabs[st.active_idx];
-      var pairedId = st.paired_tab_id || 0;
+      var tabs = selectableSplitTabs(st);
+      var activeTab = Array.isArray(st.tabs) ? st.tabs[st.active_idx] : null;
+      var pairedTab = selectedSplitPair(st);
+      var pairedId = pairedTab ? pairedTab.id : 0;
+      var canSelectPair = !!activeTab && !activeTab.worker_kind && tabs.some(function (tab) { return tab.id !== activeTab.id; });
+      var modeButtons = [btnCol, btnRow, btnSpi];
+      modeButtons.forEach(function (button) {
+        if (!button) return;
+        button.disabled = !pairedTab;
+        button.style.opacity = pairedTab ? "1" : "0.5";
+        button.style.cursor = pairedTab ? "pointer" : "not-allowed";
+        button.title = pairedTab ? "Đổi bố cục cho cặp tab đã chọn" : "Select another user tab first";
+      });
 
-      if (tabs.length <= 1) {
-        list.innerHTML = '<div style="font-size:11px; color:var(--tb-text-sub); padding:6px 0; text-align:center;">Mở thêm Tab mới (Ctrl+T) để ghép đôi chia khung tự do.</div>';
+      if (!canSelectPair) {
+        list.textContent = activeTab && activeTab.worker_kind
+          ? "Tab chạy nền không thể dùng để chia khung. Hãy chọn một tab đang xem."
+          : "Mở thêm một tab đang xem (Ctrl+T) để ghép đôi chia khung.";
+        list.style.fontSize = "11px";
+        list.style.color = "var(--tb-sub)";
+        list.style.padding = "6px 0";
+        list.style.textAlign = "center";
         return;
       }
 
       for (var i = 0; i < tabs.length; i++) {
         var t = tabs[i];
-        var isThisActive = i === st.active_idx;
+        var isThisActive = !!activeTab && t.id === activeTab.id;
         var isPaired = t.id === pairedId && curMode !== "single";
 
         var item = document.createElement("div");
@@ -928,18 +949,16 @@
           span.textContent = (t.title || (t.url === "tp://newtab" ? "Trang Bắt Đầu" : (t.url === "tp://workspace" ? "Sàn TMĐT" : t.url))) + " · " + (t.container_id || "default");
           item.appendChild(span);
 
-          if (tabs.length > 1) {
-            var cls = document.createElement("button");
-            cls.type = "button";
-            cls.className = "tb-tab-close tb-no-drag";
-            cls.textContent = "×";
-            cls.title = "Đóng tab (Ctrl+W)";
-            cls.onclick = function(ev) {
-              ev.stopPropagation();
-              sendRust({ cmd: "close_index", index: t.native_idx });
-            };
-            item.appendChild(cls);
-          }
+          var cls = document.createElement("button");
+          cls.type = "button";
+          cls.className = "tb-tab-close tb-no-drag";
+          cls.textContent = "×";
+          cls.title = "Đóng tab (Ctrl+W)";
+          cls.onclick = function(ev) {
+            ev.stopPropagation();
+            sendRust({ cmd: "close_index", index: t.native_idx });
+          };
+          item.appendChild(cls);
           box.appendChild(item);
         })(i, tabs[i]);
       }
@@ -999,19 +1018,6 @@
       if (Array.isArray(st.bookmarks)) {
         renderBookmarksBar(st.bookmarks);
       }
-      if (Array.isArray(st.workspaces)) {
-        var picker = document.getElementById("workspace_picker");
-        if (picker) {
-          while (picker.firstChild) picker.removeChild(picker.firstChild);
-          st.workspaces.forEach(function (workspace) {
-            var option = document.createElement("option");
-            option.value = workspace.id || "default";
-            option.textContent = workspace.name || "Default";
-            picker.appendChild(option);
-          });
-          picker.value = st.active_workspace_id || (st.workspaces[0] && st.workspaces[0].id) || "default";
-        }
-      }
       if (Array.isArray(st.tabs)) {
         renderHorizontalTopTabs(st.tabs, typeof st.active_idx === "number" ? st.active_idx : 0);
       }
@@ -1033,7 +1039,7 @@
       if (st.view_mode) {
         var splitBtn = document.getElementById("btn_split_mode");
         if (splitBtn) {
-          var modeTxt = st.view_mode === "spiral" ? "Xoắn ốc" : (st.view_mode === "columns" ? "Cột" : "1 Tab");
+          var modeTxt = st.view_mode === "spiral" ? "Xoắn ốc" : (st.view_mode === "columns" ? "2 Cột" : (st.view_mode === "rows" ? "2 Hàng" : "1 Tab"));
           splitBtn.title = "Chia khung BSP: " + modeTxt + " (Alt+M)";
         }
       }

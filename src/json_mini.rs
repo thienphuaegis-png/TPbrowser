@@ -233,19 +233,19 @@ impl<'a> Parser<'a> {
                     b'u' => {
                         let code = self.parse_hex4()?;
                         if (0xD800..=0xDBFF).contains(&code) {
-                            if self.bytes.get(self.pos..self.pos + 2) == Some(b"\\u") {
-                                self.pos += 2;
-                                let low = self.parse_hex4()?;
-                                if (0xDC00..=0xDFFF).contains(&low) {
-                                    let cp = 0x10000
-                                        + (((code as u32 - 0xD800) << 10) | (low as u32 - 0xDC00));
-                                    if let Some(ch) = char::from_u32(cp) {
-                                        out.push(ch);
-                                    }
-                                }
+                            if self.bytes.get(self.pos..self.pos + 2) != Some(b"\\u") {
+                                return Err("Missing low surrogate".to_string());
                             }
-                        } else if let Some(ch) = char::from_u32(code as u32) {
-                            out.push(ch);
+                            self.pos += 2;
+                            let low = self.parse_hex4()?;
+                            if !(0xDC00..=0xDFFF).contains(&low) {
+                                return Err("Invalid low surrogate".to_string());
+                            }
+                            let cp = 0x10000
+                                + (((code as u32 - 0xD800) << 10) | (low as u32 - 0xDC00));
+                            out.push(char::from_u32(cp).ok_or_else(|| "Invalid Unicode scalar".to_string())?);
+                        } else {
+                            out.push(char::from_u32(code as u32).ok_or_else(|| "Unexpected low surrogate".to_string())?);
                         }
                     }
                     _ => return Err(format!("Invalid escape '\\{}'", esc as char)),
@@ -267,6 +267,9 @@ impl<'a> Parser<'a> {
     fn parse_hex4(&mut self) -> Result<u16, String> {
         if self.pos + 4 > self.bytes.len() {
             return Err("Incomplete \\uXXXX escape".to_string());
+        }
+        if !self.bytes[self.pos..self.pos + 4].iter().all(u8::is_ascii_hexdigit) {
+            return Err("Invalid hex".to_string());
         }
         let s = std::str::from_utf8(&self.bytes[self.pos..self.pos + 4])
             .map_err(|_| "Invalid hex".to_string())?;

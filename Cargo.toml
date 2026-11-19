@@ -7,6 +7,7 @@ description = "TPbrowser — Trình duyệt cá nhân Rust (Tab Ngang/Dọc, Tra
 [dependencies]
 tao = "0.37.2"
 wry = "0.57.1"
+webview2-com = "=0.39.1"
 
 [profile.release]
 opt-level = "z"

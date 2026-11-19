@@ -3,9 +3,10 @@
 mod json_mini;
 mod layout;
 mod mcp_server;
+mod shopee_discovery;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env, fs,
     io::Write,
     path::PathBuf,
@@ -18,6 +19,106 @@ use std::{
 
 use json_mini::{parse_json, JsonVal};
 use mcp_server::McpBridgeMsg;
+
+fn parse_workspace_discovery_tab_id(body: &str) -> Result<Option<u64>, ()> {
+    let value = parse_json(body).map_err(|_| ())?;
+    if value.get("cmd").and_then(JsonVal::as_str) != Some("discover_shopee_shops") {
+        return Err(());
+    }
+    shopee_discovery::parse_tab_id(value.get("tab_id"))
+}
+
+#[cfg(test)]
+fn select_workspace_discovery_tab(
+    tabs: &[(u64, bool, String, bool)],
+    requested: Option<u64>,
+) -> Option<u64> {
+    tabs.iter()
+        .find(|(id, worker, url, ready)| {
+            requested.map_or(true, |wanted| *id == wanted)
+                && !*worker
+                && *ready
+                && shopee_discovery::valid_url(url)
+        })
+        .map(|(id, _, _, _)| *id)
+}
+
+fn workspace_discovery_payload(normalized: &str) -> String {
+    let Ok(value) = parse_json(normalized) else { return shopee_discovery::unavailable(); };
+    let status = value.get("status").and_then(JsonVal::as_str).unwrap_or("unavailable");
+    let identity = value.get("account_identity").and_then(JsonVal::as_str).unwrap_or("unavailable");
+    let mut fields = vec![
+        ("status", JsonVal::Str(status.to_string())),
+        ("logged_in", JsonVal::Bool(value.get("logged_in").and_then(JsonVal::as_bool) == Some(true))),
+        ("account_identity", JsonVal::Str(identity.to_string())),
+    ];
+    if let Some(shops) = value.get("shops").and_then(JsonVal::as_arr) {
+        fields.push(("shops", JsonVal::Arr(shops.to_vec())));
+    }
+    JsonVal::obj(fields).to_json()
+}
+
+const TIKTOK_ADS_STATUSES: [&str; 7] = ["ok", "partial", "loading", "needs_login", "captcha", "unavailable", "error"];
+
+/// Classify a TikTok Ads payload into the tp.tiktok.ads.v1 status vocabulary.
+/// Fail-closed: unparseable -> "error"; unknown status -> "error"; legacy payloads
+/// without `status` map login/CAPTCHA/error flags, otherwise "partial" (no provenance).
+fn tiktok_ads_status(data_json: &str) -> &'static str {
+    let Ok(value) = parse_json(data_json) else { return "error"; };
+    if let Some(status) = value.get("status").and_then(JsonVal::as_str) {
+        return TIKTOK_ADS_STATUSES.iter().copied().find(|s| *s == status).unwrap_or("error");
+    }
+    if value.get("captcha_active").and_then(JsonVal::as_bool) == Some(true) {
+        "captcha"
+    } else if value.get("need_login").and_then(JsonVal::as_bool) == Some(true) {
+        "needs_login"
+    } else if value.get("error").is_some() {
+        "error"
+    } else {
+        "partial"
+    }
+}
+
+/// Tag a TikTok payload restored from disk so the workspace never presents it as fresh:
+/// `ok` is downgraded to `partial`, `restored_from_disk` is added to `status_reasons`,
+/// and `period.is_today` is forced to false (the original period is kept for provenance).
+fn mark_tiktok_cache_restored(data_json: &str) -> Option<String> {
+    let Ok(JsonVal::Obj(mut pairs)) = parse_json(data_json) else { return None; };
+    pairs.retain(|(k, _)| k != "cache_state");
+    for (k, v) in pairs.iter_mut() {
+        match k.as_str() {
+            "status" if v.as_str() == Some("ok") => *v = JsonVal::Str("partial".to_string()),
+            "status_reasons" => {
+                if let JsonVal::Arr(items) = v {
+                    if !items.iter().any(|i| i.as_str() == Some("restored_from_disk")) {
+                        items.push(JsonVal::Str("restored_from_disk".to_string()));
+                    }
+                }
+            }
+            "period" => {
+                if let JsonVal::Obj(p) = v {
+                    p.retain(|(pk, _)| pk != "is_today");
+                    p.push(("is_today".to_string(), JsonVal::Bool(false)));
+                }
+            }
+            _ => {}
+        }
+    }
+    pairs.push(("cache_state".to_string(), JsonVal::Str("restored_from_disk".to_string())));
+    Some(JsonVal::Obj(pairs).to_json())
+}
+
+fn tiktok_status_messages(status: &str) -> (&'static str, &'static str) {
+    match status {
+        "ok" => ("✅ TikTok Ads: đã đọc đủ số liệu và kỳ Hôm nay từ DOM (Tab ngầm, chỉ đọc).", "Đã lấy xong"),
+        "partial" => ("◐ TikTok Ads: chỉ đọc được một phần số liệu/kỳ báo cáo — xem nguồn trong Workspace.", "Dữ liệu một phần"),
+        "loading" => ("⏳ TikTok Ads: trang chưa tải xong số liệu — chưa có dữ liệu mới.", "Đang tải trang"),
+        "needs_login" => ("⚠️ TikTok chưa đăng nhập — bấm Mở xem Tab để đăng nhập.", "Cần đăng nhập"),
+        "captcha" => ("🧩 TikTok đang yêu cầu kéo CAPTCHA — bấm Mở xem Tab để kéo 1 lần.", "Cần kéo CAPTCHA"),
+        "unavailable" => ("⛔ TikTok Ads: không tìm thấy số liệu trên trang — không dùng dữ liệu cũ.", "Không có dữ liệu"),
+        _ => ("❌ TikTok Ads: lỗi khi đọc trang — không dùng dữ liệu cũ.", "Lỗi quét"),
+    }
+}
 
 use layout::{
     compute_content_panes, compute_fb_chat_popup_rect_with_hdr, compute_glance_rects,
@@ -36,6 +137,11 @@ use tao::{
 use wry::{
     MemoryUsageLevel, NewWindowResponse, PageLoadEvent, PermissionKind, PermissionResponse, Rect,
     Theme, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows, WebViewExtWindows,
+};
+#[cfg(target_os = "windows")]
+use webview2_com::{
+    ContentLoadingEventHandler, NavigationCompletedEventHandler, NavigationStartingEventHandler,
+    Microsoft::Web::WebView2::Win32::ICoreWebView2,
 };
 
 #[cfg(target_os = "windows")]
@@ -205,27 +311,97 @@ pub const APP_GIT_COMMIT: &str = match option_env!("TP_GIT_COMMIT") {
 const UPDATE_API_URL: &str = "https://api.github.com/repos/thienphuaegis-png/TPbrowser/commits?path=src/main.rs&per_page=1";
 const UPDATE_BINARY_URL: &str = "https://github.com/thienphuaegis-png/TPbrowser/raw/refs/heads/main/TPbrowser.exe";
 
+// Read-only TikTok Seller Ads collector (schema tp.tiktok.ads.v1).
+// Contract: never clicks, submits, dispatches events or navigates. Missing values stay
+// null (never coerced to 0); every metric carries raw text + DOM provenance; login and
+// CAPTCHA fail closed with empty metrics so stale numbers are never re-sent as fresh.
+// The only DOM mutation is a view-only horizontal scroll of the virtualized campaign
+// table (restored afterwards) so its lazily rendered cells can be read.
 const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
+  var SCHEMA = "tp.tiktok.ads.v1";
+  var METRIC_KEYS = ["cost", "sales", "roas", "orders", "cpa"];
+  function sourceUrl() {
+    try { return String(window.location.origin || "") + String(window.location.pathname || ""); } catch (_) { return null; }
+  }
+  function post(payload) {
+    if (window.ipc && typeof window.ipc.postMessage === "function") {
+      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify(payload) }));
+    }
+  }
+  function unavailableMetric(reason) {
+    return { value: null, raw: null, source: "unavailable", label: null, reason: reason || "not_found" };
+  }
+  function envelope(status, reasons) {
+    var metrics = {};
+    METRIC_KEYS.forEach(function (k) { metrics[k] = unavailableMetric(status); });
+    return {
+      schema: SCHEMA,
+      status: status,
+      status_reasons: reasons || [],
+      read_only: true,
+      source_url: sourceUrl(),
+      captured_at: new Date().toISOString(),
+      ts: new Date().toLocaleTimeString("vi-VN"),
+      logged_in: null,
+      need_login: false,
+      captcha_active: false,
+      period: { start: null, end: null, is_today: null, source: "unavailable", raw: null },
+      period_label: "Không xác định",
+      metrics: metrics,
+      orders_ads: null,
+      cpa_ads: null,
+      sales_ads: null,
+      cost_ads: null,
+      roas_ads: null,
+      campaigns: [],
+      campaigns_provenance: { source: "unavailable", count: 0, columns: [] }
+    };
+  }
+  function gateStatus() {
+    var path = "";
+    try { path = String(window.location.pathname || ""); } catch (_) {}
+    if (/login|sign[-_ ]?in|đăng nhập/i.test(path)) return "needs_login";
+    var bodyTxt = (document.body && document.body.innerText) || "";
+    if (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí/i.test(bodyTxt)) return "captcha";
+    return null;
+  }
+  function sendGate(gate) {
+    var p = envelope(gate, [gate]);
+    if (gate === "needs_login") { p.logged_in = false; p.need_login = true; }
+    if (gate === "captcha") { p.captcha_active = true; }
+    post(p);
+  }
+  // Horizontal-scroll guard: any view-only scroll is restored on success AND on failure.
+  var scrollGuard = null;
+  function restoreScroll() {
+    var g = scrollGuard;
+    scrollGuard = null;
+    if (g) { try { g.el.scrollLeft = g.left; } catch (_) {} }
+  }
+  function postError(err, where) {
+    restoreScroll();
+    try {
+      var e = envelope("error", ["exception", "exception_in_" + where]);
+      e.error = String(err && err.message ? err.message : err);
+      post(e);
+    } catch (_) {}
+  }
+  // Every async step (retry timer, table sweep) runs through this guard so an exception
+  // still posts an error envelope instead of silently posting nothing.
+  function guarded(fn, where) {
+    return function () {
+      try { fn(); } catch (err) { postError(err, where); }
+    };
+  }
+
   try {
-    var bodyTxt0 = (document.body && document.body.innerText) || "";
-    if (/login|sign in|đăng nhập/i.test(window.location.pathname)) {
-      if (window.ipc && typeof window.ipc.postMessage === "function") {
-        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify({ logged_in: false, need_login: true, ts: new Date().toLocaleTimeString("vi-VN") }) }));
-      }
-      return;
-    }
-    var captcha = /xác minh để tiếp tục|kéo mảnh ghép vào vị trí/i.test(bodyTxt0);
-    if (captcha) {
-      if (window.ipc && typeof window.ipc.postMessage === "function") {
-        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify({ logged_in: true, captcha_active: true, ts: new Date().toLocaleTimeString("vi-VN") }) }));
-      }
-      return;
-    }
+    var gate0 = gateStatus();
+    if (gate0) { sendGate(gate0); return; }
 
     function parseVn(s) {
-      if (!s) return 0;
+      if (s === null || s === undefined) return null;
       var m0 = String(s).match(/([\d]+(?:[.,]\d+)*)/);
-      if (!m0) return 0;
+      if (!m0) return null;
       var t = m0[1];
       if (t.indexOf(".") !== -1 && t.indexOf(",") !== -1) {
         t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
@@ -237,7 +413,7 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
         if ((p2.length === 2 && p2[1].length === 3) || p2.length > 2) t = t.replace(/\./g, "");
       }
       var v = parseFloat(t);
-      return isNaN(v) ? 0 : v;
+      return isNaN(v) ? null : v;
     }
 
     function fromOverviewCard(matchFn) {
@@ -256,7 +432,7 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
               var mm = lines[j].match(/^([\d]+(?:[.,]\d+)*)/);
               if (mm) {
                 var v = parseVn(mm[1]);
-                if (v > 0) return v;
+                if (v !== null) return { value: v, raw: lines[j], source: "overview_card", label: rawLabel, reason: null };
               }
             }
             break;
@@ -264,7 +440,7 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
           card = card.parentElement;
         }
       }
-      return 0;
+      return unavailableMetric("overview_card_not_found");
     }
 
     function getDateInputs() {
@@ -273,14 +449,38 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
       });
     }
 
-    function isTodaySelected() {
-      var inps = getDateInputs();
-      if (inps.length >= 2) return inps[0].value.trim() === inps[1].value.trim();
-      var bTxt = (document.body && document.body.innerText) || "";
-      return bTxt.indexOf("so với ngày hôm trước") !== -1 || bTxt.indexOf("so với ngày") !== -1;
+    function localToday() {
+      var d = new Date();
+      function z(n) { return (n < 10 ? "0" : "") + n; }
+      return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate());
     }
 
-    function collectVirtualTableSlots(map) {
+    function readPeriod() {
+      var inps = getDateInputs();
+      var today = localToday();
+      if (inps.length >= 2) {
+        var a = inps[0].value.trim();
+        var b = inps[1].value.trim();
+        return { start: a, end: b, is_today: a === b && a === today, source: "date_inputs", raw: a + " ~ " + b, local_today: today };
+      }
+      if (inps.length === 1) {
+        var one = inps[0].value.trim();
+        return { start: one, end: null, is_today: null, source: "date_input_single", raw: one, local_today: today };
+      }
+      var bTxt = (document.body && document.body.innerText) || "";
+      var cmp = bTxt.match(/so với ngày[^\n]{0,40}/i);
+      if (cmp) return { start: null, end: null, is_today: null, source: "compare_text", raw: cmp[0], local_today: today };
+      return { start: null, end: null, is_today: null, source: "unavailable", raw: null, local_today: today };
+    }
+
+    function periodLabel(pd) {
+      if (pd.is_today === true) return "Hôm nay (" + pd.start + ")";
+      if (pd.start && pd.end) return pd.start === pd.end ? pd.start : (pd.start + " → " + pd.end);
+      if (pd.start) return pd.start + " (chưa rõ ngày kết thúc)";
+      return "Không xác định";
+    }
+
+    function collectVirtualTableSlots(map, cols) {
       var vt = document.querySelector("[class*=campaign-list-table]");
       if (!vt) return false;
       [].slice.call(vt.querySelectorAll('[slot^="cell-"]')).forEach(function (el) {
@@ -289,6 +489,7 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
         if (!m) return;
         var cid = m[1];
         var col = m[2];
+        cols[col] = true;
         var txt = (el.innerText || "").trim().replace(/\s+/g, " ");
         if (!map[cid]) map[cid] = { id: cid };
         if (txt || !map[cid][col]) map[cid][col] = txt;
@@ -296,97 +497,153 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
       return true;
     }
 
-    function finalizeAndSend(costAds, skuOrders, cpaAds, grossRev, roi, campaigns, inps, bodyTxt) {
-      if (grossRev === 0 && costAds > 0 && roi > 0) grossRev = Math.round(costAds * roi);
-      if (roi === 0 && costAds > 0 && grossRev > 0) roi = Number((grossRev / costAds).toFixed(2));
-      if (campaigns.length === 0 && (costAds > 0 || skuOrders > 0)) {
-        campaigns.push({
-          name: "GMV Max Toàn Cửa Hàng",
-          status: "Đang hoạt động",
-          budget: 0,
-          cost: costAds,
-          orders: skuOrders,
-          sales: grossRev,
-          roas: roi
-        });
+    function cellField(raw, colName) {
+      if (raw === undefined || raw === null || String(raw).trim() === "") return { value: null, raw: null, source: colName ? ("column:" + colName) : "unavailable" };
+      return { value: parseVn(raw), raw: String(raw), source: "column:" + colName };
+    }
+
+    function pick(r, names) {
+      for (var i = 0; i < names.length; i++) {
+        if (r[names[i]] !== undefined && String(r[names[i]]).trim() !== "") return { col: names[i], raw: r[names[i]] };
       }
-      var payload = {
-        ts: new Date().toLocaleTimeString("vi-VN"),
-        logged_in: true,
-        captcha_active: false,
-        period_label: "Hôm nay (" + (inps[0] ? inps[0].value.trim() : "") + ")",
-        orders_ads: skuOrders,
-        cpa_ads: cpaAds,
-        sales_ads: grossRev,
-        cost_ads: costAds,
-        roas_ads: roi,
-        campaigns: campaigns,
-        live_streaming: /đang live|live now/i.test(bodyTxt)
+      return { col: null, raw: null };
+    }
+
+    function buildCampaign(id, name, nameSource, status, budgetF, costF, ordersF, salesF, roasF) {
+      if (roasF.value === null && costF.value > 0 && salesF.value !== null) {
+        roasF = { value: Number((salesF.value / costF.value).toFixed(2)), raw: null, source: "derived:sales/cost" };
+      }
+      var derivedFields = [];
+      [["budget", budgetF], ["cost", costF], ["orders", ordersF], ["sales", salesF], ["roas", roasF]].forEach(function (f) {
+        if (String(f[1].source || "").indexOf("derived:") === 0) derivedFields.push(f[0]);
+      });
+      return {
+        id: id,
+        name: name,
+        name_source: nameSource,
+        status: status,
+        budget: budgetF.value,
+        cost: costF.value,
+        orders: ordersF.value,
+        sales: salesF.value,
+        roas: roasF.value,
+        derived_fields: derivedFields,
+        provenance: { budget: budgetF, cost: costF, orders: ordersF, sales: salesF, roas: roasF }
       };
-      if (window.ipc && typeof window.ipc.postMessage === "function") {
-        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify(payload) }));
+    }
+
+    function finalizeAndSend(m, campaigns, campProv, bodyTxt, waitingForDom) {
+      restoreScroll();
+      var late = gateStatus();
+      if (late) { sendGate(late); return; }
+      if (m.sales.value === null && m.cost.value !== null && m.roas.value !== null) {
+        m.sales = { value: Math.round(m.cost.value * m.roas.value), raw: null, source: "derived:cost*roas", label: null, reason: "sales_card_missing" };
       }
+      if (m.roas.value === null && m.cost.value > 0 && m.sales.value !== null) {
+        m.roas = { value: Number((m.sales.value / m.cost.value).toFixed(2)), raw: null, source: "derived:sales/cost", label: null, reason: "roas_card_missing" };
+      }
+      var pd = readPeriod();
+      var core = ["cost", "sales", "roas", "orders"];
+      var found = core.filter(function (k) { return m[k].value !== null; });
+      var derived = core.filter(function (k) { return String(m[k].source || "").indexOf("derived:") === 0; });
+      var reasons = [];
+      core.forEach(function (k) { if (m[k].value === null) reasons.push(k + "_unavailable"); });
+      derived.forEach(function (k) { reasons.push(k + "_derived"); });
+      if (campProv.source === "unavailable") reasons.push("campaigns_unavailable");
+      if (pd.is_today !== true) reasons.push(pd.source === "unavailable" ? "period_unavailable" : "period_not_proven_today");
+      var status;
+      if (found.length === 0 && campaigns.length === 0) {
+        status = (waitingForDom || document.readyState !== "complete") ? "loading" : "unavailable";
+      } else if (found.length === core.length && derived.length === 0 && campProv.source !== "unavailable" && pd.is_today === true) {
+        status = "ok";
+      } else {
+        status = "partial";
+      }
+      var p = envelope(status, reasons);
+      p.derived_metrics = derived;
+      p.logged_in = true;
+      p.period = pd;
+      p.period_label = periodLabel(pd);
+      p.metrics = m;
+      p.orders_ads = m.orders.value;
+      p.cpa_ads = m.cpa.value;
+      p.sales_ads = m.sales.value;
+      p.cost_ads = m.cost.value;
+      p.roas_ads = m.roas.value;
+      p.campaigns = campaigns;
+      p.campaigns_provenance = campProv;
+      p.live_streaming = /đang live|live now/i.test(bodyTxt);
+      post(p);
     }
 
     var retryCount = 0;
     function extractAndSend() {
+      var gate = gateStatus();
+      if (gate) { sendGate(gate); return; }
       var bodyTxt = (document.body && document.body.innerText) || "";
-      var isToday = isTodaySelected();
-      var inps = getDateInputs();
-      var costAds = fromOverviewCard(function (t) { return t === "chi phí" || (t.indexOf("chi phí") === 0 && t.indexOf("mỗi") === -1 && t.indexOf("ròng") === -1); });
-      var skuOrders = fromOverviewCard(function (t) { return t.indexOf("số lượng đơn hàng") === 0 || t.indexOf("số lượng") === 0; });
-      var cpaAds = fromOverviewCard(function (t) { return t.indexOf("chi phí cho mỗi") === 0 || t.indexOf("chi phí mỗi") === 0; });
-      var grossRev = fromOverviewCard(function (t) { return t.indexOf("doanh thu gộp") === 0 || t.indexOf("doanh thu") === 0; });
-      var roi = fromOverviewCard(function (t) { return t === "roi" || t.indexOf("roi ") === 0; });
+      var m = {
+        cost: fromOverviewCard(function (t) { return t === "chi phí" || (t.indexOf("chi phí") === 0 && t.indexOf("mỗi") === -1 && t.indexOf("ròng") === -1); }),
+        orders: fromOverviewCard(function (t) { return t.indexOf("số lượng đơn hàng") === 0 || t.indexOf("số lượng") === 0; }),
+        cpa: fromOverviewCard(function (t) { return t.indexOf("chi phí cho mỗi") === 0 || t.indexOf("chi phí mỗi") === 0; }),
+        sales: fromOverviewCard(function (t) { return t.indexOf("doanh thu gộp") === 0 || t.indexOf("doanh thu") === 0; }),
+        roas: fromOverviewCard(function (t) { return t === "roi" || t.indexOf("roi ") === 0; })
+      };
 
-      var vtReady = !document.querySelector("[class*=campaign-list-table]") || document.querySelectorAll('[slot^="cell-"]').length > 0;
-      if ((!isToday || (costAds === 0 && skuOrders === 0) || (!vtReady && retryCount < 4)) && retryCount < 5) {
+      var vtPresent = !!document.querySelector("[class*=campaign-list-table]");
+      var vtReady = !vtPresent || document.querySelectorAll('[slot^="cell-"]').length > 0;
+      var nothing = m.cost.value === null && m.orders.value === null && m.sales.value === null && m.roas.value === null;
+      if ((nothing || !vtReady) && retryCount < 5) {
         retryCount++;
-        setTimeout(extractAndSend, 1100);
+        setTimeout(guarded(extractAndSend, "retry"), 1100);
         return;
       }
+      var waitingForDom = !vtReady;
 
       var vt = document.querySelector("[class*=campaign-list-table]");
       var scroller = vt && vt.shadowRoot ? vt.shadowRoot.querySelector(".table__wrapper") : null;
       if (vt && scroller) {
         var slotMap = {};
+        var cols = {};
+        scrollGuard = { el: scroller, left: scroller.scrollLeft };
         var positions = [0, 1200, 2200, 3200];
         var stepIdx = 0;
         function sweepNext() {
-          collectVirtualTableSlots(slotMap);
+          collectVirtualTableSlots(slotMap, cols);
           if (stepIdx < positions.length) {
             scroller.scrollLeft = positions[stepIdx++];
-            setTimeout(sweepNext, 220);
+            setTimeout(guarded(sweepNext, "sweep"), 220);
             return;
           }
-          scroller.scrollLeft = 0;
+          restoreScroll();
           var campaigns = Object.keys(slotMap).map(function (cid) {
             var r = slotMap[cid];
             var rawName = (r.campaign_name || "").replace(/\s+(Phân tích|Chỉnh sửa)(\s+Chỉnh sửa)?$/i, "").trim();
-            var rawStatus = (r["campaign_primary_status-derived"] || r.campaign_primary_status || "Đang hoạt động").trim();
-            var budget = parseVn(r["campaign_target_roi_budget-derived"] || r.campaign_target_roi_budget || "0");
-            var cost = parseVn(r.cost || "0");
-            var orders = parseVn(r.onsite_roi2_shopping_sku || r.sku_orders || r.orders || "0");
-            var sales = parseVn(r.onsite_roi2_shopping_value || r.gross_revenue || r.revenue || "0");
-            var roas = parseVn(r.onsite_roi2_shopping_roi || r.roi || "0");
-            if (!roas && cost > 0 && sales > 0) roas = Number((sales / cost).toFixed(2));
-            return {
-              name: rawName || ("Chiến dịch " + cid),
-              status: rawStatus,
-              budget: budget,
-              cost: cost,
-              orders: orders,
-              sales: sales,
-              roas: roas
-            };
-          }).filter(function (c) { return !!c.name; });
-          finalizeAndSend(costAds, skuOrders, cpaAds, grossRev, roi, campaigns, inps, bodyTxt);
+            var st = pick(r, ["campaign_primary_status-derived", "campaign_primary_status"]);
+            var bu = pick(r, ["campaign_target_roi_budget-derived", "campaign_target_roi_budget"]);
+            var co = pick(r, ["cost"]);
+            var od = pick(r, ["onsite_roi2_shopping_sku", "sku_orders", "orders"]);
+            var sa = pick(r, ["onsite_roi2_shopping_value", "gross_revenue", "revenue"]);
+            var ro = pick(r, ["onsite_roi2_shopping_roi", "roi"]);
+            return buildCampaign(
+              cid,
+              rawName || ("Chiến dịch " + cid),
+              rawName ? "column:campaign_name" : "slot_id",
+              st.raw ? String(st.raw).trim() : null,
+              cellField(bu.raw, bu.col), cellField(co.raw, co.col), cellField(od.raw, od.col),
+              cellField(sa.raw, sa.col), cellField(ro.raw, ro.col)
+            );
+          });
+          var prov = campaigns.length > 0
+            ? { source: "virtual_table_slots", count: campaigns.length, columns: Object.keys(cols) }
+            : { source: "unavailable", count: 0, columns: Object.keys(cols), reason: "no_slot_rows" };
+          finalizeAndSend(m, campaigns, prov, bodyTxt, waitingForDom);
         }
         sweepNext();
         return;
       }
 
       var campaigns = [];
+      var prov = { source: "unavailable", count: 0, columns: [], reason: "no_campaign_table" };
       var tables = document.querySelectorAll("table");
       if (tables.length > 0) {
         var tbl = tables[tables.length - 1];
@@ -400,67 +657,161 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
         var idxOrders = ths.findIndex(function (t) { return t.indexOf("số lượng đơn hàng") !== -1; });
         var idxRev = ths.findIndex(function (t) { return t.indexOf("doanh thu gộp") !== -1 || t.indexOf("doanh thu") !== -1; });
         var idxRoi = ths.findIndex(function (t) { return t === "roi" || t.indexOf("roi ") === 0; });
-        if (idxName < 0) idxName = 2;
-        if (idxStatus < 0) idxStatus = 3;
-        if (idxBudget < 0) idxBudget = 5;
-
-        [].slice.call(tbl.querySelectorAll("tbody tr")).forEach(function (tr) {
-          var cells = [].slice.call(tr.querySelectorAll("td, th")).map(function (c) { return (c.innerText || "").trim().replace(/\s+/g, " "); });
-          if (cells.length >= 4) {
+        function col(cells, idx) { return idx >= 0 ? cellField(cells[idx], ths[idx]) : { value: null, raw: null, source: "unavailable" }; }
+        if (idxName < 0) {
+          prov = { source: "unavailable", count: 0, columns: ths, reason: "table_header_unrecognized" };
+        } else {
+          [].slice.call(tbl.querySelectorAll("tbody tr")).forEach(function (tr, rowIdx) {
+            var cells = [].slice.call(tr.querySelectorAll("td, th")).map(function (c) { return (c.innerText || "").trim().replace(/\s+/g, " "); });
             var name = (cells[idxName] || "").trim();
             if (name && !/tên chiến dịch|tên sản phẩm|bật\/tắt/i.test(name)) {
-              var cost = idxCost >= 0 && cells[idxCost] ? parseVn(cells[idxCost]) : 0;
-              var rev = idxRev >= 0 && cells[idxRev] ? parseVn(cells[idxRev]) : 0;
-              campaigns.push({
-                name: name,
-                status: idxStatus >= 0 && cells[idxStatus] ? cells[idxStatus] : "Đang hoạt động",
-                budget: idxBudget >= 0 && cells[idxBudget] ? parseVn(cells[idxBudget]) : 0,
-                cost: cost,
-                orders: idxOrders >= 0 && cells[idxOrders] ? parseVn(cells[idxOrders]) : 0,
-                sales: rev,
-                roas: idxRoi >= 0 && cells[idxRoi] ? parseVn(cells[idxRoi]) : (cost > 0 && rev > 0 ? Number((rev / cost).toFixed(2)) : 0)
-              });
+              campaigns.push(buildCampaign(
+                "row-" + rowIdx, name, "column:" + ths[idxName],
+                idxStatus >= 0 && cells[idxStatus] ? cells[idxStatus] : null,
+                col(cells, idxBudget), col(cells, idxCost), col(cells, idxOrders), col(cells, idxRev), col(cells, idxRoi)
+              ));
             }
-          }
-        });
+          });
+          prov = campaigns.length > 0
+            ? { source: "html_table", count: campaigns.length, columns: ths }
+            : { source: "unavailable", count: 0, columns: ths, reason: "no_table_rows" };
+        }
       }
-      finalizeAndSend(costAds, skuOrders, cpaAds, grossRev, roi, campaigns, inps, bodyTxt);
+      finalizeAndSend(m, campaigns, prov, bodyTxt, waitingForDom);
     }
 
-    if (!isTodaySelected()) {
-      var inps = getDateInputs();
-      var targetInp = inps[0] || document.querySelector(".theme-m4b-date-picker-range input") || document.querySelector(".theme-arco-picker-range input") || document.querySelector(".dashboard-date-picker-F08X input");
-      if (targetInp) {
-        targetInp.click();
-        setTimeout(function () {
-          var el = [].slice.call(document.querySelectorAll("*")).find(function (e) {
-            return e.children.length <= 1 && (e.innerText || "").trim() === "Hôm nay";
-          });
-          if (el) {
-            var cur = el;
-            var clicked = false;
-            for (var i = 0; i < 6 && cur; i++) {
-              if (cur.tagName === "BUTTON" || cur.getAttribute("role") === "button" || cur.onclick || (cur.className && String(cur.className).indexOf("preset") !== -1)) {
-                cur.click();
-                clicked = true;
-                break;
-              }
-              cur = cur.parentElement;
-            }
-            if (!clicked) el.click();
-          }
-          setTimeout(extractAndSend, 2400);
-        }, 800);
-        return;
-      }
-    }
-    extractAndSend();
+    guarded(extractAndSend, "extract")();
   } catch (err) {
-    try {
-      if (window.ipc && typeof window.ipc.postMessage === "function") {
-        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify({ logged_in: true, error: String(err), ts: new Date().toLocaleTimeString("vi-VN"), campaigns: [] }) }));
+    postError(err, "init");
+  }
+})();"##;
+
+// Read-only TikTok Account Health and Store Score collector. The sequence
+// navigates one worker tab at a time; raw labels remain alongside values.
+const TIKTOK_HEALTH_SCAN_JS: &str = r##"(function () {
+  try {
+    var path = String(window.location.pathname || "");
+    var body = (document.body && document.body.innerText) || "";
+    var lower = body.toLowerCase();
+    var gate = /login|sign[-_ ]?in|đăng nhập/i.test(path) ? "needs_login"
+      : (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí|captcha/i.test(lower) ? "captcha" : null);
+    var page = path.indexOf("experience-score") >= 0 ? "store_score" : "account_health";
+    var wanted = page === "store_score"
+      ? /điểm cửa hàng|mức độ hài lòng|kho vận|dịch vụ khách hàng|cập nhật lần cuối|hạng mục/i
+      : /điểm tình trạng|tình trạng tài khoản|vi phạm|tỷ lệ gửi|tỷ lệ hủy|tỷ lệ phản hồi|thời gian phản hồi/i;
+    var lines = body.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var raw_rows = lines.filter(function (x) { return wanted.test(x); }).slice(0, 160);
+    var status = gate || (raw_rows.length ? "ok" : (document.readyState === "complete" ? "unavailable" : "loading"));
+    if (gate) raw_rows = [];
+    var payload = {
+      schema: "tp.tiktok.health.v1",
+      module: page,
+      status: status,
+      status_reasons: gate ? [gate] : (raw_rows.length ? [] : ["health_labels_unavailable"]),
+      read_only: true,
+      source_url: String(window.location.origin || "") + path,
+      captured_at: new Date().toISOString(),
+      ts: new Date().toLocaleTimeString("vi-VN"),
+      update_text: (lines.find(function (x) { return /cập nhật|thời gian đánh giá|so với hôm qua/i.test(x); }) || null),
+      raw_rows: raw_rows,
+      account_score_raw: page === "account_health" ? (lines.find(function (x) { return /\b\d+[,.]?\d*\s*(\/\s*1000|điểm)/i.test(x); }) || null) : null,
+      store_score_raw: page === "store_score" ? (lines.find(function (x) { return /\b\d+[,.]?\d*\s*\/\s*5\b/i.test(x); }) || null) : null
+    };
+    if (gate === "needs_login") payload.need_login = true;
+    if (gate === "captcha") payload.captcha_active = true;
+    if (window.ipc && typeof window.ipc.postMessage === "function") {
+      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_health", data_json: JSON.stringify(payload) }));
+    }
+  } catch (err) {
+    if (window.ipc && typeof window.ipc.postMessage === "function") {
+      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_health", data_json: JSON.stringify({ schema: "tp.tiktok.health.v1", module: "unknown", status: "error", status_reasons: ["exception"], read_only: true, source_url: String(window.location.href || ""), captured_at: new Date().toISOString(), raw_rows: [], error: String(err) }) }));
+    }
+  }
+})();"##;
+
+// Read-only Shopee Account Health collector (/portal/accounthealth/home).
+// Extracts Sao Quả Tạ (penalty points), NFR/LSR, prep time, chat response rate
+// and shop rating; raw label lines are kept alongside parsed numbers.
+const SHOPEE_HEALTH_SCAN_JS: &str = r##"(function () {
+  try {
+    var path = String(window.location.pathname || "");
+    var body = (document.body && document.body.innerText) || "";
+    var lower = body.toLowerCase();
+    var gate = /login|sign[-_ ]?in|đăng nhập/i.test(path) ? "needs_login"
+      : (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí|captcha/i.test(lower) ? "captcha" : null);
+    var lines = body.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    function numAfter(label) {
+      var idx = lines.findIndex(function (x) { return x === label; });
+      if (idx < 0) return null;
+      for (var i = idx + 1; i < Math.min(idx + 4, lines.length); i++) {
+        var m = lines[i].match(/-?\d+[.,]?\d*/);
+        if (m) return m[0].replace(",", ".");
       }
-    } catch (_) {}
+      return null;
+    }
+    var sqtRaw = numAfter("Sao Quả Tạ");
+    var nfrRaw = numAfter("Tỷ lệ đơn hàng không thành công");
+    var lsrRaw = numAfter("Tỷ lệ giao hàng trễ");
+    var prepRaw = numAfter("Thời gian chuẩn bị hàng");
+    var crrRaw = numAfter("Tỉ lệ phản hồi") || numAfter("Tỷ lệ phản hồi");
+    var ratingLine = lines.find(function (x) { return /^\d(\.\d+)?\s*\/\s*5$/.test(x); });
+    var overallLine = lines.find(function (x) { return /^(xuất sắc|tốt|cần cải thiện|kém)$/i.test(x); });
+    var hasAny = sqtRaw !== null || nfrRaw !== null || lsrRaw !== null || crrRaw !== null;
+    var status = gate || (hasAny ? "ok" : (document.readyState === "complete" ? "unavailable" : "loading"));
+    var payload = {
+      schema: "tp.shopee.health.v1",
+      status: status,
+      status_reasons: gate ? [gate] : (hasAny ? [] : ["health_labels_unavailable"]),
+      read_only: true,
+      source_url: String(window.location.origin || "") + path,
+      captured_at: new Date().toISOString(),
+      overall_status: overallLine || null,
+      penalty_points: sqtRaw !== null ? Number(sqtRaw) : null,
+      nfr_pct: nfrRaw !== null ? Number(nfrRaw) : null,
+      lsr_pct: lsrRaw !== null ? Number(lsrRaw) : null,
+      prep_time_days: prepRaw !== null ? Number(prepRaw) : null,
+      crr_pct: crrRaw !== null ? Number(crrRaw) : null,
+      rating: ratingLine ? Number(ratingLine.split("/")[0]) : null,
+      raw_rows: lines.filter(function (x) { return /sao quả tạ|tỷ lệ|thời gian chuẩn bị|tỉ lệ phản hồi|đánh giá shop|điểm phạt/i.test(x); }).slice(0, 60)
+    };
+    if (gate === "needs_login") payload.need_login = true;
+    if (gate === "captcha") payload.captcha_active = true;
+    if (window.ipc && typeof window.ipc.postMessage === "function") {
+      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_health", data_json: JSON.stringify(payload) }));
+    }
+  } catch (err) {
+    if (window.ipc && typeof window.ipc.postMessage === "function") {
+      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_health", data_json: JSON.stringify({ schema: "tp.shopee.health.v1", status: "error", read_only: true, source_url: String(window.location.href || ""), captured_at: new Date().toISOString(), raw_rows: [], error: String(err) }) }));
+    }
+  }
+})();"##;
+
+const SHOPEE_SHOP_INDEX_SCAN_JS: &str = r##"(function () {
+  try {
+    var visible = function (e) { var s = getComputedStyle(e); return !!(e.getClientRects().length && s.display !== "none" && s.visibility !== "hidden"); };
+    var login = /login|signin|đăng nhập/i.test(String(location.pathname || "")) || Array.prototype.some.call(document.querySelectorAll("input[type=password], [autocomplete=current-password]"), visible);
+    var rows = Array.prototype.slice.call(document.querySelectorAll("tr.eds-react-table-row[data-row-key]"));
+    var shops = rows.map(function (row) {
+      var cells = Array.prototype.slice.call(row.querySelectorAll("td"));
+      return { shop_id: row.getAttribute("data-row-key") || "", display_name: cells.length ? (cells[0].innerText || "").trim() : "", raw_text: (row.innerText || "").trim() };
+    }).filter(function (x) { return x.shop_id && x.display_name; });
+    var payload = { schema: "tp.shopee.shop_index.v1", status: login ? "needs_login" : (shops.length ? "ok" : "unavailable"), read_only: true, source_url: String(location.href || ""), captured_at: new Date().toISOString(), shops: login ? [] : shops };
+    if (window.ipc && typeof window.ipc.postMessage === "function") window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_index", data_json: JSON.stringify(payload) }));
+  } catch (err) {
+    if (window.ipc && typeof window.ipc.postMessage === "function") window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_index", data_json: JSON.stringify({ schema: "tp.shopee.shop_index.v1", status: "error", read_only: true, source_url: String(location.href || ""), captured_at: new Date().toISOString(), shops: [], error: String(err) }) }));
+  }
+})();"##;
+
+const SHOPEE_OPEN_SHOP_JS: &str = r##"(function () {
+  try {
+    var target = window.__tpShopTarget || {};
+    var row = target.shop_id ? document.querySelector('tr.eds-react-table-row[data-row-key="' + CSS.escape(String(target.shop_id)) + '"]') : null;
+    if (!row && target.display_name) row = Array.prototype.find.call(document.querySelectorAll("tr.eds-react-table-row[data-row-key]"), function (r) { return (r.innerText || "").indexOf(String(target.display_name)) >= 0; });
+    var action = row && Array.prototype.find.call(row.querySelectorAll("a,button,[role=button]"), function (e) { return /chi tiết|detail/i.test((e.innerText || e.textContent || "").trim()); });
+    if (action) { action.click(); if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "clicked", shop_id: target.shop_id || "", display_name: target.display_name || "", source_url: String(location.href || ""), captured_at: new Date().toISOString() }) })); return; }
+    if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "unavailable", reason: "detail_action_not_found", shop_id: target.shop_id || "", display_name: target.display_name || "", source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
+  } catch (err) {
+    if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "error", reason: "exception", error: String(err), source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
   }
 })();"##;
 
@@ -547,8 +898,6 @@ const SHELL_SHORTCUTS_JS: &str = r##"(function(){
       e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "toggle_chat_channel", channel: "fb" });
     } else if (code === "KeyM") {
       e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "cycle_view_mode" });
-    } else if (code === "KeyT") {
-      e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "toggle_tab_orientation" });
     } else if (code === "KeyS") {
       e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "toggle_sidebar_collapse" });
     } else if (code === "KeyB") {
@@ -926,6 +1275,64 @@ impl ChatChannel {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum NavigationPhase {
+    Starting,
+    ContentLoading,
+    Completed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NavigationRegistrationPhase {
+    NavigationStarting,
+    ContentLoading,
+    NavigationCompleted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NavigationRegistrationFailure {
+    phase: NavigationRegistrationPhase,
+    hresult: i32,
+}
+
+#[derive(Debug, Default)]
+struct NavigationRegistrationState {
+    tokens: [Option<i64>; 3],
+    failure: Option<NavigationRegistrationFailure>,
+}
+
+impl NavigationRegistrationState {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn is_usable(&self) -> bool {
+        self.failure.is_none() && self.tokens.iter().all(Option::is_some)
+    }
+
+    #[cfg(test)]
+    fn fail(&mut self, phase: NavigationRegistrationPhase, removed: [bool; 3]) {
+        self.failure = Some(NavigationRegistrationFailure { phase, hresult: -1 });
+        for (token, was_removed) in self.tokens.iter_mut().zip(removed) {
+            if was_removed {
+                *token = None;
+            }
+        }
+    }
+
+    fn take_tokens_for_teardown(&mut self) -> [Option<i64>; 3] {
+        let tokens = self.tokens;
+        self.tokens = [None, None, None];
+        tokens
+    }
+}
+
+#[derive(Clone)]
+struct ShopeePayload(Option<String>);
+impl std::fmt::Debug for ShopeePayload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("[redacted]") }
+}
+
 #[derive(Debug, Clone)]
 enum AppCmd {
     OpenCommandBar,
@@ -949,6 +1356,10 @@ enum AppCmd {
     },
     SwapSplitTabs,
     Unsplit,
+    SetTabSelection { tab_id: u64, mode: String },
+    GroupTabs { source_id: u64, target_id: u64 },
+    SplitTabGroup { tab_ids: Vec<u64> },
+    ScanSelectedTabs,
     CopyToClipboard(String),
     ToggleAiMode,
     SetAiMode(AiDisplayMode),
@@ -1021,6 +1432,8 @@ enum AppCmd {
     OpenWorkspace,
     SetActiveWorkspace(String),
     CreateWorkspace(String),
+    RenameWorkspace { id: String, name: String },
+    DeleteWorkspace(String),
     OpenGlance {
         url: String,
         title: String,
@@ -1030,6 +1443,10 @@ enum AppCmd {
     RunEcomScan {
         scope: String,
     },
+    DiscoverShopeeShops { tab_id: Option<u64> },
+    ShopeeDiscoveryUnavailable,
+    SetShopeeShopSelection { platform: String, shop_id: String, selected: bool },
+    OpenShopeeShop(String),
     SetEcomAutoScan(bool),
     UpdatePlatformData {
         platform: String,
@@ -1086,6 +1503,12 @@ enum AppCmd {
         tab_id: u64,
         url: String,
     },
+    NavigationEvent {
+        tab_id: u64,
+        navigation_id: u64,
+        phase: NavigationPhase,
+        success: bool,
+    },
     CheckReminders,
     GetTasks,
     SaveTasksJson(String),
@@ -1105,6 +1528,8 @@ enum AppCmd {
         text: String,
     },
     McpDispatch(McpBridgeMsg),
+    ShopeeNativeResult { req_id: u64, tab_id: u64, payload: ShopeePayload },
+    RetryShopeeDiscovery { tab_id: u64, attempt: u8 },
     McpJsCallback {
         req_id: u64,
         ok: bool,
@@ -1155,10 +1580,81 @@ impl Workspace {
     fn default_workspace() -> Self {
         Self { id: DEFAULT_WORKSPACE_ID.to_string(), name: "Default".to_string() }
     }
+
+    fn has_valid_shape(&self) -> bool {
+        !self.id.trim().is_empty()
+            && self.id.len() <= 128
+            && self.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            && valid_workspace_name(&self.name)
+    }
+}
+
+fn valid_workspace_name(name: &str) -> bool {
+    let trimmed = name.trim();
+    !trimmed.is_empty() && trimmed.len() <= 64 && !trimmed.chars().any(char::is_control)
+}
+
+fn valid_workspace_list(workspaces: &[Workspace]) -> bool {
+    !workspaces.is_empty()
+        && workspaces.iter().all(Workspace::has_valid_shape)
+        && workspaces.iter().any(|workspace| workspace.id == DEFAULT_WORKSPACE_ID)
+        && workspaces.iter().enumerate().all(|(index, workspace)| {
+            workspaces[..index].iter().all(|previous| previous.id != workspace.id)
+        })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct ShopSelection {
+    platform: String,
+    shop_id: String,
+}
+
+fn valid_shop_selection(platform: &str, shop_id: &str) -> bool {
+    platform == "shopee" && !shop_id.trim().is_empty()
+}
+
+fn serialize_shop_selections(selections: &[ShopSelection]) -> String {
+    JsonVal::Arr(selections.iter().map(|selection| JsonVal::obj(vec![
+        ("platform", JsonVal::Str(selection.platform.clone())),
+        ("shop_id", JsonVal::Str(selection.shop_id.clone())),
+    ])).collect()).to_json()
+}
+
+fn config_payload_with_selections(body: &str, selections: &[ShopSelection]) -> String {
+    format!("{{\"selected_shops\":{},{}", serialize_shop_selections(selections), &body[1..])
+}
+
+fn write_config_snapshot(path: &std::path::Path, body: &str) -> std::io::Result<()> {
+    // Calls originate on the main thread; completing each write before returning
+    // prevents an older snapshot from finishing after a newer one.
+    fs::write(path, body)
+}
+
+fn parse_shop_selections(raw: &str) -> Vec<ShopSelection> {
+    let Ok(config) = parse_json(raw) else { return Vec::new() };
+    let Some(items) = config.get("selected_shops").and_then(JsonVal::as_arr) else { return Vec::new() };
+    let mut seen = HashSet::new();
+    items.iter().filter_map(|item| {
+        let JsonVal::Obj(fields) = item else { return None };
+        if fields.len() != 2
+            || fields[0].0 == fields[1].0
+            || fields.iter().any(|(key, _)| key != "platform" && key != "shop_id")
+        {
+            return None;
+        }
+        let platform = item.get("platform")?.as_str()?;
+        let shop_id = item.get("shop_id")?.as_str()?;
+        if !valid_shop_selection(platform, shop_id) {
+            return None;
+        }
+        let selection = ShopSelection { platform: platform.to_string(), shop_id: shop_id.to_string() };
+        seen.insert(selection.clone()).then_some(selection)
+    }).collect()
 }
 
 struct BrowserTab {
     id: u64,
+    navigation_readiness: shopee_discovery::NavigationReadiness,
     container_id: String,
     workspace_id: String,
     profile_name: String,
@@ -1166,10 +1662,16 @@ struct BrowserTab {
     title: String,
     favicon_url: String,
     worker_kind: Option<String>,
+    // A worker's presentation kind is not its collector identity: several
+    // Shopee jobs all use the hidden "bot" shell but must never share it.
+    ecom_worker_job: Option<String>,
     worker_status: String,
     pinned: bool,
+    tab_group_id: Option<u64>,
     is_loaded: bool,
     webview: WebView,
+    #[cfg(target_os = "windows")]
+    navigation_events: NavigationCorrelationRegistration,
 }
 
 struct TpBrowserApp {
@@ -1204,6 +1706,7 @@ struct TpBrowserApp {
     mru_cycle_pos: usize,
     mru_focus_in_progress: bool,
     workspaces: Vec<Workspace>,
+    selected_shops: Vec<ShopSelection>,
     active_workspace_id: String,
     tab_orientation: TabOrientation,
     sidebar_collapsed: bool,
@@ -1224,6 +1727,9 @@ struct TpBrowserApp {
     history_json: String,
     view_mode: ContentViewMode,
     split_paired_tab_id: Option<u64>,
+    selected_tab_ids: HashSet<u64>,
+    tab_selection_anchor_id: Option<u64>,
+    next_tab_group_id: u64,
     ai_mode: AiDisplayMode,
     ai_working: bool,
     ai_recording: bool,
@@ -1261,14 +1767,29 @@ struct TpBrowserApp {
     ai_worker_tab_id: Option<u64>,
     shopee_orders_json: String,
     shopee_pas_json: String,
+    shopee_health_json: String,
     tiktok_json: String,
+    tiktok_health_json: String,
+    tiktok_scan_tab_id: Option<u64>,
+    tiktok_scan_phase: String,
+    shopee_shop_index_json: String,
+    shopee_shop_scan_tab_id: Option<u64>,
+    shopee_shop_scan_phase: String,
+    shopee_shop_scan_queue: Vec<(String, String)>,
+    shopee_shop_scan_current: Option<(String, String)>,
+    shopee_shop_orders_json: String,
+    shopee_discovery_tab_id: Option<u64>,
+    shopee_discovery_retry_attempt: u8,
+    shopee_open_target_id: Option<String>,
     ecom_auto_scan: bool,
-    camoufox_enabled: bool,
     ecom_status_text: String,
     ecom_logs: Vec<String>,
     last_ecom_auto_epoch: u64,
     next_mcp_req_id: u64,
     mcp_pending: HashMap<u64, mpsc::Sender<Result<String, String>>>,
+    shopee_pending: HashMap<u64, (u64, u64, Instant, mpsc::Sender<Result<String, String>>)>,
+    shopee_workspace_pending: HashSet<u64>,
+    shopee_discovery_json: String,
 }
 
 #[cfg(target_os = "windows")]
@@ -1321,6 +1842,129 @@ unsafe extern "system" fn tray_subclass_proc(
         return 0;
     }
     DefSubclassProc(hwnd, msg, wparam, lparam)
+}
+
+#[cfg(target_os = "windows")]
+struct NavigationCorrelationRegistration {
+    core: ICoreWebView2,
+    state: NavigationRegistrationState,
+}
+
+#[cfg(target_os = "windows")]
+impl NavigationCorrelationRegistration {
+    fn new(core: ICoreWebView2) -> Self {
+        Self { core, state: NavigationRegistrationState::new() }
+    }
+
+    fn teardown(&mut self) {
+        for (index, token) in self.state.take_tokens_for_teardown().into_iter().enumerate() {
+            let Some(token) = token else { continue };
+            let result = unsafe {
+                match index {
+                    0 => self.core.remove_NavigationStarting(token),
+                    1 => self.core.remove_ContentLoading(token),
+                    2 => self.core.remove_NavigationCompleted(token),
+                    _ => unreachable!(),
+                }
+            };
+            if result.is_err() {
+                self.state.tokens[index] = Some(token);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for NavigationCorrelationRegistration {
+    fn drop(&mut self) {
+        self.teardown();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn install_navigation_correlation(webview: &WebView, tab_id: u64, proxy: EventLoopProxy<AppCmd>) -> NavigationCorrelationRegistration {
+    let core = webview.webview();
+    let mut registration = NavigationCorrelationRegistration::new(core.clone());
+    let starting_proxy = proxy.clone();
+    let starting = NavigationStartingEventHandler::create(Box::new(move |_sender, args| {
+        if let Some(args) = args {
+            let mut navigation_id = 0;
+            if unsafe { args.NavigationId(&mut navigation_id) }.is_ok() {
+                let _ = starting_proxy.send_event(AppCmd::NavigationEvent {
+                    tab_id,
+                    navigation_id,
+                    phase: NavigationPhase::Starting,
+                    success: true,
+                });
+            }
+        }
+        Ok(())
+    }));
+    let content_proxy = proxy.clone();
+    let content = ContentLoadingEventHandler::create(Box::new(move |_sender, args| {
+        if let Some(args) = args {
+            let mut navigation_id = 0;
+            if unsafe { args.NavigationId(&mut navigation_id) }.is_ok() {
+                let _ = content_proxy.send_event(AppCmd::NavigationEvent {
+                    tab_id,
+                    navigation_id,
+                    phase: NavigationPhase::ContentLoading,
+                    success: true,
+                });
+            }
+        }
+        Ok(())
+    }));
+    let completed_proxy = proxy;
+    let completed = NavigationCompletedEventHandler::create(Box::new(move |_sender, args| {
+        if let Some(args) = args {
+            let mut navigation_id = 0;
+            let mut success = Default::default();
+            if unsafe { args.NavigationId(&mut navigation_id) }.is_ok()
+                && unsafe { args.IsSuccess(&mut success) }.is_ok()
+            {
+                let _ = completed_proxy.send_event(AppCmd::NavigationEvent {
+                    tab_id,
+                    navigation_id,
+                    phase: NavigationPhase::Completed,
+                    success: success.as_bool(),
+                });
+            }
+        }
+        Ok(())
+    }));
+    unsafe {
+        let mut token = 0;
+        match core.add_NavigationStarting(&starting, &mut token) {
+            Ok(()) => registration.state.tokens[0] = Some(token),
+            Err(error) => registration.state.failure = Some(NavigationRegistrationFailure {
+                phase: NavigationRegistrationPhase::NavigationStarting,
+                hresult: error.code().0,
+            }),
+        }
+        token = 0;
+        match core.add_ContentLoading(&content, &mut token) {
+            Ok(()) => registration.state.tokens[1] = Some(token),
+            Err(error) if registration.state.failure.is_none() => registration.state.failure = Some(NavigationRegistrationFailure {
+                phase: NavigationRegistrationPhase::ContentLoading,
+                hresult: error.code().0,
+            }),
+            Err(_) => {}
+        }
+        token = 0;
+        match core.add_NavigationCompleted(&completed, &mut token) {
+            Ok(()) => registration.state.tokens[2] = Some(token),
+            Err(error) if registration.state.failure.is_none() => registration.state.failure = Some(NavigationRegistrationFailure {
+                phase: NavigationRegistrationPhase::NavigationCompleted,
+                hresult: error.code().0,
+            }),
+            Err(_) => {}
+        }
+    }
+    if registration.state.failure.is_some() {
+        registration.teardown();
+    }
+    registration
 }
 
 impl TpBrowserApp {
@@ -1777,7 +2421,7 @@ impl TpBrowserApp {
             .with_initialization_script(SHELL_SHORTCUTS_JS)
             .with_html(tab_shell_html)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_tab, req.body());
+                Self::handle_ipc(&proxy_tab, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(init_shell.tab_bar.x, init_shell.tab_bar.y + TITLEBAR_HEIGHT as i32).into(),
@@ -1798,7 +2442,7 @@ impl TpBrowserApp {
             .with_initialization_script(SHELL_SHORTCUTS_JS)
             .with_html(chat_header_html)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ch, req.body());
+                Self::handle_ipc(&proxy_ch, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(1000, 0).into(),
@@ -1817,7 +2461,7 @@ impl TpBrowserApp {
             .with_initialization_script(SHELL_SHORTCUTS_JS)
             .with_html(ai_panel_html)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ai, req.body());
+                Self::handle_ipc(&proxy_ai, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(1000, FB_CHAT_HEADER_HEIGHT as i32).into(),
@@ -1833,17 +2477,18 @@ impl TpBrowserApp {
             .with_profile_name("default".to_string())
             .with_theme(Theme::Light)
             .with_background_color(init_bg)
+            .with_visible(init_tab_orient == TabOrientation::HorizontalTop)
             .with_initialization_script(SHELL_SHORTCUTS_JS)
             .with_html(titlebar_html)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_tb, req.body());
+                Self::handle_ipc(&proxy_tb, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(0, 0).into(),
                 size: LogicalSize::new(win_w, TITLEBAR_HEIGHT).into(),
             })
             .build_as_child(&window)?;
-        let _ = titlebar_shell.set_visible(true);
+        let _ = titlebar_shell.set_visible(init_tab_orient == TabOrientation::HorizontalTop);
 
         let proxy_rsz = proxy.clone();
         let dock_resizer_html = inject_ui_html(DOCK_RESIZER_HTML, &init_theme);
@@ -1855,7 +2500,7 @@ impl TpBrowserApp {
             .with_visible(false)
             .with_html(dock_resizer_html)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_rsz, req.body());
+                Self::handle_ipc(&proxy_rsz, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(900, 0).into(),
@@ -1874,7 +2519,7 @@ impl TpBrowserApp {
             .with_visible(false)
             .with_html(sidebar_resizer_html)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_sbr, req.body());
+                Self::handle_ipc(&proxy_sbr, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(225, 40).into(),
@@ -1892,7 +2537,7 @@ impl TpBrowserApp {
             .with_theme(Theme::Light)
             .with_html(settings_modal_html)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_st, req.body());
+                Self::handle_ipc(&proxy_st, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(0, 0).into(),
@@ -1939,6 +2584,7 @@ impl TpBrowserApp {
             mru_cycle_pos: 0,
             mru_focus_in_progress: false,
             workspaces: vec![Workspace::default_workspace()],
+            selected_shops: Vec::new(),
             active_workspace_id: DEFAULT_WORKSPACE_ID.to_string(),
             tab_orientation: TabOrientation::VerticalLeft,
             sidebar_collapsed: false,
@@ -1959,6 +2605,9 @@ impl TpBrowserApp {
             history_json: "[]".to_string(),
             view_mode: ContentViewMode::SingleTab,
             split_paired_tab_id: None,
+            selected_tab_ids: HashSet::new(),
+            tab_selection_anchor_id: None,
+            next_tab_group_id: 1,
             ai_mode: AiDisplayMode::FbPopup,
             ai_working: false,
             ai_recording: false,
@@ -1995,14 +2644,29 @@ impl TpBrowserApp {
             ai_worker_tab_id: None,
             shopee_orders_json: String::new(),
             shopee_pas_json: String::new(),
+            shopee_health_json: String::new(),
             tiktok_json: String::new(),
+            tiktok_health_json: String::new(),
+            tiktok_scan_tab_id: None,
+            tiktok_scan_phase: String::new(),
+            shopee_shop_index_json: String::new(),
+            shopee_shop_scan_tab_id: None,
+            shopee_shop_scan_phase: String::new(),
+            shopee_shop_scan_queue: Vec::new(),
+            shopee_shop_scan_current: None,
+            shopee_shop_orders_json: String::new(),
+            shopee_discovery_tab_id: None,
+            shopee_discovery_retry_attempt: 0,
+            shopee_open_target_id: None,
             ecom_auto_scan: false,
-            camoufox_enabled: Self::extract_bool(&pre_cfg, "camoufox_enabled").unwrap_or(false),
             ecom_status_text: "Sẵn sàng — bấm \"Quét Tất Cả Ngầm\" để bắt đầu".to_string(),
             ecom_logs: vec!["• Khởi tạo Không Gian Làm Việc TMĐT TPbrowser.".to_string()],
             last_ecom_auto_epoch: 0,
             next_mcp_req_id: 1,
             mcp_pending: HashMap::new(),
+            shopee_pending: HashMap::new(),
+            shopee_workspace_pending: HashSet::new(),
+            shopee_discovery_json: shopee_discovery::unavailable(),
         };
 
         app.load_config();
@@ -2049,7 +2713,7 @@ impl TpBrowserApp {
             .with_initialization_script(&fb_watch_js)
             .with_url("https://www.messenger.com")
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ipc, req.body());
+                Self::handle_ipc(&proxy_ipc, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(980, 360).into(),
@@ -2084,7 +2748,7 @@ impl TpBrowserApp {
             .with_initialization_script(&zalo_watch_js)
             .with_url("https://chat.zalo.me")
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ipc, req.body());
+                Self::handle_ipc(&proxy_ipc, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(980, 360).into(),
@@ -2119,7 +2783,7 @@ impl TpBrowserApp {
             .with_initialization_script(SHELL_SHORTCUTS_JS)
             .with_url(target_url)
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ipc, req.body());
+                Self::handle_ipc(&proxy_ipc, req.body(), None);
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(980, 360).into(),
@@ -2153,7 +2817,7 @@ impl TpBrowserApp {
                 .with_initialization_script(SHELL_SHORTCUTS_JS)
                 .with_url(url)
                 .with_ipc_handler(move |req| {
-                    Self::handle_ipc(&proxy_body, req.body());
+                    Self::handle_ipc(&proxy_body, req.body(), None);
                 })
                 .with_bounds(Rect {
                     position: LogicalPosition::new(0, 0).into(),
@@ -2177,7 +2841,7 @@ impl TpBrowserApp {
                 .with_visible(false)
                 .with_html(header_html)
                 .with_ipc_handler(move |req| {
-                    Self::handle_ipc(&proxy_hdr, req.body());
+                    Self::handle_ipc(&proxy_hdr, req.body(), None);
                 })
                 .with_bounds(Rect {
                     position: LogicalPosition::new(0, 0).into(),
@@ -2199,7 +2863,7 @@ impl TpBrowserApp {
                 .with_visible(false)
                 .with_html(GLANCE_BACKDROP_HTML)
                 .with_ipc_handler(move |req| {
-                    Self::handle_ipc(&proxy_bd, req.body());
+                    Self::handle_ipc(&proxy_bd, req.body(), None);
                 })
                 .with_bounds(Rect {
                     position: LogicalPosition::new(0, 0).into(),
@@ -2291,6 +2955,39 @@ impl TpBrowserApp {
             .filter(|(_, tab)| tab.workspace_id == self.active_workspace_id)
             .map(|(idx, _)| idx)
             .collect()
+    }
+
+    fn visible_user_tab_indices(&self) -> Vec<usize> {
+        self.tabs
+            .iter()
+            .enumerate()
+            .filter(|(_, tab)| tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none())
+            .map(|(idx, _)| idx)
+            .collect()
+    }
+
+    fn active_user_tab_ids(&self) -> HashSet<u64> {
+        self.visible_user_tab_indices()
+            .into_iter()
+            .map(|idx| self.tabs[idx].id)
+            .collect()
+    }
+
+    fn selected_active_user_tab_ids(&self) -> HashSet<u64> {
+        let active_ids = self.active_user_tab_ids();
+        self.selected_tab_ids
+            .iter()
+            .copied()
+            .filter(|id| active_ids.contains(id))
+            .collect()
+    }
+
+    fn prune_tab_selection(&mut self) {
+        let active_ids = self.active_user_tab_ids();
+        self.selected_tab_ids.retain(|id| active_ids.contains(id));
+        if self.tab_selection_anchor_id.is_some_and(|id| !active_ids.contains(&id)) {
+            self.tab_selection_anchor_id = None;
+        }
     }
 
     fn add_tab(&mut self, raw_url: &str, isolated: bool) {
@@ -2433,7 +3130,7 @@ impl TpBrowserApp {
                 }
             })
             .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ipc, req.body());
+                Self::handle_ipc(&proxy_ipc, req.body(), Some(tab_id));
             })
             .with_bounds(Rect {
                 position: LogicalPosition::new(228, 0).into(),
@@ -2461,6 +3158,8 @@ impl TpBrowserApp {
         };
 
         if let Ok(webview) = builder.build_as_child(&self.window) {
+            #[cfg(target_os = "windows")]
+            let navigation_events = install_navigation_correlation(&webview, tab_id, self.proxy.clone());
             if is_ext_url {
                 let ext_target = url.clone();
                 let proxy_delayed = self.proxy.clone();
@@ -2471,8 +3170,14 @@ impl TpBrowserApp {
             }
             let title = custom_title.unwrap_or_else(|| Self::title_from_url(&url));
             let is_loaded = !should_sleep_load;
+            let mut navigation_readiness = shopee_discovery::NavigationReadiness::default();
+            #[cfg(target_os = "windows")]
+            if !navigation_events.state.is_usable() {
+                navigation_readiness.close();
+            }
             self.tabs.push(BrowserTab {
                 id: tab_id,
+                navigation_readiness,
                 container_id,
                 workspace_id: self.active_workspace_id.clone(),
                 profile_name,
@@ -2480,10 +3185,14 @@ impl TpBrowserApp {
                 title,
                 favicon_url: String::new(),
                 worker_kind,
+                ecom_worker_job: None,
                 worker_status: if is_worker { "Đang chạy ngầm".to_string() } else { String::new() },
                 pinned: false,
+                tab_group_id: None,
                 is_loaded,
                 webview,
+                #[cfg(target_os = "windows")]
+                navigation_events,
             });
             if !is_worker {
                 self.active_idx = self.tabs.len() - 1;
@@ -2502,10 +3211,12 @@ impl TpBrowserApp {
     }
 
     fn titlebar_height(&self) -> u32 {
-        if self.tab_orientation == TabOrientation::HorizontalTop && self.show_bookmarks_bar {
-            TITLEBAR_HEIGHT + BOOKMARKS_BAR_HEIGHT
-        } else {
-            TITLEBAR_HEIGHT
+        match self.tab_orientation {
+            TabOrientation::VerticalLeft => 0,
+            TabOrientation::HorizontalTop if self.show_bookmarks_bar => {
+                TITLEBAR_HEIGHT + BOOKMARKS_BAR_HEIGHT
+            }
+            TabOrientation::HorizontalTop => TITLEBAR_HEIGHT,
         }
     }
 
@@ -2863,13 +3574,16 @@ impl TpBrowserApp {
         }
 
         let tb_h = self.titlebar_height();
-        let _ = self.titlebar_shell.set_visible(true);
-        let _ = self.titlebar_shell.set_bounds(Rect {
-            position: LogicalPosition::new(0, 0).into(),
-            size: LogicalSize::new(logical.width.max(320), tb_h).into(),
-        });
-        #[cfg(target_os = "windows")]
-        Self::bring_webview_to_front(&self.titlebar_shell);
+        let titlebar_visible = self.tab_orientation == TabOrientation::HorizontalTop;
+        let _ = self.titlebar_shell.set_visible(titlebar_visible);
+        if titlebar_visible {
+            let _ = self.titlebar_shell.set_bounds(Rect {
+                position: LogicalPosition::new(0, 0).into(),
+                size: LogicalSize::new(logical.width.max(320), tb_h).into(),
+            });
+            #[cfg(target_os = "windows")]
+            Self::bring_webview_to_front(&self.titlebar_shell);
+        }
 
         if self.settings_open {
             let _ = self.settings_shell.set_visible(true);
@@ -3006,7 +3720,7 @@ impl TpBrowserApp {
             &self.floating_orbs_json
         };
         format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"background_mode\":{},\"startup_boost\":{},\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"camoufox_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"background_mode\":{},\"startup_boost\":{},\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             Self::escape_json(&self.startup_mode),
@@ -3029,7 +3743,6 @@ impl TpBrowserApp {
             orbs_raw,
             self.ai_dock_width,
             self.adblock_enabled,
-            self.camoufox_enabled,
             Self::escape_json(&self.google_user),
             self.chat_channel.as_str(),
             self.unread_ai,
@@ -3073,7 +3786,7 @@ impl TpBrowserApp {
             .collect();
         for (native_idx, t) in &visible_tabs {
             tabs_json.push(format!(
-                "{{\"id\":{},\"native_idx\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"worker_kind\":\"{}\",\"pinned\":{}}}",
+                "{{\"id\":{},\"native_idx\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"worker_kind\":\"{}\",\"worker_status\":\"{}\",\"pinned\":{},\"selected\":{},\"group_id\":{}}}",
                 t.id,
                 native_idx,
                 Self::escape_json(&t.url),
@@ -3082,7 +3795,10 @@ impl TpBrowserApp {
                 Self::escape_json(&t.profile_name),
                 Self::escape_json(&t.container_id),
                 Self::escape_json(t.worker_kind.as_deref().unwrap_or("")),
-                t.pinned
+                Self::escape_json(&t.worker_status),
+                t.pinned,
+                self.selected_tab_ids.contains(&t.id),
+                t.tab_group_id.unwrap_or(0)
             ));
         }
         let tabs_arr_str = tabs_json.join(",");
@@ -3169,7 +3885,7 @@ impl TpBrowserApp {
         // 1. Đồng bộ Thanh Quản Lý Tab (Dọc)
         let shell_active_idx = visible_tabs.iter().position(|(idx, _)| *idx == self.active_idx).unwrap_or(0);
         let shell_state = format!(
-            "{{\"orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ai_working\":{},\"active_idx\":{},\"active_workspace_id\":\"{}\",\"google_user\":\"{}\",\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"adblock_enabled\":{},\"tabs\":[{}]}}",
+            "{{\"orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ai_working\":{},\"active_idx\":{},\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"google_user\":\"{}\",\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"adblock_enabled\":{},\"tabs\":[{}]}}",
             self.tab_orientation.as_str(),
             self.sidebar_collapsed,
             self.view_mode.as_str(),
@@ -3178,6 +3894,7 @@ impl TpBrowserApp {
             self.ai_working,
             shell_active_idx,
             Self::escape_json(&self.active_workspace_id),
+            workspaces_json,
             Self::escape_json(&self.google_user),
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
@@ -3476,7 +4193,7 @@ impl TpBrowserApp {
             .collect::<Vec<_>>()
             .join(",");
         let body = format!(
-            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"window_width\": {},\n  \"window_height\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"camoufox_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
+            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"window_width\": {},\n  \"window_height\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.active_workspace_id),
             workspaces_json,
@@ -3498,7 +4215,6 @@ impl TpBrowserApp {
             self.always_show_floating_orbs,
             orbs_raw,
             self.adblock_enabled,
-            self.camoufox_enabled,
             Self::escape_json(&self.ai_provider),
             Self::escape_json(&self.ai_api_key),
             Self::escape_json(&self.ai_model),
@@ -3511,9 +4227,8 @@ impl TpBrowserApp {
                 &self.bookmarks_json
             }
         );
-        std::thread::spawn(move || {
-            let _ = fs::write(cfg_path, body);
-        });
+        let body = config_payload_with_selections(&body, &self.selected_shops);
+        let _ = write_config_snapshot(&cfg_path, &body);
     }
 
     fn load_config(&mut self) {
@@ -3521,6 +4236,7 @@ impl TpBrowserApp {
         let Ok(raw) = fs::read_to_string(cfg_path) else {
             return;
         };
+        self.selected_shops = parse_shop_selections(&raw);
         self.active_workspace_id = Self::extract_field_str(&raw, "active_workspace_id")
             .unwrap_or_else(|| DEFAULT_WORKSPACE_ID.to_string());
         if let Ok(val) = parse_json(&raw) {
@@ -3531,7 +4247,7 @@ impl TpBrowserApp {
                         name: item.get("name")?.as_str()?.to_string(),
                     })
                 }).collect();
-                if !loaded.is_empty() { self.workspaces = loaded; }
+                if valid_workspace_list(&loaded) { self.workspaces = loaded; }
             }
         }
         if !self.workspaces.iter().any(|w| w.id == self.active_workspace_id) {
@@ -3574,9 +4290,6 @@ impl TpBrowserApp {
         if let Some(b) = Self::extract_bool(&raw, "adblock_enabled") {
             self.adblock_enabled = b;
             ADBLOCK_ENABLED.store(b, Ordering::Relaxed);
-        }
-        if let Some(b) = Self::extract_bool(&raw, "camoufox_enabled") {
-            self.camoufox_enabled = b;
         }
         if let Some(v) = Self::extract_field_str(&raw, "ai_provider") {
             self.ai_provider = v;
@@ -3716,9 +4429,31 @@ impl TpBrowserApp {
                 self.shopee_pas_json = s;
             }
         }
+        if let Ok(s) = fs::read_to_string(dir.join("shopee_health_latest.json")) {
+            if !s.trim().is_empty() {
+                self.shopee_health_json = s;
+            }
+        }
         if let Ok(s) = fs::read_to_string(dir.join("tiktok_latest.json")) {
             if !s.trim().is_empty() {
-                self.tiktok_json = s;
+                if let Some(tagged) = mark_tiktok_cache_restored(&s) {
+                    self.tiktok_json = tagged;
+                }
+            }
+        }
+        if let Ok(s) = fs::read_to_string(dir.join("tiktok_health_latest.json")) {
+            if !s.trim().is_empty() {
+                self.tiktok_health_json = s;
+            }
+        }
+        if let Ok(s) = fs::read_to_string(dir.join("shopee_shop_index_latest.json")) {
+            if !s.trim().is_empty() {
+                self.shopee_shop_index_json = s;
+            }
+        }
+        if let Ok(s) = fs::read_to_string(dir.join("shopee_shop_orders_latest.json")) {
+            if !s.trim().is_empty() {
+                self.shopee_shop_orders_json = s;
             }
         }
     }
@@ -3755,7 +4490,18 @@ impl TpBrowserApp {
         }
     }
 
+    fn should_defer_workspace_sync(&self) -> bool {
+        self.shopee_shop_scan_in_flight()
+    }
+
     fn sync_workspace_view(&self) {
+        if self.should_defer_workspace_sync() {
+            return;
+        }
+        self.sync_workspace_view_now();
+    }
+
+    fn sync_workspace_view_now(&self) {
         let mut workers = Vec::new();
         for t in &self.tabs {
             if let Some(kind) = &t.worker_kind {
@@ -3791,22 +4537,44 @@ impl TpBrowserApp {
         } else {
             &self.shopee_pas_json
         };
+        let sp_health = if self.shopee_health_json.trim().is_empty() {
+            "null"
+        } else {
+            &self.shopee_health_json
+        };
         let tt = if self.tiktok_json.trim().is_empty() {
             "null"
         } else {
             &self.tiktok_json
         };
+        let tt_health = if self.tiktok_health_json.trim().is_empty() {
+            "null"
+        } else {
+            &self.tiktok_health_json
+        };
+        let sp_shops = if self.shopee_shop_index_json.trim().is_empty() {
+            "null"
+        } else {
+            &self.shopee_shop_index_json
+        };
+        let sp_shop_orders = if self.shopee_shop_orders_json.trim().is_empty() { "null" } else { &self.shopee_shop_orders_json };
 
         let payload = format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"auto_scan\":{},\"status_text\":\"{}\",\"worker_tabs\":{},\"shopee_orders\":{},\"shopee_pas\":{},\"tiktok\":{},\"logs\":{}}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"auto_scan\":{},\"status_text\":\"{}\",\"worker_tabs\":{},\"shopee_shop_discovery\":{},\"selected_shops\":{},\"shopee_orders\":{},\"shopee_pas\":{},\"shopee_health\":{},\"tiktok\":{},\"tiktok_health\":{},\"shopee_shop_index\":{},\"shopee_shop_orders\":{},\"logs\":{}}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             self.ecom_auto_scan,
             Self::escape_json(&self.ecom_status_text),
             JsonVal::Arr(workers).to_json(),
+            workspace_discovery_payload(&self.shopee_discovery_json),
+            serialize_shop_selections(&self.selected_shops),
             sp_ord,
             sp_pas,
+            sp_health,
             tt,
+            tt_health,
+            sp_shops,
+            sp_shop_orders,
             JsonVal::Arr(logs_arr).to_json()
         );
         let js = format!("if (window.__tpSyncWorkspace) window.__tpSyncWorkspace({});", payload);
@@ -3814,6 +4582,82 @@ impl TpBrowserApp {
             if t.url == "tp://workspace" {
                 let _ = t.webview.evaluate_script(&js);
             }
+        }
+    }
+
+    fn start_shopee_discovery(&mut self, requested_tab_id: Option<u64>, workspace: bool, reply: Option<mpsc::Sender<Result<String, String>>>) {
+        let selected = self.tabs.iter().find(|tab| {
+            requested_tab_id.map_or(true, |id| tab.id == id)
+                && (tab.worker_kind.is_none() || requested_tab_id == Some(tab.id))
+                && shopee_discovery::valid_url(&tab.url)
+                && tab.navigation_readiness.ready_navigation_id().is_some()
+        });
+        let Some(tab) = selected else {
+            let fallback = self.tabs.iter().find(|tab| {
+                requested_tab_id.map_or(true, |id| tab.id == id)
+                    && tab.worker_kind.is_none()
+                    && tab.url.contains("banhang.shopee.vn/")
+            });
+            if let Some(tab) = fallback {
+                let tab_id = tab.id;
+                self.shopee_discovery_tab_id = Some(tab_id);
+                self.shopee_discovery_json = shopee_discovery::result_loading();
+                if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+                    let _ = tab.webview.load_url(shopee_discovery::SHOP_INDEX_URL);
+                }
+                if workspace { self.sync_workspace_view(); }
+                return;
+            }
+            if requested_tab_id.is_none() {
+                let Some(tab_id) = self.ensure_ecom_worker(
+                    "shopee_discovery",
+                    shopee_discovery::SHOP_INDEX_URL,
+                    "Shopee Shop Discovery",
+                ) else {
+                    if workspace {
+                        self.shopee_discovery_json = shopee_discovery::unavailable();
+                        self.sync_workspace_view();
+                    }
+                    return;
+                };
+                self.shopee_discovery_tab_id = Some(tab_id);
+                self.shopee_discovery_json = shopee_discovery::result_loading();
+                if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+                    let _ = tab.webview.load_url(shopee_discovery::SHOP_INDEX_URL);
+                }
+                if workspace { self.sync_workspace_view(); }
+                return;
+            }
+            if let Some(reply) = reply { let _ = reply.send(Ok(shopee_discovery::unavailable())); }
+            else if workspace { self.shopee_discovery_json = shopee_discovery::unavailable(); self.sync_workspace_view(); }
+            return;
+        };
+        let tab_id = tab.id;
+        let Some(saved_navigation_id) = tab.navigation_readiness.ready_navigation_id() else { return; };
+        let Ok(current_url) = tab.webview.url() else {
+            if let Some(reply) = reply { let _ = reply.send(Ok(shopee_discovery::unavailable())); }
+            return;
+        };
+        if !shopee_discovery::valid_url(&current_url) || !shopee_discovery::admit_navigation(&tab.navigation_readiness, Some(saved_navigation_id)) {
+            if let Some(reply) = reply { let _ = reply.send(Ok(shopee_discovery::unavailable())); }
+            else if workspace { self.shopee_discovery_json = shopee_discovery::unavailable(); self.sync_workspace_view(); }
+            return;
+        }
+        let req_id = self.next_mcp_req_id;
+        self.next_mcp_req_id = self.next_mcp_req_id.wrapping_add(1).max(1);
+        let (tx, _rx) = mpsc::channel();
+        if let Err(returned) = shopee_discovery::insert_pending(&mut self.shopee_pending, req_id, (tab_id, saved_navigation_id, Instant::now() + shopee_discovery::TIMEOUT, reply.unwrap_or(tx))) {
+            let _ = returned.send(Ok(shopee_discovery::unavailable()));
+            return;
+        }
+        if workspace { self.shopee_workspace_pending.insert(req_id); }
+        let proxy = self.proxy.clone();
+        if tab.webview.evaluate_script_with_callback(shopee_discovery::SCRIPT, move |payload| {
+            let payload = if payload.len() <= 128 * 1024 { Some(payload) } else { None };
+            let _ = proxy.send_event(AppCmd::ShopeeNativeResult { req_id, tab_id, payload: ShopeePayload(payload) });
+        }).is_err() {
+            self.shopee_workspace_pending.remove(&req_id);
+            if let Some((_, _, _, reply)) = self.shopee_pending.remove(&req_id) { let _ = reply.send(Ok(shopee_discovery::unavailable())); }
         }
     }
 
@@ -3864,42 +4708,182 @@ impl TpBrowserApp {
         self.sync_workspace_view();
     }
 
-    fn ensure_ecom_worker(&mut self, domain_hint: &str, url: &str, title: &str) -> Option<u64> {
+    fn ensure_ecom_worker(&mut self, job: &str, url: &str, title: &str) -> Option<u64> {
         if let Some(t) = self.tabs.iter_mut().find(|t| {
-            t.worker_kind.as_deref() == Some("bot") && t.url.contains(domain_hint)
+            t.worker_kind.as_deref() == Some("bot") && t.ecom_worker_job.as_deref() == Some(job)
         }) {
             t.worker_status = "Đang quét...".to_string();
             let id = t.id;
             return Some(id);
         }
-        self.add_worker_tab(url, "bot", Some(title))
+        let tab_id = self.add_worker_tab(url, "bot", Some(title))?;
+        if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+            t.ecom_worker_job = Some(job.to_string());
+        }
+        Some(tab_id)
+    }
+
+    fn shopee_shop_scan_in_flight(&self) -> bool {
+        !self.shopee_shop_scan_phase.is_empty() && self.shopee_shop_scan_phase != "done"
     }
 
     fn trigger_worker_scan_by_id(&mut self, tab_id: u64, url: &str) {
         if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
-            if url.contains("banhang.shopee.vn/portal/marketing/pas") {
+            if tab.ecom_worker_job.as_deref() == Some("shopee_discovery") {
+                return;
+            }
+            if url.contains("banhang.shopee.vn/portal/shop") && !self.shopee_shop_scan_phase.is_empty() {
+                let js = format!("setTimeout(function(){{ {} }}, 1600);", SHOPEE_SHOP_INDEX_SCAN_JS);
+                let _ = tab.webview.evaluate_script(&js);
+            } else if url.contains("banhang.shopee.vn/portal/marketing/pas") {
                 let _ = tab.webview.evaluate_script(
                     "setTimeout(function(){ if (window.__tpRunShopeeScan) window.__tpRunShopeeScan('pas'); }, 1500);",
                 );
+            } else if url.contains("banhang.shopee.vn/portal/accounthealth") {
+                let js = format!("setTimeout(function(){{ {} }}, 1600);", SHOPEE_HEALTH_SCAN_JS);
+                let _ = tab.webview.evaluate_script(&js);
             } else if url.contains("banhang.shopee.vn") {
                 let _ = tab.webview.evaluate_script(
                     "setTimeout(function(){ if (window.__tpRunShopeeScan) window.__tpRunShopeeScan('orders'); }, 1000);",
                 );
             } else if url.contains("seller-vn.tiktok.com") {
-                let js = format!("setTimeout(function(){{ {} }}, 2200);", TIKTOK_PASSIVE_SCAN_JS);
+                let collector = if url.contains("health-center") {
+                    TIKTOK_HEALTH_SCAN_JS
+                } else {
+                    TIKTOK_PASSIVE_SCAN_JS
+                };
+                let js = format!("setTimeout(function(){{ {} }}, 2200);", collector);
                 let _ = tab.webview.evaluate_script(&js);
             }
         }
     }
 
-    fn serialize_session_tab(url: &str, profile: &str, container_id: &str, workspace_id: &str, pinned: bool) -> String {
+    fn queue_discovered_shopee_shops(&mut self, selected_only: bool) -> usize {
+        let Ok(discovery) = parse_json(&self.shopee_discovery_json) else { return 0; };
+        if discovery.get("status").and_then(JsonVal::as_str) != Some("ok") || discovery.get("logged_in").and_then(JsonVal::as_bool) != Some(true) { return 0; }
+        let selected: HashSet<&str> = self.selected_shops.iter().filter(|item| item.platform == "shopee").map(|item| item.shop_id.as_str()).collect();
+        let mut seen = HashSet::new();
+        let queued: Vec<(String, String)> = discovery.get("shops").and_then(JsonVal::as_arr).into_iter().flatten().filter_map(|row| {
+            let id = row.get("shop_id").and_then(JsonVal::as_str)?.trim();
+            let name = row.get("display_name").and_then(JsonVal::as_str)?.trim();
+            (!id.is_empty() && !name.is_empty() && (!selected_only || selected.contains(id)) && seen.insert(id.to_string())).then(|| (id.to_string(), name.to_string()))
+        }).collect();
+        self.shopee_shop_scan_queue = queued.into_iter().rev().collect();
+        self.shopee_shop_scan_queue.len()
+    }
+
+    fn start_shopee_shop_sequence(&mut self) {
+        if self.shopee_shop_scan_in_flight() {
+            return;
+        }
+        let index_url = "https://banhang.shopee.vn/portal/shop";
+        let Some(tab_id) = self.ensure_ecom_worker("shopee_shop_scanner", index_url, "Shopee Shop Scanner") else { return; };
+        self.shopee_shop_scan_tab_id = Some(tab_id);
+        self.shopee_shop_scan_phase = "index".to_string();
+        self.shopee_shop_scan_current = None;
+        if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) { let _ = tab.webview.load_url(index_url); }
+        self.trigger_worker_scan_by_id(tab_id, index_url);
+    }
+
+    fn open_next_shopee_shop(&mut self) {
+        let Some(tab_id) = self.shopee_shop_scan_tab_id else { return; };
+        let Some((shop_id, display_name)) = self.shopee_shop_scan_queue.pop() else {
+            self.shopee_shop_scan_phase = "done".to_string();
+            self.shopee_shop_scan_current = None;
+            self.ecom_status_text = "Đã quét xong các Shop Shopee.".to_string();
+            self.push_ecom_log(&self.ecom_status_text.clone());
+            self.sync_workspace_view();
+            return;
+        };
+        self.shopee_shop_scan_current = Some((shop_id.clone(), display_name.clone()));
+        self.shopee_shop_scan_phase = "opening_shop".to_string();
+        if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+            let js = format!("window.__tpShopTarget={{shop_id:{:?},display_name:{:?}}}; setTimeout(function(){{ {} }}, 700);", shop_id, display_name, SHOPEE_OPEN_SHOP_JS);
+            let _ = tab.webview.evaluate_script(&js);
+        }
+    }
+
+    fn handle_shopee_shop_index(&mut self, data_json: &str) {
+        self.shopee_shop_index_json = data_json.to_string();
+        self.save_export_file("shopee_shop_index_latest.json", data_json);
+        let mut discovered = Vec::new();
+        if let Ok(value) = parse_json(data_json) {
+            if let Some(rows) = value.get("shops").and_then(JsonVal::as_arr) {
+                for row in rows {
+                    let id = row.get("shop_id").and_then(JsonVal::as_str).unwrap_or("").trim();
+                    let name = row.get("display_name").and_then(JsonVal::as_str).unwrap_or("").trim();
+                    if !id.is_empty() && !name.is_empty() { discovered.push((id.to_string(), name.to_string())); }
+                }
+            }
+        }
+        let known_shop_ids: HashSet<&str> = discovered.iter().map(|(id, _)| id.as_str()).collect();
+        let before_selection_count = self.selected_shops.len();
+        self.selected_shops.retain(|selection| selection.platform != "shopee" || known_shop_ids.contains(selection.shop_id.as_str()));
+        if self.selected_shops.len() != before_selection_count { self.save_config(); }
+        if self.shopee_shop_scan_phase == "index" || self.shopee_shop_scan_phase == "returning_index" { self.open_next_shopee_shop(); }
+        self.sync_workspace_view();
+    }
+
+    fn store_shopee_shop_orders(&mut self, data_json: &str) {
+        let Some((shop_id, _)) = self.shopee_shop_scan_current.clone() else { return; };
+        let Ok(value) = parse_json(data_json) else { return; };
+        let mut fields = match parse_json(&self.shopee_shop_orders_json) {
+            Ok(JsonVal::Obj(existing)) => existing,
+            _ => Vec::new(),
+        };
+        if let Some((_, old)) = fields.iter_mut().find(|(key, _)| key == &shop_id) { *old = value; }
+        else { fields.push((shop_id, value)); }
+        self.shopee_shop_orders_json = JsonVal::Obj(fields).to_json();
+        self.save_export_file("shopee_shop_orders_latest.json", &self.shopee_shop_orders_json);
+    }
+
+    fn handle_shopee_shop_opening(&mut self, data_json: &str) {
+        let status = parse_json(data_json).ok().and_then(|v| v.get("status").and_then(JsonVal::as_str).map(str::to_string)).unwrap_or_default();
+        let Some(tab_id) = self.shopee_shop_scan_tab_id else { return; };
+        if status == "clicked" {
+            self.shopee_shop_scan_phase = "shop_orders".to_string();
+            if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) { let _ = tab.webview.evaluate_script("setTimeout(function(){ window.location.href='https://banhang.shopee.vn/portal/sale/order'; }, 1400);"); }
+        } else {
+            self.shopee_shop_scan_phase = "returning_index".to_string();
+            if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) { let _ = tab.webview.load_url("https://banhang.shopee.vn/portal/shop"); }
+        }
+    }
+
+    fn open_shopee_shop_in_user_tab(&mut self, shop_id: &str) {
+        if shop_id.trim().is_empty() { return; }
+        self.shopee_open_target_id = Some(shop_id.to_string());
+        self.add_tab("https://banhang.shopee.vn/portal/shop", false);
+    }
+
+    fn start_tiktok_sequence(&mut self) {
+        let ads_url = "https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&mpa=1&type=product&shop_region=VN";
+        let Some(tab_id) = self.ensure_ecom_worker("tiktok_seller", ads_url, "TikTok Seller") else { return; };
+        self.tiktok_scan_tab_id = Some(tab_id);
+        self.tiktok_scan_phase = "ads".to_string();
+        if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+            let _ = tab.webview.load_url(ads_url);
+        }
+        self.trigger_worker_scan_by_id(tab_id, ads_url);
+    }
+
+    fn continue_tiktok_sequence(&mut self, next: &str, phase: &str) {
+        let Some(tab_id) = self.tiktok_scan_tab_id else { return; };
+        self.tiktok_scan_phase = phase.to_string();
+        if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+            let _ = tab.webview.load_url(next);
+        }
+        self.trigger_worker_scan_by_id(tab_id, next);
+    }
+
+    fn serialize_session_tab(url: &str, profile: &str, container_id: &str, workspace_id: &str, pinned: bool, tab_group_id: Option<u64>) -> String {
         format!(
-            "{{\"url\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"workspace_id\":\"{}\",\"pinned\":{}}}",
+            "{{\"url\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"workspace_id\":\"{}\",\"pinned\":{},\"tab_group_id\":{}}}",
             Self::escape_json(url),
             Self::escape_json(profile),
             Self::escape_json(container_id),
             Self::escape_json(workspace_id),
-            pinned
+            pinned,
+            tab_group_id.unwrap_or(0)
         )
     }
 
@@ -3922,6 +4906,7 @@ impl TpBrowserApp {
                 &t.container_id,
                 &t.workspace_id,
                 t.pinned,
+                t.tab_group_id,
             ));
             user_idx += 1;
         }
@@ -3932,6 +4917,7 @@ impl TpBrowserApp {
                 "default",
                 &self.active_workspace_id,
                 false,
+                None,
             ));
         }
         let body = format!(
@@ -3992,6 +4978,12 @@ impl TpBrowserApp {
                                     workspace_id.to_string()
                                 } else { DEFAULT_WORKSPACE_ID.to_string() };
                                 tab.pinned = item.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false);
+                                tab.tab_group_id = item.get("tab_group_id")
+                                    .and_then(JsonVal::as_u64)
+                                    .filter(|id| *id > 0 && *id <= 9_007_199_254_740_991);
+                                if let Some(group_id) = tab.tab_group_id {
+                                    self.next_tab_group_id = self.next_tab_group_id.max(group_id.saturating_add(1));
+                                }
                             }
                         }
                     }
@@ -4139,7 +5131,11 @@ impl TpBrowserApp {
         Some(out)
     }
 
-    fn handle_ipc(proxy: &EventLoopProxy<AppCmd>, body: &str) {
+    fn valid_tab_id(tab_id: u64) -> bool {
+        (1..=9_007_199_254_740_991).contains(&tab_id)
+    }
+
+    fn handle_ipc(proxy: &EventLoopProxy<AppCmd>, body: &str, sender_tab_id: Option<u64>) {
         if body.contains("\"cmd\":\"mcp_callback\"") {
             if let Ok(val) = parse_json(body) {
                 if val.get("cmd").and_then(|v| v.as_str()) == Some("mcp_callback") {
@@ -4199,6 +5195,35 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::SwapSplitTabs);
         } else if body.contains("\"cmd\":\"unsplit\"") {
             let _ = proxy.send_event(AppCmd::Unsplit);
+        } else if body.contains("\"cmd\":\"set_tab_selection\"") {
+            if let Ok(val) = parse_json(body) {
+                if let Some(tab_id) = val.get("tab_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)) {
+                    let mode = val.get("mode").and_then(JsonVal::as_str).unwrap_or("replace").to_string();
+                    let _ = proxy.send_event(AppCmd::SetTabSelection { tab_id, mode });
+                }
+            }
+        } else if body.contains("\"cmd\":\"group_tabs\"") {
+            if let Ok(val) = parse_json(body) {
+                if let (Some(source_id), Some(target_id)) = (
+                    val.get("source_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)),
+                    val.get("target_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)),
+                ) {
+                    let _ = proxy.send_event(AppCmd::GroupTabs { source_id, target_id });
+                }
+            }
+        } else if body.contains("\"cmd\":\"group_selected_tabs\"") {
+            let _ = proxy.send_event(AppCmd::GroupTabs { source_id: 0, target_id: 0 });
+        } else if body.contains("\"cmd\":\"split_tab_group\"") {
+            if let Ok(val) = parse_json(body) {
+                let tab_ids = val.get("tab_ids").and_then(JsonVal::as_arr).map(|items| {
+                    items.iter().filter_map(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)).collect()
+                }).unwrap_or_default();
+                let _ = proxy.send_event(AppCmd::SplitTabGroup { tab_ids });
+            }
+        } else if body.contains("\"cmd\":\"split_selected_tabs\"") {
+            let _ = proxy.send_event(AppCmd::SplitTabGroup { tab_ids: Vec::new() });
+        } else if body.contains("\"cmd\":\"scan_selected_tabs\"") {
+            let _ = proxy.send_event(AppCmd::ScanSelectedTabs);
         } else if body.contains("\"cmd\":\"copy_to_clipboard\"") {
             if let Some(text) = Self::extract_field_str(body, "text") {
                 let _ = proxy.send_event(AppCmd::CopyToClipboard(text));
@@ -4231,7 +5256,7 @@ impl TpBrowserApp {
                 let title = val.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let favicon = val.get("favicon").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let _ = proxy.send_event(AppCmd::UpdateTabMeta {
-                    tab_id,
+                    tab_id: sender_tab_id.unwrap_or(0),
                     url,
                     title,
                     favicon,
@@ -4390,8 +5415,47 @@ impl TpBrowserApp {
                     let _ = proxy.send_event(AppCmd::CreateWorkspace(name.to_string()));
                 }
             }
+        } else if body.contains("\"cmd\":\"rename_workspace\"") {
+            if let Ok(val) = parse_json(body) {
+                if let (Some(id), Some(name)) = (
+                    val.get("workspace_id").and_then(|v| v.as_str()),
+                    val.get("name").and_then(|v| v.as_str()),
+                ) {
+                    let _ = proxy.send_event(AppCmd::RenameWorkspace { id: id.to_string(), name: name.to_string() });
+                }
+            }
+        } else if body.contains("\"cmd\":\"delete_workspace\"") {
+            if let Ok(val) = parse_json(body) {
+                if let Some(id) = val.get("workspace_id").and_then(|v| v.as_str()) {
+                    let _ = proxy.send_event(AppCmd::DeleteWorkspace(id.to_string()));
+                }
+            }
         } else if body.contains("\"cmd\":\"open_workspace\"") {
             let _ = proxy.send_event(AppCmd::OpenWorkspace);
+        } else if body.contains("\"cmd\":\"discover_shopee_shops\"") {
+            if let Ok(tab_id) = parse_workspace_discovery_tab_id(body) {
+                let _ = proxy.send_event(AppCmd::DiscoverShopeeShops { tab_id });
+            } else {
+                let _ = proxy.send_event(AppCmd::ShopeeDiscoveryUnavailable);
+            }
+        } else if body.contains("\"cmd\":\"set_shopee_shop_selection\"") {
+            if let Ok(val) = parse_json(body) {
+                let platform = val.get("platform").and_then(JsonVal::as_str).unwrap_or("");
+                let shop_id = val.get("shop_id").and_then(JsonVal::as_str).unwrap_or("");
+                if let Some(selected) = val.get("selected").and_then(JsonVal::as_bool) {
+                    if valid_shop_selection(platform, shop_id) {
+                        let _ = proxy.send_event(AppCmd::SetShopeeShopSelection {
+                            platform: platform.to_string(),
+                            shop_id: shop_id.to_string(),
+                            selected,
+                        });
+                    }
+                }
+            }
+        } else if body.contains("\"cmd\":\"open_shopee_shop\"") {
+            if let Some(shop_id) = Self::extract_string(body, "\"shop_id\":\"") {
+                let _ = proxy.send_event(AppCmd::OpenShopeeShop(shop_id));
+            }
         } else if body.contains("\"cmd\":\"run_ecom_scan\"") {
             let scope = Self::extract_field_str(body, "scope").unwrap_or_else(|| "all".to_string());
             let _ = proxy.send_event(AppCmd::RunEcomScan { scope });
@@ -4574,9 +5638,11 @@ impl TpBrowserApp {
         match cmd {
             AppCmd::ToggleTabPinned => {
                 if let Some(tab) = self.tabs.get_mut(self.active_idx) {
-                    tab.pinned = !tab.pinned;
-                    self.sync_all_ui();
-                    self.save_session();
+                    if tab.worker_kind.is_none() {
+                        tab.pinned = !tab.pinned;
+                        self.sync_all_ui();
+                        self.save_session();
+                    }
                 }
             }
             AppCmd::OpenCommandBar => {
@@ -4725,6 +5791,105 @@ impl TpBrowserApp {
                 self.save_session();
                 self.save_config();
                 self.broadcast_config_changed();
+            }
+            AppCmd::SetTabSelection { tab_id, mode } => {
+                self.prune_tab_selection();
+                let visible_user_tab_indices = self.visible_user_tab_indices();
+                let Some(clicked_pos) = visible_user_tab_indices.iter().position(|idx| self.tabs[*idx].id == tab_id) else { return; };
+                match mode.as_str() {
+                    "toggle" => {
+                        if !self.selected_tab_ids.insert(tab_id) {
+                            self.selected_tab_ids.remove(&tab_id);
+                            if self.tab_selection_anchor_id == Some(tab_id) {
+                                self.tab_selection_anchor_id = None;
+                            }
+                        } else {
+                            self.tab_selection_anchor_id = Some(tab_id);
+                        }
+                    }
+                    "range" => {
+                        let anchor_pos = self.tab_selection_anchor_id.and_then(|anchor_id| {
+                            visible_user_tab_indices.iter().position(|idx| self.tabs[*idx].id == anchor_id)
+                        });
+                        self.selected_tab_ids.clear();
+                        if let Some(anchor_pos) = anchor_pos {
+                            for idx in &visible_user_tab_indices[anchor_pos.min(clicked_pos)..=anchor_pos.max(clicked_pos)] {
+                                self.selected_tab_ids.insert(self.tabs[*idx].id);
+                            }
+                        } else {
+                            self.selected_tab_ids.insert(tab_id);
+                            self.tab_selection_anchor_id = Some(tab_id);
+                        }
+                    }
+                    _ => {
+                        self.selected_tab_ids.clear();
+                        self.selected_tab_ids.insert(tab_id);
+                        self.tab_selection_anchor_id = Some(tab_id);
+                    }
+                }
+                self.sync_all_ui();
+            }
+            AppCmd::GroupTabs { source_id, target_id } => {
+                self.prune_tab_selection();
+                let active_ids = self.active_user_tab_ids();
+                let mut ids: HashSet<u64> = if source_id == 0 && target_id == 0 {
+                    self.selected_active_user_tab_ids()
+                } else if Self::valid_tab_id(source_id) && Self::valid_tab_id(target_id) {
+                    [source_id, target_id].into_iter().collect()
+                } else {
+                    return;
+                };
+                for tab_id in [source_id, target_id].into_iter().filter(|id| *id != 0) {
+                    let group_id = self.tabs.iter().find(|tab| tab.id == tab_id && active_ids.contains(&tab.id)).and_then(|tab| tab.tab_group_id);
+                    if let Some(group_id) = group_id {
+                        ids.extend(self.tabs.iter().filter(|tab| active_ids.contains(&tab.id) && tab.tab_group_id == Some(group_id)).map(|tab| tab.id));
+                    }
+                }
+                ids.retain(|id| active_ids.contains(id));
+                if ids.len() >= 2 {
+                    let group_id = self.next_tab_group_id;
+                    self.next_tab_group_id = self.next_tab_group_id.saturating_add(1);
+                    for tab in &mut self.tabs {
+                        if ids.contains(&tab.id) {
+                            tab.tab_group_id = Some(group_id);
+                        }
+                    }
+                    self.selected_tab_ids = ids;
+                    self.sync_all_ui();
+                    self.save_session();
+                }
+            }
+            AppCmd::SplitTabGroup { tab_ids } => {
+                self.prune_tab_selection();
+                let active_ids = self.active_user_tab_ids();
+                let ids: HashSet<u64> = if tab_ids.is_empty() {
+                    self.selected_active_user_tab_ids()
+                } else {
+                    tab_ids.into_iter().filter(|id| Self::valid_tab_id(*id) && active_ids.contains(id)).collect()
+                };
+                if ids.is_empty() {
+                    return;
+                }
+                for tab in &mut self.tabs {
+                    if ids.contains(&tab.id) {
+                        tab.tab_group_id = None;
+                    }
+                }
+                self.selected_tab_ids = ids;
+                self.sync_all_ui();
+                self.save_session();
+            }
+            AppCmd::ScanSelectedTabs => {
+                self.prune_tab_selection();
+                let selected_ids = self.selected_active_user_tab_ids();
+                let mut scan_shopee = false;
+                let mut scan_tiktok = false;
+                for tab in self.tabs.iter().filter(|tab| selected_ids.contains(&tab.id)) {
+                    scan_shopee |= tab.url.contains("banhang.shopee.vn");
+                    scan_tiktok |= tab.url.contains("seller-vn.tiktok.com");
+                }
+                if scan_shopee { self.execute(AppCmd::RunEcomScan { scope: "shopee_orders".to_string() }); }
+                if scan_tiktok { self.execute(AppCmd::RunEcomScan { scope: "tiktok".to_string() }); }
             }
             AppCmd::CopyToClipboard(text) => {
                 Self::copy_text_to_clipboard(&text);
@@ -5218,10 +6383,6 @@ impl TpBrowserApp {
                         self.adblock_enabled = b;
                         ADBLOCK_ENABLED.store(b, Ordering::Relaxed);
                     }
-                    "camoufox_enabled" => {
-                        self.camoufox_enabled = Self::parse_bool_str(&value, false);
-                        // TODO: khi true, spawn/connect Camoufox server nền; khi false, kill tiến trình đó.
-                    }
                     "google_user" => {
                         self.google_user = value;
                     }
@@ -5372,13 +6533,30 @@ impl TpBrowserApp {
                 }
             }
             AppCmd::CloseIndex(idx) => {
-                if self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id).count() > 1
+                let ws_tabs_count = self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id).count();
+                if ws_tabs_count > 1
                     && idx < self.tabs.len()
                     && self.tabs[idx].workspace_id == self.active_workspace_id
                 {
                     let removed_id = self.tabs[idx].id;
+                    self.tabs[idx].navigation_readiness.close();
+                    #[cfg(target_os = "windows")]
+                    self.tabs[idx].navigation_events.teardown();
+                    let requests: Vec<u64> = self.shopee_pending.iter().filter_map(|(id, (tab, _, _, _))| (*tab == removed_id).then_some(*id)).collect();
+                    for id in &requests {
+                        self.shopee_workspace_pending.remove(id);
+                        if let Some((_, _, _, reply)) = self.shopee_pending.remove(id) { let _ = reply.send(Ok(shopee_discovery::unavailable())); }
+                    }
+                    if !requests.is_empty() {
+                        self.shopee_discovery_json = shopee_discovery::unavailable();
+                        self.sync_workspace_view();
+                    }
                     if self.ai_worker_tab_id == Some(removed_id) {
                         self.ai_worker_tab_id = None;
+                    }
+                    self.selected_tab_ids.remove(&removed_id);
+                    if self.tab_selection_anchor_id == Some(removed_id) {
+                        self.tab_selection_anchor_id = None;
                     }
                     let closed_url = self.tabs[idx].url.clone();
                     if closed_url.starts_with("http://") || closed_url.starts_with("https://") {
@@ -5396,6 +6574,13 @@ impl TpBrowserApp {
                     self.relayout();
                     self.sync_all_ui();
                     self.save_session();
+                } else if ws_tabs_count == 1
+                    && idx < self.tabs.len()
+                    && self.tabs[idx].workspace_id == self.active_workspace_id
+                {
+                    if self.tabs[idx].url != "tp://newtab" {
+                        self.execute(AppCmd::NavigateActive("tp://newtab".to_string()));
+                    }
                 }
             }
             AppCmd::CloseActiveTab => {
@@ -5521,15 +6706,17 @@ impl TpBrowserApp {
             }
             AppCmd::CreateWorkspace(name) => {
                 let name = name.trim();
-                if !name.is_empty() {
+                if valid_workspace_name(name) {
                     let id = format!("workspace-{}", std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
                     if !self.workspaces.iter().any(|workspace| workspace.id == id) {
                         self.workspaces.push(Workspace { id: id.clone(), name: name.to_string() });
                         self.active_workspace_id = id;
-                        self.active_idx = 0;
+                        self.selected_tab_ids.clear();
+                        self.tab_selection_anchor_id = None;
                         self.view_mode = ContentViewMode::SingleTab;
                         self.split_paired_tab_id = None;
+                        self.add_tab("tp://newtab", false);
                         self.relayout();
                         self.sync_all_ui();
                         self.save_config();
@@ -5540,13 +6727,48 @@ impl TpBrowserApp {
             AppCmd::SetActiveWorkspace(workspace_id) => {
                 if self.workspaces.iter().any(|workspace| workspace.id == workspace_id) {
                     self.active_workspace_id = workspace_id;
+                    self.selected_tab_ids.clear();
+                    self.tab_selection_anchor_id = None;
                     if let Some(idx) = self.tabs.iter().position(|tab| tab.workspace_id == self.active_workspace_id) {
                         self.active_idx = idx;
                     } else {
-                        self.active_idx = 0;
                         self.view_mode = ContentViewMode::SingleTab;
                         self.split_paired_tab_id = None;
+                        self.add_tab("tp://newtab", false);
                     }
+                    self.relayout();
+                    self.sync_all_ui();
+                    self.save_config();
+                    self.save_session();
+                }
+            }
+            AppCmd::RenameWorkspace { id, name } => {
+                let name = name.trim();
+                if valid_workspace_name(name) {
+                    if let Some(workspace) = self.workspaces.iter_mut().find(|workspace| workspace.id == id) {
+                        workspace.name = name.to_string();
+                        self.sync_all_ui();
+                        self.save_config();
+                        self.save_session();
+                    }
+                }
+            }
+            AppCmd::DeleteWorkspace(id) => {
+                if id != DEFAULT_WORKSPACE_ID && self.workspaces.iter().any(|workspace| workspace.id == id) {
+                    for tab in self.tabs.iter_mut().filter(|tab| tab.workspace_id == id) {
+                        tab.workspace_id = DEFAULT_WORKSPACE_ID.to_string();
+                    }
+                    self.workspaces.retain(|workspace| workspace.id != id);
+                    self.selected_tab_ids.clear();
+                    self.tab_selection_anchor_id = None;
+                    if self.active_workspace_id == id {
+                        self.active_workspace_id = DEFAULT_WORKSPACE_ID.to_string();
+                    }
+                    if let Some(idx) = self.tabs.iter().position(|tab| tab.workspace_id == self.active_workspace_id) {
+                        self.active_idx = idx;
+                    }
+                    self.view_mode = ContentViewMode::SingleTab;
+                    self.split_paired_tab_id = None;
                     self.relayout();
                     self.sync_all_ui();
                     self.save_config();
@@ -5589,17 +6811,40 @@ impl TpBrowserApp {
                     self.add_tab(&url, false);
                 }
             }
+            AppCmd::OpenShopeeShop(shop_id) => {
+                self.open_shopee_shop_in_user_tab(&shop_id);
+            }
             AppCmd::RunEcomScan { scope } => {
                 let s = scope.to_lowercase();
-                let run_orders = s == "all" || s == "shopee_orders";
+                let run_selected_shopee_shops = s == "shopee_shops_selected";
+                let run_all_shopee_shops = s == "all" || s == "shopee_shops" || s == "shopee_shops_all";
+                let run_shopee_shops = run_selected_shopee_shops || run_all_shopee_shops;
+                let run_orders = s == "shopee_orders" || (s == "all" && !run_shopee_shops);
                 let run_pas = s == "all" || s == "shopee_pas";
-                let run_tiktok = s == "all" || s == "tiktok";
+                let run_health = s == "all" || s == "shopee_health";
+                let run_tiktok = s == "tiktok";
+                if run_shopee_shops && self.shopee_shop_scan_in_flight() {
+                    self.ecom_status_text = "⏳ Quét Shop Shopee đang chạy — bỏ qua yêu cầu trùng lặp.".to_string();
+                    self.push_ecom_log(&self.ecom_status_text.clone());
+                    self.sync_workspace_view();
+                    return;
+                }
+                if run_shopee_shops && self.queue_discovered_shopee_shops(run_selected_shopee_shops) == 0 {
+                    self.ecom_status_text = if run_selected_shopee_shops {
+                        "Chọn ít nhất một shop trước khi quét.".to_string()
+                    } else {
+                        "Chưa có danh sách shop Shopee đã xác minh — hãy Đồng bộ từ tab Shopee đang đăng nhập.".to_string()
+                    };
+                    self.push_ecom_log(&self.ecom_status_text.clone());
+                    self.sync_workspace_view();
+                    return;
+                }
                 self.ecom_status_text = format!("⏳ Đang mở Tab ngầm để quét ({})...", scope);
                 self.push_ecom_log(&format!("Khởi chạy quét ngầm [{}] — giữ nguyên Tab đang xem.", scope));
 
                 if run_orders {
                     if let Some(tid) = self.ensure_ecom_worker(
-                        "banhang.shopee.vn/portal/sale",
+                        "shopee_orders",
                         "https://banhang.shopee.vn/portal/sale/order",
                         "Shopee Đơn Hàng",
                     ) {
@@ -5608,21 +6853,27 @@ impl TpBrowserApp {
                 }
                 if run_pas {
                     if let Some(tid) = self.ensure_ecom_worker(
-                        "banhang.shopee.vn/portal/marketing/pas",
+                        "shopee_pas",
                         "https://banhang.shopee.vn/portal/marketing/pas/index?source_page_id=1&type=new_cpc_homepage&group=today",
                         "Shopee PAS",
                     ) {
                         self.trigger_worker_scan_by_id(tid, "https://banhang.shopee.vn/portal/marketing/pas/index");
                     }
                 }
-                if run_tiktok {
+                if run_health {
                     if let Some(tid) = self.ensure_ecom_worker(
-                        "seller-vn.tiktok.com",
-                        "https://seller-vn.tiktok.com/ads-creation/dashboard",
-                        "TikTok Seller Ads",
+                        "shopee_health",
+                        "https://banhang.shopee.vn/portal/accounthealth/home",
+                        "Shopee Hiệu Quả Hoạt Động",
                     ) {
-                        self.trigger_worker_scan_by_id(tid, "https://seller-vn.tiktok.com/ads-creation/dashboard");
+                        self.trigger_worker_scan_by_id(tid, "https://banhang.shopee.vn/portal/accounthealth/home");
                     }
+                }
+                if run_shopee_shops {
+                    self.start_shopee_shop_sequence();
+                }
+                if run_tiktok {
+                    self.start_tiktok_sequence();
                 }
                 self.sync_workspace_view();
             }
@@ -5645,6 +6896,7 @@ impl TpBrowserApp {
                     "shopee_orders" => {
                         self.shopee_orders_json = data_json.clone();
                         self.save_export_file("shopee_orders_latest.json", &data_json);
+                        if self.shopee_shop_scan_phase == "shop_orders" { self.store_shopee_shop_orders(&data_json); }
                         self.ecom_status_text = "✅ Đã cập nhật Đơn hàng, Đánh giá 1–3★, Live & Khuyến mãi Shopee.".to_string();
                         self.push_ecom_log("Shopee Tổng hợp: đã cập nhật 200 đơn, đánh giá 1-3★, Live & Khuyến mãi.");
                         for t in &mut self.tabs {
@@ -5654,6 +6906,12 @@ impl TpBrowserApp {
                                 } else {
                                     "Đã lấy xong".to_string()
                                 };
+                            }
+                        }
+                        if self.shopee_shop_scan_phase == "shop_orders" {
+                            self.shopee_shop_scan_phase = "returning_index".to_string();
+                            if let Some(tab_id) = self.shopee_shop_scan_tab_id {
+                                if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) { let _ = tab.webview.load_url("https://banhang.shopee.vn/portal/shop"); }
                             }
                         }
                     }
@@ -5672,29 +6930,55 @@ impl TpBrowserApp {
                             }
                         }
                     }
-                    "tiktok" => {
-                        self.tiktok_json = data_json.clone();
-                        self.save_export_file("tiktok_latest.json", &data_json);
-                        let cap = data_json.contains("\"captcha_active\":true");
-                        let login = data_json.contains("\"need_login\":true");
-                        self.ecom_status_text = if cap {
-                            "🧩 TikTok đang yêu cầu kéo CAPTCHA — bấm Mở xem Tab để kéo 1 lần.".to_string()
-                        } else if login {
-                            "⚠️ TikTok chưa đăng nhập — bấm Mở xem Tab để đăng nhập.".to_string()
-                        } else {
-                            "✅ Đã cập nhật dữ liệu TikTok Seller Hôm nay (Tab ngầm).".to_string()
-                        };
-                        self.push_ecom_log(&self.ecom_status_text.clone());
+                    "shopee_health" => {
+                        self.shopee_health_json = data_json.clone();
+                        self.save_export_file("shopee_health_latest.json", &data_json);
+                        self.ecom_status_text = "✅ Đã cập nhật Hiệu Quả Hoạt Động & Sao Quả Tạ Shopee (Tab ngầm).".to_string();
+                        self.push_ecom_log("Shopee Hiệu Quả Hoạt Động: đã cập nhật Sao Quả Tạ, LSR/NFR, CRR.");
                         for t in &mut self.tabs {
-                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("seller-vn.tiktok.com") {
-                                t.worker_status = if cap {
-                                    "Cần kéo CAPTCHA".to_string()
-                                } else if login {
+                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("/portal/accounthealth") {
+                                t.worker_status = if data_json.contains("\"need_login\":true") {
                                     "Cần đăng nhập".to_string()
                                 } else {
                                     "Đã lấy xong".to_string()
                                 };
                             }
+                        }
+                    }
+                    "shopee_shop_index" => {
+                        self.handle_shopee_shop_index(&data_json);
+                    }
+                    "shopee_shop_opening" => {
+                        self.handle_shopee_shop_opening(&data_json);
+                    }
+                    "tiktok" => {
+                        self.tiktok_json = data_json.clone();
+                        self.save_export_file("tiktok_latest.json", &data_json);
+                        let (status_text, worker_status) = tiktok_status_messages(tiktok_ads_status(&data_json));
+                        self.ecom_status_text = status_text.to_string();
+                        self.push_ecom_log(&self.ecom_status_text.clone());
+                        for t in &mut self.tabs {
+                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("seller-vn.tiktok.com") {
+                                t.worker_status = worker_status.to_string();
+                            }
+                        }
+                        if self.tiktok_scan_phase == "ads" {
+                            self.continue_tiktok_sequence(
+                                "https://seller-vn.tiktok.com/health-center?shop_region=VN",
+                                "health_center",
+                            );
+                        }
+                    }
+                    "tiktok_health" => {
+                        self.tiktok_health_json = data_json.clone();
+                        self.save_export_file("tiktok_health_latest.json", &data_json);
+                        if self.tiktok_scan_phase == "health_center" {
+                            self.continue_tiktok_sequence(
+                                "https://seller-vn.tiktok.com/health-center/experience-score?shop_region=VN",
+                                "store_score",
+                            );
+                        } else {
+                            self.tiktok_scan_phase = "done".to_string();
                         }
                     }
                     _ => {}
@@ -6058,6 +7342,51 @@ impl TpBrowserApp {
                 }
                 self.sync_all_ui();
             }
+            AppCmd::DiscoverShopeeShops { tab_id } => {
+                self.shopee_discovery_retry_attempt = 0;
+                self.start_shopee_discovery(tab_id, true, None);
+            }
+            AppCmd::ShopeeDiscoveryUnavailable => {
+                self.shopee_discovery_json = shopee_discovery::unavailable();
+                self.sync_workspace_view();
+            }
+            AppCmd::SetShopeeShopSelection { platform, shop_id, selected } => {
+                if !valid_shop_selection(&platform, &shop_id) {
+                    return;
+                }
+                let selection = ShopSelection { platform, shop_id };
+                self.selected_shops.retain(|item| item != &selection);
+                if selected {
+                    self.selected_shops.push(selection);
+                }
+                self.save_config();
+                self.sync_workspace_view();
+            }
+            AppCmd::NavigationEvent {
+                tab_id,
+                navigation_id,
+                phase,
+                success,
+            } => {
+                let mut retry_discovery = false;
+                if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == tab_id) {
+                    match phase {
+                        NavigationPhase::Starting => tab.navigation_readiness.start(navigation_id),
+                        NavigationPhase::ContentLoading => tab.navigation_readiness.content_loading(navigation_id),
+                        NavigationPhase::Completed => {
+                            tab.navigation_readiness.completed(navigation_id, success);
+                            retry_discovery = self.shopee_discovery_tab_id == Some(tab_id)
+                                && success
+                                && shopee_discovery::valid_url(&tab.url)
+                                && tab.navigation_readiness.ready_navigation_id().is_some();
+                        }
+                    }
+                }
+                if retry_discovery {
+                    self.shopee_discovery_tab_id = None;
+                    self.start_shopee_discovery(Some(tab_id), true, None);
+                }
+            }
             AppCmd::PageFinished { tab_id, url } => {
                 let mut finished_title = String::new();
                 let mut is_bot_worker = false;
@@ -6075,9 +7404,23 @@ impl TpBrowserApp {
                         }
                     }
                 }
-                if is_bot_worker {
+                if self.shopee_discovery_tab_id == Some(tab_id)
+                    && shopee_discovery::valid_url(&url)
+                    && self.tabs.iter().find(|t| t.id == tab_id)
+                        .and_then(|t| t.navigation_readiness.ready_navigation_id()).is_some()
+                {
+                    self.shopee_discovery_tab_id = None;
+                    self.start_shopee_discovery(Some(tab_id), true, None);
+                } else if is_bot_worker {
                     self.trigger_worker_scan_by_id(tab_id, &url);
                     self.sync_workspace_view();
+                } else if url == "https://banhang.shopee.vn/portal/shop" {
+                    if let Some(shop_id) = self.shopee_open_target_id.take() {
+                        if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+                            let js = format!("window.__tpShopTarget={{shop_id:{:?}}}; setTimeout(function(){{ {} }}, 900);", shop_id, SHOPEE_OPEN_SHOP_JS);
+                            let _ = tab.webview.evaluate_script(&js);
+                        }
+                    }
                 }
                 if !finished_title.is_empty() {
                     self.record_history(&finished_title, &url);
@@ -6093,6 +7436,45 @@ impl TpBrowserApp {
             }
             AppCmd::McpDispatch(msg) => {
                 self.handle_mcp_msg(msg);
+            }
+            AppCmd::ShopeeNativeResult { req_id, tab_id, payload } => {
+                let navigation_id = self.tabs.iter().find(|t| t.id == tab_id).and_then(|t| t.navigation_readiness.ready_navigation_id());
+                if let Some((reply, in_time)) = shopee_discovery::take_pending(&mut self.shopee_pending, req_id, tab_id, navigation_id, Instant::now()) {
+                    let result = if in_time {
+                        self.tabs.iter().find(|t| t.id == tab_id)
+                            .and_then(|t| t.webview.url().ok())
+                            .zip(payload.0)
+                            .map(|(url, raw)| shopee_discovery::normalize(&url, &raw))
+                            .unwrap_or_else(shopee_discovery::unavailable)
+                    } else { shopee_discovery::unavailable() };
+                    let retry_status = parse_json(&result)
+                        .ok()
+                        .and_then(|v| v.get("status").and_then(JsonVal::as_str).map(str::to_owned))
+                                                .is_some_and(|status| matches!(status.as_str(), "loading" | "unavailable" | "no_data"));
+                    let _ = reply.send(Ok(result.clone()));
+                    if self.shopee_workspace_pending.remove(&req_id) {
+                        if retry_status {
+                            self.shopee_discovery_json = shopee_discovery::result_loading();
+                            let attempt = self.shopee_discovery_retry_attempt.saturating_add(1);
+                            if attempt <= 8 {
+                                let proxy = self.proxy.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_millis(700));
+                                    let _ = proxy.send_event(AppCmd::RetryShopeeDiscovery { tab_id, attempt });
+                                });
+                            }
+                        } else {
+                            self.shopee_discovery_json = workspace_discovery_payload(&result);
+                        }
+                        self.sync_workspace_view();
+                    }
+                }
+            }
+            AppCmd::RetryShopeeDiscovery { tab_id, attempt } => {
+                if attempt <= 8 && self.tabs.iter().any(|tab| tab.id == tab_id) {
+                    self.shopee_discovery_retry_attempt = attempt;
+                    self.start_shopee_discovery(Some(tab_id), true, None);
+                }
             }
             AppCmd::McpJsCallback {
                 req_id,
@@ -6251,6 +7633,36 @@ impl TpBrowserApp {
             } => {
                 let args = parse_json(&args_json).unwrap_or_else(|_| JsonVal::obj(vec![]));
                 match tool.as_str() {
+                    "tp_discover_shopee_shops" => {
+                        let tab = match shopee_discovery::parse_tab_id(args.get("tab_id")) {
+                            Ok(Some(id)) => self.tabs.iter().find(|t| t.id == id),
+                            Ok(None) => self.tabs.get(self.active_idx),
+                            Err(()) => { let _ = reply.send(Ok(shopee_discovery::unavailable())); return; }
+                        };
+                        let Some(tab) = tab else { let _ = reply.send(Ok(shopee_discovery::unavailable())); return; };
+                        let tab_id = tab.id;
+                        let Some(saved_navigation_id) = tab.navigation_readiness.ready_navigation_id() else {
+                            let _ = reply.send(Ok(shopee_discovery::unavailable())); return;
+                        };
+                        if !shopee_discovery::admit_navigation(&tab.navigation_readiness, Some(saved_navigation_id))
+                            || !tab.webview.url().ok().is_some_and(|u| shopee_discovery::valid_url(&u))
+                        {
+                            let _ = reply.send(Ok(shopee_discovery::unavailable())); return;
+                        }
+                        let req_id = self.next_mcp_req_id;
+                        self.next_mcp_req_id = self.next_mcp_req_id.wrapping_add(1).max(1);
+                        if let Err(reply) = shopee_discovery::insert_pending(&mut self.shopee_pending, req_id, (tab_id, saved_navigation_id, Instant::now() + shopee_discovery::TIMEOUT, reply)) {
+                            let _ = reply.send(Ok(shopee_discovery::unavailable())); return;
+                        }
+                        let proxy = self.proxy.clone();
+                        let eval = tab.webview.evaluate_script_with_callback(shopee_discovery::SCRIPT, move |payload| {
+                            let payload = if payload.len() <= 128 * 1024 { Some(payload) } else { None };
+                            let _ = proxy.send_event(AppCmd::ShopeeNativeResult { req_id, tab_id, payload: ShopeePayload(payload) });
+                        });
+                        if eval.is_err() {
+                            if let Some((_, _, _, reply)) = self.shopee_pending.remove(&req_id) { let _ = reply.send(Ok(shopee_discovery::unavailable())); }
+                        }
+                    }
                     "tp_list_tabs" => {
                         let _ = reply.send(Ok(self.mcp_tabs_snapshot()));
                     }
@@ -6640,7 +8052,12 @@ fn main() -> wry::Result<()> {
     });
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+        let expired_shopee = shopee_discovery::expire_pending(&mut app.shopee_pending, Instant::now());
+        if expired_shopee.iter().any(|id| app.shopee_workspace_pending.remove(id)) {
+            app.shopee_discovery_json = shopee_discovery::unavailable();
+            app.sync_workspace_view();
+        }
+        *control_flow = shopee_wait_flow(*control_flow, shopee_discovery::nearest_deadline(&app.shopee_pending));
 
         match event {
             Event::WindowEvent { event, .. } => match event {
@@ -6802,7 +8219,9 @@ fn main() -> wry::Result<()> {
                 _ => {}
             },
             Event::UserEvent(cmd) => {
-                let cmd_desc = format!("{:?}", cmd);
+                let cmd_desc = if matches!(&cmd, AppCmd::ShopeeNativeResult { .. }) {
+                    "ShopeeNativeResult [redacted]".to_string()
+                } else { format!("{:?}", cmd) };
                 let t_evt = Instant::now();
                 app.execute(cmd);
                 let dur = t_evt.elapsed().as_secs_f64() * 1000.0;
@@ -6815,11 +8234,134 @@ fn main() -> wry::Result<()> {
             }
             _ => {}
         }
+        *control_flow = shopee_wait_flow(*control_flow, shopee_discovery::nearest_deadline(&app.shopee_pending));
     });
+}
+
+fn shopee_wait_flow(current: ControlFlow, deadline: Option<Instant>) -> ControlFlow {
+    if current == ControlFlow::Exit {
+        return ControlFlow::Exit;
+    }
+    match (current, deadline) {
+        (ControlFlow::WaitUntil(existing), Some(next)) => {
+            ControlFlow::WaitUntil(existing.min(next))
+        }
+        (_, Some(next)) => ControlFlow::WaitUntil(next),
+        _ => ControlFlow::Wait,
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tiktok_ads_status_contract_fails_closed() {
+        use super::{mark_tiktok_cache_restored, tiktok_ads_status, tiktok_status_messages, TIKTOK_ADS_STATUSES};
+        for s in TIKTOK_ADS_STATUSES {
+            assert_eq!(tiktok_ads_status(&format!("{{\"status\":\"{}\"}}", s)), s);
+        }
+        assert_eq!(tiktok_ads_status("{\"status\":\"fresh\"}"), "error");
+        assert_eq!(tiktok_ads_status("not json"), "error");
+        assert_eq!(tiktok_ads_status("{\"logged_in\":true,\"captcha_active\":true}"), "captcha");
+        assert_eq!(tiktok_ads_status("{\"logged_in\":false,\"need_login\":true}"), "needs_login");
+        assert_eq!(tiktok_ads_status("{\"logged_in\":true,\"error\":\"x\"}"), "error");
+        // Legacy payload without provenance is never promoted to "ok".
+        assert_eq!(tiktok_ads_status("{\"logged_in\":true,\"cost_ads\":1}"), "partial");
+        for s in ["loading", "needs_login", "captcha", "unavailable", "error"] {
+            assert_ne!(tiktok_status_messages(s).1, "Đã lấy xong");
+        }
+        let restored = mark_tiktok_cache_restored("{\"status\":\"ok\",\"cache_state\":\"live\"}").unwrap();
+        assert!(restored.contains("\"cache_state\":\"restored_from_disk\""));
+        assert!(!restored.contains("\"live\""));
+        assert_eq!(tiktok_ads_status(&restored), "partial", "restored ok must not stay fresh");
+        let restored = mark_tiktok_cache_restored(
+            "{\"status\":\"ok\",\"status_reasons\":[],\"period\":{\"start\":\"2026-11-16\",\"end\":\"2026-11-16\",\"is_today\":true}}",
+        )
+        .unwrap();
+        assert!(restored.contains("\"status_reasons\":[\"restored_from_disk\"]"));
+        assert!(restored.contains("\"is_today\":false"));
+        assert!(!restored.contains("\"is_today\":true"));
+        assert!(restored.contains("\"start\":\"2026-11-16\""), "original period kept as provenance");
+        let restored_partial = mark_tiktok_cache_restored("{\"status\":\"partial\"}").unwrap();
+        assert_eq!(tiktok_ads_status(&restored_partial), "partial");
+        assert!(mark_tiktok_cache_restored("[1]").is_none());
+    }
+
+    #[test]
+    fn tiktok_ads_collector_envelope_is_read_only_and_null_preserving() {
+        let js = super::TIKTOK_PASSIVE_SCAN_JS;
+        for key in [
+            "\"tp.tiktok.ads.v1\"", "status:", "source_url:", "captured_at:", "period:", "metrics:",
+            "campaigns_provenance:", "provenance:", "raw:", "\"needs_login\"", "\"captcha\"",
+            "\"loading\"", "\"unavailable\"", "\"partial\"", "\"error\"", "\"ok\"", "read_only: true",
+        ] {
+            assert!(js.contains(key), "missing envelope key {key}");
+        }
+        for forbidden in [".click(", ".submit(", "dispatchEvent", "location.href =", "location.assign", "location.replace", "fetch(", "XMLHttpRequest"] {
+            assert!(!js.contains(forbidden), "collector must stay passive: {forbidden}");
+        }
+        assert!(!js.contains("if (!s) return 0;"));
+        assert!(!js.contains("return isNaN(v) ? 0 : v;"));
+        assert!(!js.contains("name: \"GMV Max Toàn Cửa Hàng\""), "no synthesized campaign rows");
+        assert!(js.contains("is_today: a === b && a === today"));
+        assert!(js.contains("return \"Không xác định\";"));
+        // Derived core metrics can never yield "ok" and are labelled.
+        assert!(js.contains("derived.length === 0 && campProv.source !== \"unavailable\""));
+        assert!(js.contains("reasons.push(k + \"_derived\")"));
+        assert!(js.contains("derived_fields: derivedFields"));
+        // Async steps are guarded and scroll is restored on failure.
+        assert!(js.contains("setTimeout(guarded(extractAndSend, \"retry\"), 1100)"));
+        assert!(js.contains("setTimeout(guarded(sweepNext, \"sweep\"), 220)"));
+        assert!(js.contains("guarded(extractAndSend, \"extract\")()"));
+        assert!(!js.contains("setTimeout(extractAndSend") && !js.contains("setTimeout(sweepNext"));
+        assert!(js.contains("function postError(err, where) {\n    restoreScroll();"));
+    }
+
+    #[test]
+    fn navigation_registration_failure_rolls_back_partial_tokens() {
+        let mut state = super::NavigationRegistrationState::new();
+        state.tokens = [Some(11), Some(22), None];
+        state.fail(super::NavigationRegistrationPhase::NavigationCompleted, [true, true, true]);
+
+        assert_eq!(state.failure.map(|failure| failure.phase), Some(super::NavigationRegistrationPhase::NavigationCompleted));
+        assert_eq!(state.failure.map(|failure| failure.hresult), Some(-1));
+        assert_eq!(state.tokens, [None, None, None]);
+        assert!(!state.is_usable());
+    }
+
+    #[test]
+    fn navigation_registration_teardown_is_idempotent_and_retains_failed_removals() {
+        let mut state = super::NavigationRegistrationState::new();
+        state.tokens = [Some(31), Some(32), Some(33)];
+        state.fail(super::NavigationRegistrationPhase::ContentLoading, [true, false, false]);
+
+        assert_eq!(state.tokens, [None, Some(32), Some(33)]);
+        let first = state.take_tokens_for_teardown();
+        assert_eq!(first, [None, Some(32), Some(33)]);
+        assert_eq!(state.take_tokens_for_teardown(), [None, None, None]);
+    }
+
+    #[test]
+    fn shopee_wait_schedule_preserves_exit_and_selects_deadline() {
+        let deadline = Instant::now() + shopee_discovery::TIMEOUT;
+        assert_eq!(shopee_wait_flow(ControlFlow::Wait, Some(deadline)), ControlFlow::WaitUntil(deadline));
+        assert_eq!(shopee_wait_flow(ControlFlow::WaitUntil(deadline), None), ControlFlow::Wait);
+        assert_eq!(shopee_wait_flow(ControlFlow::Exit, Some(deadline)), ControlFlow::Exit);
+    }
+    #[test]
+    fn shopee_wait_schedule_does_not_delay_an_earlier_pending_wakeup() {
+        let now = Instant::now();
+        let earlier = now + std::time::Duration::from_secs(1);
+        let later = now + std::time::Duration::from_secs(2);
+        assert_eq!(
+            shopee_wait_flow(ControlFlow::WaitUntil(earlier), Some(later)),
+            ControlFlow::WaitUntil(earlier),
+        );
+    }
+    #[test]
+    fn shopee_callback_debug_does_not_expose_payload() {
+        let cmd = super::AppCmd::ShopeeNativeResult { req_id: 1, tab_id: 2, payload: super::ShopeePayload(Some("secret-shop-name".into())) };
+        assert!(!format!("{:?}", cmd).contains("secret-shop-name"));
+    }
     #[test]
     fn right_alt_k_signal_requires_right_alt_only() {
         let mut state = super::AltKeyState::default();
@@ -6838,6 +8380,83 @@ mod tests {
     }
 
     use super::*;
+
+    #[cfg(any())]
+    #[test]
+    fn selected_shops_same_platform_round_trip_with_distinct_ids() {
+        let shops = vec![
+            ShopSelection { platform: "shopee".into(), shop_id: "shop-1".into() },
+            ShopSelection { platform: "shopee".into(), shop_id: "shop-2".into() },
+        ];
+        let config = format!("{{\"selected_shops\":{}}}", serialize_shop_selections(&shops));
+        assert_eq!(parse_shop_selections(&config), shops);
+        assert!(parse_shop_selections("{}").is_empty());
+        assert!(parse_shop_selections(r#"{"selected_shops":"unknown"}"#).is_empty());
+    }
+
+    #[cfg(any())]
+    #[test]
+    fn config_payload_and_ordered_writes_preserve_latest_shop_snapshot() {
+        let root = std::env::temp_dir().join(format!("tpbrowser-config-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("snapshot.json");
+        let first = vec![ShopSelection { platform: "shopee".into(), shop_id: "one".into(), display_name: "A\"".into(), selected: true }];
+        let mut latest = first.clone();
+        latest.push(ShopSelection { platform: "shopee".into(), shop_id: "two".into() });
+        let old_payload = config_payload_with_selections("{\"ui_theme\":\"dark\"}", &first);
+        let new_payload = config_payload_with_selections("{\"ui_theme\":\"dark\"}", &latest);
+        write_config_snapshot(&path, &old_payload).unwrap();
+        write_config_snapshot(&path, &new_payload).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(parse_shop_selections(&saved), latest);
+        assert_eq!(parse_json(&saved).unwrap().get("ui_theme").and_then(JsonVal::as_str), Some("dark"));
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(any())]
+    #[test]
+    fn selected_shops_ignore_invalid_records_and_default_optional_fields() {
+        let raw = r#"{"selected_shops":[null,{}, {"platform":"other","account_id":"a","shop_id":"b"}, {"platform":"shopee","account_id":" ","shop_id":"b"}, {"platform":"tiktok","account_id":17,"shop_id":"b"}, {"platform":"tiktok","account_id":"a","shop_id":""}, {"platform":"tiktok","account_id":"a","shop_id":"b","selected":"yes","display_name":42}]}"#;
+        assert_eq!(parse_shop_selections(raw), vec![ShopSelection { platform: "tiktok".into(), account_id: "a".into(), shop_id: "b".into(), display_name: String::new(), selected: false }]);
+        for raw in ["", "null", "[]", "{", r#"{"selected_shops":null}"#, r#"{"selected_shops":{}}"#] {
+            assert!(parse_shop_selections(raw).is_empty());
+        }
+    }
+
+    #[cfg(any())]
+    #[test]
+    fn selected_shops_reject_malformed_unicode_identity() {
+        for field in ["platform", "account_id", "shop_id"] {
+            for invalid in [r"\uD800", r"\uDC00", r"\uD800\u0041", r"\u12xz", r"\u123"] {
+                let mut fields = [("platform", "shopee"), ("account_id", "account"), ("shop_id", "shop")];
+                fields.iter_mut().find(|(key, _)| *key == field).unwrap().1 = match field {
+                    "platform" => match invalid { r"\uD800" => r"shopee\uD800", r"\uDC00" => r"shopee\uDC00", r"\uD800\u0041" => r"shopee\uD800\u0041", r"\u12xz" => r"shopee\u12xz", _ => r"shopee\u123" },
+                    _ => match invalid { r"\uD800" => r"id\uD800", r"\uDC00" => r"id\uDC00", r"\uD800\u0041" => r"id\uD800\u0041", r"\u12xz" => r"id\u12xz", _ => r"id\u123" },
+                };
+                let raw = format!(r#"{{"selected_shops":[{{"platform":"{}","account_id":"{}","shop_id":"{}"}}]}}"#, fields[0].1, fields[1].1, fields[2].1);
+                assert!(parse_shop_selections(&raw).is_empty(), "accepted {field}: {invalid}");
+            }
+        }
+        let malformed_hex = r#"{"selected_shops":[{"platform":"shopee","account_id":"id\u+123","shop_id":"b"}]}"#;
+        assert!(parse_shop_selections(malformed_hex).is_empty());
+        let valid = r#"{"selected_shops":[{"platform":"shopee","account_id":"a\uD83D\uDE00","shop_id":"b"}]}"#;
+        assert_eq!(parse_shop_selections(valid)[0].account_id, "a😀");
+    }
+
+    #[test]
+    fn selection_only_model_round_trip_dedupes_and_rejects_legacy_records() {
+        let raw = r#"{"selected_shops":[{"platform":"shopee","shop_id":"one"},{"platform":"shopee","shop_id":"one"},{"platform":"tiktok","shop_id":"same"},{"platform":"shopee","shop_id":"ok","account_id":"legacy"}]}"#;
+        let selections = parse_shop_selections(raw);
+        assert_eq!(selections, vec![ShopSelection { platform: "shopee".into(), shop_id: "one".into() }]);
+        let serialized = serialize_shop_selections(&selections);
+        assert_eq!(parse_shop_selections(&format!("{{\"selected_shops\":{}}}", serialized)), selections);
+        assert!(!serialized.contains("account_id"));
+        assert_ne!(
+            ShopSelection { platform: "shopee".into(), shop_id: "same".into() },
+            ShopSelection { platform: "tiktok".into(), shop_id: "same".into() },
+        );
+    }
 
     #[test]
     fn persisted_window_size_restores_and_clamps_geometry() {
@@ -7068,8 +8687,8 @@ mod tests {
     fn test_workspace_session_roundtrip_and_legacy_default() {
         let session = format!(
             "{{\"active_workspace_id\":\"research\",\"tabs\":[{},{}]}}",
-            TpBrowserApp::serialize_session_tab("https://example.com", "default", "default", "research", false),
-            TpBrowserApp::serialize_session_tab("https://example.org", "default", "shopping", "personal", false),
+            TpBrowserApp::serialize_session_tab("https://example.com", "default", "default", "research", false, Some(7)),
+            TpBrowserApp::serialize_session_tab("https://example.org", "default", "shopping", "personal", false, None),
         );
         let value = parse_json(&session).expect("workspace session should parse");
         assert_eq!(
@@ -7089,6 +8708,8 @@ mod tests {
             tabs[0].get("workspace_id").and_then(|v| v.as_str()),
             Some("research")
         );
+        assert_eq!(tabs[0].get("tab_group_id").and_then(JsonVal::as_u64), Some(7));
+        assert_eq!(tabs[1].get("tab_group_id").and_then(JsonVal::as_u64), Some(0));
         assert_eq!(
             tabs[1].get("workspace_id").and_then(|v| v.as_str()),
             Some("personal")
@@ -7130,5 +8751,61 @@ mod tests {
         assert_eq!(TpBrowserApp::container_profile_name("work-1"), "container_work-1");
         assert_eq!(TpBrowserApp::container_profile_name("work-1"), TpBrowserApp::container_profile_name("work-1"));
         assert_ne!(TpBrowserApp::container_profile_name("work-1"), TpBrowserApp::container_profile_name("personal"));
+    }
+
+    #[test]
+    fn workspace_discovery_command_accepts_only_optional_valid_tab_id() {
+        assert_eq!(parse_workspace_discovery_tab_id(r#"{"cmd":"discover_shopee_shops"}"#), Ok(None));
+        assert_eq!(parse_workspace_discovery_tab_id(r#"{"cmd":"discover_shopee_shops","tab_id":7}"#), Ok(Some(7)));
+        assert_eq!(parse_workspace_discovery_tab_id(r#"{"cmd":"discover_shopee_shops","tab_id":0}"#), Err(()));
+        assert_eq!(parse_workspace_discovery_tab_id(r#"{"cmd":"discover_shopee_shops","tab_id":"7"}"#), Err(()));
+    }
+
+    #[test]
+    fn workspace_discovery_target_skips_workers_and_invalid_or_unready_urls() {
+        let tabs = vec![(1, false, "https://banhang.shopee.vn/portal/shop".to_string(), true),
+            (2, true, "https://banhang.shopee.vn/portal/shop".to_string(), true),
+            (3, false, "https://example.test".to_string(), true),
+            (4, false, "https://banhang.shopee.vn/portal/shop?x".to_string(), false),
+            (5, false, "https://banhang.shopee.vn/portal/shop#x".to_string(), true)];
+        assert_eq!(select_workspace_discovery_tab(&tabs, None), Some(1));
+        assert_eq!(select_workspace_discovery_tab(&tabs, Some(2)), None);
+        assert_eq!(select_workspace_discovery_tab(&tabs, Some(5)), Some(5));
+    }
+
+    #[test]
+    fn workspace_discovery_payload_exposes_only_safe_shape() {
+        let payload = workspace_discovery_payload(r#"{"status":"ok","account_identity":"unavailable","shops":[{"shop_id":"1","display_name":"A"}]}"#);
+        assert!(payload.contains("account_identity"));
+        assert!(payload.contains("shop_id"));
+        assert!(payload.contains("display_name"));
+        assert!(!payload.contains("\"account_id\""));
+    }
+
+    #[test]
+    fn workspace_config_validation_fails_closed_for_malformed_state() {
+        let default = Workspace::default_workspace();
+        let work = Workspace { id: "workspace-17".to_string(), name: "Research".to_string() };
+        assert!(valid_workspace_list(&[default.clone(), work.clone()]));
+        assert!(!valid_workspace_list(&[work.clone()]));
+        assert!(!valid_workspace_list(&[default.clone(), Workspace { id: "default".to_string(), name: "Duplicate".to_string() }]));
+        assert!(!valid_workspace_list(&[default, Workspace { id: "bad/id".to_string(), name: "Invalid".to_string() }]));
+        assert!(!valid_workspace_name("\n"));
+    }
+
+    #[test]
+    fn spaces_picker_contract_exposes_crud_and_active_space_state() {
+        assert!(TAB_SHELL_HTML.contains("workspaces"));
+        assert!(TAB_SHELL_HTML.contains("set_active_workspace"));
+        assert!(TAB_SHELL_HTML.contains("create_workspace"));
+        assert!(TAB_SHELL_HTML.contains("rename_workspace"));
+        assert!(TAB_SHELL_HTML.contains("delete_workspace"));
+    }
+
+    #[test]
+    fn workspace_contract_keeps_selection_in_memory_without_persistence() {
+        assert!(WORKSPACE_HTML.contains("selectedShopKeys"));
+        assert!(WORKSPACE_HTML.contains("set_shopee_shop_selection"));
+        assert!(WORKSPACE_HTML.contains("selected_shops"));
     }
 }

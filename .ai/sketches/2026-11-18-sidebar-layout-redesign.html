@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>TPbrowser — Thiết Kế Lại Bố Cục Sidebar Tab Dọc</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #121418;
+    color: #F5F2EB;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  h1 {
+    font-size: 20px;
+    color: #E2BE68;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .desc {
+    font-size: 13px;
+    color: #A39B8B;
+    margin-bottom: 24px;
+  }
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 280px 280px 280px;
+    gap: 20px;
+    justify-content: start;
+    align-items: start;
+  }
+  .card {
+    background: #181B22;
+    border: 1px solid rgba(212, 175, 55, 0.25);
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tag-old { color: #f87171; }
+  .tag-rec { color: #4ade80; }
+  .tag-opt { color: #60a5fa; }
+
+  /* MÔ PHỎNG SIDEBAR LIGHT THEME (CHUẨN THEO ẢNH CHỤP CỦA ANH) */
+  .sidebar-mockup {
+    width: 248px;
+    height: 520px;
+    background: #EFE9DC;
+    border: 1px solid rgba(24, 19, 12, 0.22);
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: #18130C;
+    font-size: 11.5px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+
+  /* 1. Hàng Window Header */
+  .mock-window-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 28px;
+  }
+  .mock-brand-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #A8741A 0%, #7A510B 100%);
+    color: #FFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 11px;
+    border: 1px solid rgba(24, 19, 12, 0.3);
+    cursor: pointer;
+  }
+  .mock-drag {
+    flex: 1;
+    height: 24px;
+  }
+  .mock-win-ctrls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .mock-win-btn {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    color: #18130C;
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  /* Cũ: nút + nằm góc phải */
+  .mock-header-actions-old {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .mock-plus-btn-old {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #dc2626;
+    background: rgba(220, 38, 38, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #dc2626;
+    font-weight: 700;
+  }
+  .mock-label-old {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    color: #524433;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(24, 19, 12, 0.22);
+  }
+
+  /* 2. Thanh URL */
+  .mock-url-form {
+    display: flex;
+    align-items: center;
+    background: #FFFFFF;
+    border: 1px solid rgba(24, 19, 12, 0.28);
+    border-radius: 999px;
+    padding: 5px 8px 5px 12px;
+    gap: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+  .mock-url-text {
+    flex: 1;
+    color: #18130C;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mock-url-arrow {
+    border: 1px solid rgba(24, 19, 12, 0.2);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: 11px;
+    color: #524433;
+  }
+
+  /* 3. Nút Thêm Tab Mới Đề Xuất */
+  .mock-newtab-full-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #FFFFFF;
+    border: 1px solid rgba(24, 19, 12, 0.25);
+    border-radius: 999px;
+    padding: 6px 12px;
+    color: #18130C;
+    font-weight: 600;
+    font-size: 11.5px;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: all 0.15s ease;
+  }
+  .mock-newtab-full-btn:hover {
+    background: #F6F2EA;
+    border-color: #7A510B;
+  }
+
+  /* 4. Đường kẻ phân tách (Divider) */
+  .mock-divider {
+    height: 1px;
+    background: rgba(24, 19, 12, 0.20);
+    margin: 2px 0;
+  }
+
+  /* 5. Khu vực Extensions */
+  .mock-ext-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+  }
+  .mock-ext-badge {
+    font-size: 9px;
+    font-weight: 700;
+    color: #524433;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .mock-ext-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: #FFF;
+    border: 1px solid rgba(24, 19, 12, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+  }
+
+  /* 6. Khu vực Ghim Tab Thường Dùng (Pinned Grid) */
+  .mock-pinned-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+    padding: 3px 0;
+  }
+  .mock-pinned-item {
+    height: 32px;
+    border-radius: 8px;
+    background: #FFFFFF;
+    border: 1px solid rgba(24, 19, 12, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 13px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    position: relative;
+  }
+  .mock-pinned-item.active {
+    border-color: #7A510B;
+    background: #FFF9EE;
+  }
+
+  /* 7. Danh sách Tab Thường */
+  .mock-tab-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .mock-tab-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    color: #18130C;
+    background: transparent;
+    cursor: pointer;
+  }
+  .mock-tab-item.active {
+    background: #FFFFFF;
+    border: 1px solid rgba(24, 19, 12, 0.22);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .mock-tab-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+  .mock-tab-title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11.5px;
+  }
+  .mock-tab-pin-ico {
+    font-size: 11px;
+    color: #7A510B;
+  }
+  .mock-tab-close {
+    font-size: 12px;
+    color: #524433;
+  }
+
+  /* Spaces ở đáy */
+  .mock-spaces {
+    padding-top: 6px;
+    border-top: 1px solid rgba(24, 19, 12, 0.20);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: #524433;
+  }
+  .mock-space-pill {
+    background: #FFF;
+    border: 1px solid rgba(24, 19, 12, 0.18);
+    border-radius: 6px;
+    padding: 3px 8px;
+    color: #18130C;
+  }
+
+  .notes {
+    margin-top: 14px;
+    font-size: 11.5px;
+    color: #C8C0B0;
+    line-height: 1.6;
+  }
+  .notes li { margin-left: 16px; margin-bottom: 4px; }
+  .highlight { color: #E2BE68; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>TPbrowser — Brainstorming Thiết Kế Lại Sidebar Tab Dọc</h1>
+<p class="desc">So sánh trực quan hiện tại với các phương án sắp xếp theo yêu cầu của anh Phú.</p>
+
+<div class="comparison-grid">
+
+  <!-- CỘT 1: HIỆN TẠI -->
+  <div class="card">
+    <div class="card-title tag-old">❌ 1. Hiện Tại (Theo Ảnh)</div>
+    <div class="sidebar-mockup">
+      <!-- Header -->
+      <div class="mock-window-row">
+        <div class="mock-brand-icon" title="Menu Cài đặt">TP</div>
+        <div class="mock-drag"></div>
+        <div class="mock-win-ctrls">
+          <div class="mock-win-btn">−</div>
+          <div class="mock-win-btn">□</div>
+          <div class="mock-win-btn">×</div>
+        </div>
+      </div>
+
+      <!-- Hàng + cô đơn -->
+      <div class="mock-header-actions-old">
+        <div class="mock-plus-btn-old" title="Nút thêm tab đang ở đây">＋</div>
+      </div>
+
+      <!-- Tiêu đề TABS -->
+      <div class="mock-label-old">TABS</div>
+
+      <!-- Thanh URL -->
+      <div class="mock-url-form">
+        <span class="mock-url-text">Tìm kiếm hoặc nhập địa chỉ</span>
+        <span class="mock-url-arrow">→</span>
+      </div>
+
+      <!-- Tab list -->
+      <div class="mock-tab-list">
+        <div class="mock-tab-item">
+          <span class="mock-tab-icon">🟠</span>
+          <span class="mock-tab-title">Không gian TMĐT</span>
+        </div>
+        <div class="mock-tab-item">
+          <span class="mock-tab-icon">🌐</span>
+          <span class="mock-tab-title">subaccount.shopee.com</span>
+        </div>
+        <div class="mock-tab-item active">
+          <span class="mock-tab-icon">🟠</span>
+          <span class="mock-tab-title">Không gian bắt đầu</span>
+          <span class="mock-tab-pin-ico">📌</span>
+          <span class="mock-tab-close">×</span>
+        </div>
+      </div>
+
+      <div class="mock-spaces">
+        <span>SPACES</span>
+        <span class="mock-space-pill">Default ▾</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nút [+] ở góc phải bị trống trải và lỡ cỡ.</li>
+      <li>Chữ "TABS" chiếm 1 dòng thừa thãi.</li>
+      <li>Thanh URL nằm tụt bên dưới.</li>
+    </ul>
+  </div>
+
+  <!-- CỘT 2: ĐỀ XUẤT A (CHUẨN FORM: Nút + dưới thanh URL) -->
+  <div class="card" style="border-color: #4ade80;">
+    <div class="card-title tag-rec">✅ 2. Đề Xuất A (Khuyên Dùng)</div>
+    <div class="sidebar-mockup">
+      <!-- Header -->
+      <div class="mock-window-row">
+        <div class="mock-brand-icon" title="Menu Cài đặt">TP</div>
+        <div class="mock-drag"></div>
+        <div class="mock-win-ctrls">
+          <div class="mock-win-btn">−</div>
+          <div class="mock-win-btn">□</div>
+          <div class="mock-win-btn">×</div>
+        </div>
+      </div>
+
+      <!-- 1. Thanh URL lên ngay vị trí đầu -->
+      <div class="mock-url-form">
+        <span class="mock-url-text">Tìm kiếm hoặc nhập địa chỉ</span>
+        <span class="mock-url-arrow">→</span>
+      </div>
+
+      <!-- 2. Nút Thêm Tab Mới dạng button sang trọng ngay dưới URL -->
+      <div class="mock-newtab-full-btn" title="Mở tab mới (Ctrl+T)">
+        <span style="font-size:14px; font-weight:700; color:#7A510B;">＋</span>
+        <span>Tab mới</span>
+      </div>
+
+      <!-- Nét gạch phân tách (không dùng chữ TABS) -->
+      <div class="mock-divider"></div>
+
+      <!-- 3. Vị trí ghim Extension -->
+      <div class="mock-ext-row">
+        <span class="mock-ext-badge">Tiện ích:</span>
+        <div class="mock-ext-icon" title="uBlock Origin">🛡️</div>
+        <div class="mock-ext-icon" title="Shopee Assistant">🛍️</div>
+        <div class="mock-ext-icon" title="AI Cowork">🤖</div>
+      </div>
+
+      <!-- 4. Vị trí ghim các Tab thường dùng (Pinned tabs grid - khác bookmark) -->
+      <div class="mock-pinned-grid">
+        <div class="mock-pinned-item" title="Facebook">📘</div>
+        <div class="mock-pinned-item active" title="Shopee Seller">🛍️</div>
+        <div class="mock-pinned-item" title="TikTok Shop">🎵</div>
+        <div class="mock-pinned-item" title="Zalo Web">💬</div>
+        <div class="mock-pinned-item" title="ChatGPT">🟢</div>
+      </div>
+
+      <!-- Nét gạch phân tách sang danh sách tab -->
+      <div class="mock-divider"></div>
+
+      <!-- 5. Danh sách Tab thông thường cuộn dọc -->
+      <div class="mock-tab-list">
+        <div class="mock-tab-item">
+          <span class="mock-tab-icon">🌐</span>
+          <span class="mock-tab-title">subaccount.shopee.com</span>
+        </div>
+        <div class="mock-tab-item active">
+          <span class="mock-tab-icon">🟠</span>
+          <span class="mock-tab-title">Không gian bắt đầu</span>
+          <span class="mock-tab-close">×</span>
+        </div>
+      </div>
+
+      <div class="mock-spaces">
+        <span>SPACES</span>
+        <span class="mock-space-pill">Default ▾</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><span class="highlight">Thanh URL lên ngay dưới titlebar</span>: Thuận tay bấm nhất.</li>
+      <li><span class="highlight">Nút [＋ Tab mới]</span>: To rõ, dễ bấm 1-chạm.</li>
+      <li><span class="highlight">Bỏ chữ TABS</span>: Dùng nét gạch phân tách tinh tế.</li>
+      <li><span class="highlight">Ghim Extension & Pinned Tabs</span>: Nằm ngay dưới để truy cập nhanh các app hay dùng.</li>
+    </ul>
+  </div>
+
+  <!-- CỘT 3: ĐỀ XUẤT B (Nút + nằm ở đầu Danh Sách Tab) -->
+  <div class="card">
+    <div class="card-title tag-opt">💡 3. Đề Xuất B (Nút + phân tách riêng)</div>
+    <div class="sidebar-mockup">
+      <!-- Header -->
+      <div class="mock-window-row">
+        <div class="mock-brand-icon" title="Menu Cài đặt">TP</div>
+        <div class="mock-drag"></div>
+        <div class="mock-win-ctrls">
+          <div class="mock-win-btn">−</div>
+          <div class="mock-win-btn">□</div>
+          <div class="mock-win-btn">×</div>
+        </div>
+      </div>
+
+      <!-- 1. Thanh URL lên ngay vị trí đầu -->
+      <div class="mock-url-form">
+        <span class="mock-url-text">Tìm kiếm hoặc nhập địa chỉ</span>
+        <span class="mock-url-arrow">→</span>
+      </div>
+
+      <!-- 2. Vị trí ghim Extension ngay dưới URL -->
+      <div class="mock-ext-row">
+        <span class="mock-ext-badge">Tiện ích:</span>
+        <div class="mock-ext-icon">🛡️</div>
+        <div class="mock-ext-icon">🛍️</div>
+        <div class="mock-ext-icon">🤖</div>
+      </div>
+
+      <!-- 3. Ghim Tab thường dùng (Pinned tabs grid) -->
+      <div class="mock-pinned-grid">
+        <div class="mock-pinned-item">📘</div>
+        <div class="mock-pinned-item active">🛍️</div>
+        <div class="mock-pinned-item">🎵</div>
+        <div class="mock-pinned-item">💬</div>
+        <div class="mock-pinned-item">🟢</div>
+      </div>
+
+      <!-- Nét gạch phân tách -->
+      <div class="mock-divider"></div>
+
+      <!-- 4. Nút Thêm Tab Mới nằm ở đầu danh sách tab thường -->
+      <div class="mock-newtab-full-btn" style="border-style:dashed;">
+        <span style="font-size:14px; font-weight:700; color:#7A510B;">＋</span>
+        <span>Thêm Tab Mới</span>
+      </div>
+
+      <!-- 5. Danh sách Tab thông thường -->
+      <div class="mock-tab-list">
+        <div class="mock-tab-item">
+          <span class="mock-tab-icon">🌐</span>
+          <span class="mock-tab-title">subaccount.shopee.com</span>
+        </div>
+        <div class="mock-tab-item active">
+          <span class="mock-tab-icon">🟠</span>
+          <span class="mock-tab-title">Không gian bắt đầu</span>
+          <span class="mock-tab-close">×</span>
+        </div>
+      </div>
+
+      <div class="mock-spaces">
+        <span>SPACES</span>
+        <span class="mock-space-pill">Default ▾</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Nhóm URL + Extension + Pinned Tabs gom chung 1 khối ở trên.</li>
+      <li>Nút [＋ Thêm Tab Mới] nằm ngay trên đầu danh sách tab thường.</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>

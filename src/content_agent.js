@@ -26,6 +26,15 @@
     true
   );
 
+  function zoomFromCtrlWheel(e) {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!e.deltaY) return;
+    sendRust({ cmd: "zoom_step", delta: e.deltaY < 0 ? 10 : -10 });
+  }
+  window.addEventListener("wheel", zoomFromCtrlWheel, { capture: true, passive: false });
+
   function pickTabFavicon() {
     try {
       var links = document.querySelectorAll("link[rel]");

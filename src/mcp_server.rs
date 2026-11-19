@@ -15,6 +15,7 @@ use crate::json_mini::{parse_json, JsonVal};
 
 pub const DEFAULT_MCP_PORT: u16 = 17777;
 
+
 #[derive(Debug, Clone)]
 pub enum McpBridgeMsg {
     ToolCall {
@@ -80,6 +81,7 @@ where
 
     let mut content_len: usize = 0;
     let mut chunked = false;
+    let mut has_origin = false;
     loop {
         let mut hline = String::new();
         if reader.read_line(&mut hline)? == 0 {
@@ -90,14 +92,23 @@ where
             break;
         }
         if let Some((k, v)) = trimmed.split_once(':') {
-            let kl = k.trim().to_ascii_lowercase();
+            let key = k.trim();
             let vl = v.trim();
-            if kl == "content-length" {
+            if key.eq_ignore_ascii_case("origin") {
+                has_origin = true;
+            }
+            if key.eq_ignore_ascii_case("content-length") {
                 content_len = vl.parse::<usize>().unwrap_or(0);
-            } else if kl == "transfer-encoding" && vl.to_ascii_lowercase().contains("chunked") {
+            } else if key.eq_ignore_ascii_case("transfer-encoding") && vl.to_ascii_lowercase().contains("chunked") {
                 chunked = true;
             }
         }
+    }
+
+    // Loopback MCP is for native clients, not browser-origin requests. Reject
+    // before reading bodies or dispatching any route, including preflights.
+    if has_origin {
+        return write_http_resp(&mut stream, 403, "Forbidden", "application/json", r#"{"error":"browser origin not permitted"}"#);
     }
 
     let body = if chunked {
@@ -189,7 +200,7 @@ fn write_http_resp(
 ) -> io::Result<()> {
     let bytes = body.as_bytes();
     let header = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}; charset=utf-8\r\nContent-Length: {}\r\nMcp-Session-Id: tpbrowser-local\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type, Authorization, Mcp-Session-Id, Accept\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}; charset=utf-8\r\nContent-Length: {}\r\nMcp-Session-Id: tpbrowser-local\r\nConnection: close\r\n\r\n",
         status, reason, content_type, bytes.len()
     );
     stream.write_all(header.as_bytes())?;
@@ -480,6 +491,12 @@ fn build_tools_list() -> JsonVal {
             vec!["type"],
         ),
         tool_def(
+            "tp_discover_shopee_shops",
+            "Read the recognized Shopee shop table in an existing tab. Account identity is unavailable.",
+            vec![("tab_id", prop("integer", "Optional existing tab ID; defaults to active tab"))],
+            vec![],
+        ),
+        tool_def(
             "tp_eval_js",
             "Execute arbitrary JavaScript (supports async/await and Promises) on a TPbrowser WebView and return its JSON result.",
             vec![
@@ -678,6 +695,38 @@ fn http_post_mcp(port: u16, json_body: &str) -> Result<Option<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn http_origin_rejected_without_dispatch_and_native_client_works() {
+        fn request(origin: &str, body: &str) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let worker = thread::spawn(move || {
+                let (stream, _) = listener.accept().unwrap();
+                handle_http_conn(stream, |msg| {
+                    if let McpBridgeMsg::ToolCall { reply, .. } = msg { let _ = reply.send(Ok("native-only".into())); }
+                }).unwrap();
+            });
+            let mut client = TcpStream::connect(addr).unwrap();
+            write!(client, "POST /mcp HTTP/1.1\r\nHost: localhost\r\n{}Content-Length: {}\r\n\r\n{}", origin, body.len(), body).unwrap();
+            let mut response = String::new(); let _ = client.read_to_string(&mut response);
+            worker.join().unwrap(); response
+        }
+        let body = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"tp_discover_shopee_shops"}}"#;
+        let rejected = request("Origin: https://evil.example\r\n", body);
+        assert!(rejected.starts_with("HTTP/1.1 403"));
+        assert!(!rejected.contains("native-only"));
+        for tool in ["tp_eval_js", "tp_get_page_context"] {
+            let payload = body.replace("tp_discover_shopee_shops", tool);
+            let response = request("oRiGiN: null\r\n", &payload);
+            assert!(response.starts_with("HTTP/1.1 403"), "{}", tool);
+            assert!(!response.contains("Access-Control-Allow-Origin"));
+        }
+        let native = request("", body);
+        assert!(native.starts_with("HTTP/1.1 200"));
+        assert!(native.contains("native-only"));
+    }
+
 
     #[test]
     fn test_initialize_and_tools_list() {

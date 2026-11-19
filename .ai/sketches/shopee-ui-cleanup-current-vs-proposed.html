@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Shopee UI — Hiện tại vs Đề xuất</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;padding:24px;background:#f3f4f6;color:#17202a;font:14px/1.45 "Segoe UI",Arial,sans-serif}
+  h1{margin:0 0 6px;font-size:22px} .intro{margin:0 0 20px;color:#5f6b76}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}.panel{background:#fff;border:1px solid #d9dee5;border-radius:12px;padding:16px;box-shadow:0 8px 22px #202a3512}.panel.proposed{border-color:#ee4d2d}
+  h2{margin:0 0 12px;font-size:16px}.label{display:inline-block;font-size:11px;font-weight:700;padding:3px 7px;border-radius:99px;background:#fee2e2;color:#b42318;margin-bottom:8px}.proposed .label{background:#dcfce7;color:#166534}
+  .bar{display:flex;align-items:center;gap:8px;min-height:52px;padding:8px 10px;border-radius:9px;background:#161a20;color:#fff;margin:8px 0}.brand{font-weight:800;white-space:nowrap;color:#fff}.tabs{display:flex;gap:4px;flex:1}.tab{padding:8px 9px;color:#b4bcc7;border:0;background:transparent;border-radius:6px;white-space:nowrap}.tab.active{background:#ee4d2d;color:#fff;font-weight:700}.actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid #ccd3dc;background:#fff;color:#35404b;border-radius:7px;padding:6px 9px;font-size:12px}.btn.primary{background:#ee4d2d;border-color:#ee4d2d;color:#fff}.danger{outline:2px solid #ef4444;outline-offset:2px}
+  .subtle{margin:8px 0;padding:10px;border-radius:8px;background:#f8fafc;border:1px dashed #cbd5e1;color:#596575}.arrow{color:#b42318;font-weight:700}.good{color:#166534;font-weight:700}.stack{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}.note{font-size:12px;color:#66727e}.rule{height:1px;background:#e5e7eb;margin:14px 0}.legend{display:flex;gap:12px;font-size:12px;margin-top:14px}.legend span{display:inline-flex;align-items:center;gap:5px}.dot{width:9px;height:9px;border-radius:50%;display:inline-block}.red{background:#ef4444}.green{background:#22c55e}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}.bar{align-items:flex-start;flex-wrap:wrap}.tabs{order:3;flex-basis:100%;overflow:auto}}
+</style>
+</head>
+<body>
+<h1>Shopee — dọn giao diện sau khi lấy mẫu</h1>
+<p class="intro">Đối chiếu theo code hiện tại trong <code>src/workspace.html</code>. Mục tiêu: một nơi duy nhất cho mỗi hành động, giữ hook dữ liệu/IPC.</p>
+<div class="grid">
+  <section class="panel">
+    <span class="label">HIỆN TẠI</span><h2>Hai lớp điều khiển chồng nhau</h2>
+    <div class="bar"><span class="brand">Workspace</span><div class="tabs"><span class="tab">Tất cả sàn</span><span class="tab active">Shopee</span><span class="tab">TikTok</span></div><div class="actions"><button class="btn">Xuất CSV</button><button class="btn">Copy Báo cáo</button><button class="btn primary">Quét Tất cả</button></div></div>
+    <div class="subtle"><b>Platform shopbar:</b> Tất cả shop · Đồng bộ shop</div>
+    <div class="bar"><span class="brand">TP SELLER</span><div class="tabs"><span class="tab active">Tổng quan</span><span class="tab">Kiểm toán rủi ro</span><span class="tab">Vận hành Live &amp; Ads</span><span class="tab">Khuyến mãi &amp; Vouchers</span></div><div class="actions"><button class="btn danger">Xuất CSV</button><button class="btn danger">Copy Báo cáo</button><button class="btn">Thông báo</button><button class="btn">Chọn shop</button></div></div>
+    <div class="stack"><button class="btn danger">Quét Shopee Tổng Hợp</button><button class="btn danger">Quét Shopee PAS</button><button class="btn danger">Quét TikTok Hôm nay</button><button class="btn">Nút Play kích hoạt quét</button></div>
+    <p class="note arrow">→ Cùng một hành động xuất hiện ở Workspace bar, Shopee bar, hero và nút Play; người dùng không biết nút nào là luồng chính.</p>
+  </section>
+  <section class="panel proposed">
+    <span class="label">ĐỀ XUẤT</span><h2>Phân vai rõ: Chrome chung / Shopee riêng</h2>
+    <div class="bar"><span class="brand">Workspace</span><div class="tabs"><span class="tab">Tất cả sàn</span><span class="tab active">Shopee</span><span class="tab">TikTok</span></div><div class="actions"><button class="btn">Tự động: Tắt</button><button class="btn">Báo cáo</button><button class="btn primary">Quét Shopee</button></div></div>
+    <div class="subtle"><b>Shop context duy nhất:</b> Tất cả shop · Shop A · Shop B · Đồng bộ</div>
+    <div class="bar"><span class="brand">TP SELLER</span><div class="tabs"><span class="tab active">Tổng quan</span><span class="tab">Kiểm toán</span><span class="tab">Live &amp; Ads</span><span class="tab">Khuyến mãi</span></div><div class="actions"><button class="btn">Thông báo</button><button class="btn">Chọn shop</button></div></div>
+    <div class="subtle"><span class="good">Một CTA duy nhất:</span> Quét Shopee → chạy scope Shopee hiện tại. Các trang con chỉ có nút mở trang gốc khi cần xử lý.</div>
+    <div class="stack"><button class="btn">Mở Đơn Hàng</button><button class="btn">Mở Đánh Giá</button><button class="btn">Mở Shopee Live</button><button class="btn">Quản lý Voucher</button></div>
+    <p class="note good">→ Giữ nguyên data IDs, runScan(), shop selection và các bảng; chỉ hợp nhất vị trí/ý nghĩa của button.</p>
+  </section>
+</div>
+<div class="legend"><span><i class="dot red"></i> Trùng hoặc dễ gây nhầm</span><span><i class="dot green"></i> Giữ chức năng nhưng đặt đúng tầng</span></div>
+</body>
+</html>

@@ -19,3 +19,5 @@ exports/
 *.zip
 perf_latency.log
 *.perf.log
+cloudflared.exe
+scripts/*.log

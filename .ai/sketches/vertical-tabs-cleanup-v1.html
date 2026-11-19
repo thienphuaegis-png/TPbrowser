@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>TPbrowser — Dọn giao diện Tab dọc</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:#0e0f12;color:#f3efe6;font-family:"Segoe UI",sans-serif}
+  h1{margin:0 0 6px;color:#e5c372;font-size:20px}
+  .sub{color:#aaa296;font-size:13px;margin-bottom:20px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .panel{border:1px solid #5b4b25;border-radius:12px;padding:16px;background:#16181d;min-height:430px}
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;color:#e5c372}
+  .browser{border:1px solid #3f3a2d;border-radius:9px;overflow:hidden;background:#0e0f12}
+  .top{height:42px;border-bottom:1px solid #4b4028;display:flex;align-items:center;gap:8px;padding:0 10px;color:#d7b65d;font-size:11px}
+  .top .url{flex:1;border:1px solid #4d442d;border-radius:999px;padding:6px 12px;color:#aaa296}
+  .pill{border:1px solid #5b4b25;border-radius:999px;padding:5px 9px;color:#e5c372}
+  .body{display:grid;grid-template-columns:116px 1fr;min-height:330px}
+  .side{border-right:1px solid #4b4028;padding:9px 7px;background:#111318}
+  .side-title{font-size:10px;color:#e5c372;margin:3px 4px 9px;font-weight:700}
+  .space{border:1px solid #4d442d;border-radius:7px;padding:6px 7px;margin-bottom:6px;font-size:10px;color:#aaa296}
+  .space.active{color:#17130a;background:#d4af37;border-color:#d4af37;font-weight:700}
+  .tabs{padding:12px}
+  .tab{border:1px solid #403b31;border-radius:7px;padding:8px;margin-bottom:6px;font-size:10px;color:#d7d0c1;display:flex;justify-content:space-between;gap:5px}
+  .tab.active{border-color:#d4af37;color:#f7d886;background:#252117}
+  .note{margin-top:12px;color:#e9b85b;font-size:12px;line-height:1.5}
+  ul{margin:12px 0 0;padding-left:18px;color:#c6bfb2;font-size:12px;line-height:1.7}
+  .proposed .top .space-pill{display:none}
+  .proposed .body{grid-template-columns:172px 1fr}
+  .proposed .side{padding:10px 8px}
+  .proposed .space{display:flex;align-items:center;gap:6px;padding:7px 8px}
+  .dot{width:6px;height:6px;border-radius:50%;background:#8f897d;flex:0 0 auto}
+  .active .dot{background:#1d180c}
+  .space-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .count{font-size:9px;opacity:.7}
+  .proposed .tab{padding:9px 8px}
+  .caption{margin-top:14px;padding:10px;border:1px solid #5b4b25;border-radius:8px;background:#211d14;color:#e5c372;font-size:12px}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}.body{grid-template-columns:110px 1fr}.proposed .body{grid-template-columns:150px 1fr}}
+</style>
+</head>
+<body>
+<h1>TPbrowser — Dọn chrome và tối ưu Tab dọc</h1>
+<div class="sub">Đề xuất giữ một nơi duy nhất để chọn Space: sidebar trái. Thanh trên chỉ giữ điều hướng, URL và công cụ trang.</div>
+<div class="grid">
+  <section class="panel">
+    <h2>Hiện tại</h2>
+    <div class="browser">
+      <div class="top"><span>←</span><span>→</span><span>↻</span><div class="url">Tìm hoặc nhập URL...</div><div class="pill">Default ▾</div><span>＋</span></div>
+      <div class="body">
+        <aside class="side"><div class="side-title">TABS</div><div class="space active">Default</div><div class="space">Không gian bắt...</div></aside>
+        <main class="tabs"><div class="tab active">Không gian bắt đầu <span>×</span></div><div class="tab">Tab khác <span>×</span></div><div class="note">Ghi chú/placeholder cá nhân và Google login chiếm chỗ trong trang bắt đầu.</div></main>
+      </div>
+    </div>
+    <ul><li>Space selector bị lặp: sidebar và thanh trên.</li><li>Nút Đăng nhập Google không thuộc chrome tối thiểu.</li><li>Nội dung cá nhân, ghi chú, bookmark mẫu làm loãng trang.</li></ul>
+  </section>
+  <section class="panel proposed">
+    <h2>Đề xuất</h2>
+    <div class="browser">
+      <div class="top"><span>←</span><span>→</span><span>↻</span><div class="url">Tìm hoặc nhập URL...</div><span>＋</span><span>⌕</span><span>−</span><span>100%</span><span>＋</span></div>
+      <div class="body">
+        <aside class="side"><div class="side-title">SPACES</div><div class="space active"><span class="dot"></span><span class="space-name">Default</span><span class="count">2</span></div><div class="space"><span class="dot"></span><span class="space-name">Công việc</span><span class="count">4</span></div><div class="space"><span class="dot"></span><span class="space-name">Nghiên cứu</span><span class="count">1</span></div><div class="space">＋ Tạo Space</div></aside>
+        <main class="tabs"><div class="tab active">Trang bắt đầu <span>×</span></div><div class="tab">Google Sheets <span>×</span></div><div class="tab">Tài liệu <span>×</span></div><div class="caption">Tab dọc trở thành một bảng điều hướng rõ ràng: Space ở trên, tab ở dưới, active state nổi bật, không có ghi chú cá nhân chen vào.</div></main>
+      </div>
+    </div>
+    <ul><li>Xóa Space selector trên thanh trên.</li><li>Xóa Google login pill và modal/copy liên quan.</li><li>Xóa ghi chú, lời chào cá nhân, placeholder và bookmark giữ chỗ.</li><li>Tab dọc dùng hierarchy: Space → tab, có count, active state và vùng trống rõ ràng.</li></ul>
+  </section>
+</div>
+</body>
+</html>
