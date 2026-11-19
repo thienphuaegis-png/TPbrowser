@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="obsidian-gold">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TPbrowser</title>
+  <meta name="description" content="TPbrowser — Trình duyệt cá nhân AURELIA (Tab Dọc/Ngang, Chia khung BSP, Không gian TMĐT Shopee &amp; TikTok, AI Cowork)" />
+  <meta property="og:title" content="TPbrowser" />
+  <meta property="og:description" content="TPbrowser — Trình duyệt cá nhân AURELIA (Tab Dọc/Ngang, Chia khung BSP, Không gian TMĐT Shopee &amp; TikTok, AI Cowork)" />
+  <link id="host_favicon" rel="icon" type="image/png" href="/assets/icons/app_ribbon_light.png" />
+  <link rel="stylesheet" href="/shell.css" />
+</head>
+<body class="orient-vertical ai-bubble">
+  <div id="tp_app" class="tp-app" data-testid="tpbrowser-shell">
+    <!-- 1. Unified Top Bar (Titlebar + Horizontal Tabs + Bookmarks Bar) -->
+    <header id="titlebar_slot" class="titlebar-slot">
+      <iframe id="frame_titlebar" title="TPbrowser Titlebar" src="/surface/titlebar" allow="clipboard-write"></iframe>
+    </header>
+
+    <!-- 2. Main Browser Workspace Area (Sidebar + Content Stage + Right AI Dock) -->
+    <div id="main_row" class="main-row">
+      <!-- Vertical Left Tab Sidebar -->
+      <aside id="sidebar_slot" class="sidebar-slot" aria-label="Thanh quản lý tab dọc">
+        <iframe id="frame_tab_shell" title="TPbrowser Vertical Tabs" src="/surface/tab_shell"></iframe>
+        <button
+          id="btn_toggle_sidebar_collapse"
+          type="button"
+          class="sidebar-collapse-fab"
+          title="Thu gọn / Mở rộng thanh tab dọc"
+          aria-label="Thu gọn hoặc mở rộng thanh tab dọc"
+        >«</button>
+      </aside>
+      <div id="sidebar_resizer" class="resizer-handle" role="separator" aria-orientation="vertical" aria-label="Kéo thay đổi độ rộng thanh tab"></div>
+
+      <!-- Content Stage (Single or BSP Split View) -->
+      <main id="content_stage" class="content-stage" data-testid="content-stage">
+        <div id="pane_primary" class="content-pane active-pane" data-testid="pane-primary"></div>
+        <div id="pane_secondary" class="content-pane secondary-pane" data-testid="pane-secondary" hidden></div>
+      </main>
+
+      <!-- Right AI Cowork / Messenger / Zalo Dock or Floating Popup -->
+      <div id="dock_resizer" class="resizer-handle" role="separator" aria-orientation="vertical" aria-label="Kéo thay đổi độ rộng ngăn phải" hidden></div>
+      <section id="chat_panel_slot" class="chat-panel-slot" aria-label="Bảng AI Cowork và Kênh Chat" hidden>
+        <div class="chat-header-wrap">
+          <iframe id="frame_chat_header" title="TPbrowser Chat Header" src="/surface/chat_header"></iframe>
+        </div>
+        <div id="chat_body_ai" class="chat-body-wrap">
+          <iframe id="frame_ai_panel" title="TPbrowser AI Cowork" src="/surface/ai_panel"></iframe>
+        </div>
+        <div id="chat_body_channel" class="chat-body-wrap channel-fallback" hidden>
+          <div class="channel-card">
+            <div class="channel-badge" id="channel_badge_icon">ZL</div>
+            <h3 id="channel_card_title">Zalo Web</h3>
+            <p id="channel_card_desc">
+              Kênh chat tích hợp gốc trên WebView2 desktop. Trong môi trường trình duyệt web, hãy mở trực tiếp cửa sổ ứng dụng hoặc chuyển sang AI Cowork.
+            </p>
+            <div class="channel-actions">
+              <a id="channel_external_link" class="tp-btn tp-btn-cta" href="https://chat.zalo.me" target="_blank" rel="noopener noreferrer">Mở trực tiếp ↗</a>
+              <button type="button" id="btn_switch_to_ai" class="tp-btn">Mở AI Cowork</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 3. AURELIA Bronze-Gold Floating Orbs (Bottom-Right) -->
+    <nav id="floating_orbs_host" class="floating-orbs-host" aria-label="Cụm nút nhanh AI, Messenger, Zalo"></nav>
+
+    <!-- 4. Zen Settings Modal Overlay -->
+    <div id="settings_overlay" class="settings-overlay" hidden>
+      <iframe id="frame_settings" title="TPbrowser Zen Settings" src="/surface/settings_modal"></iframe>
+    </div>
+
+    <!-- 5. Subtle Toast Banner -->
+    <div id="tp_toast" class="tp-toast" role="status" aria-live="polite" hidden></div>
+  </div>
+
+  <script src="/shell.js"></script>
+</body>
+</html>

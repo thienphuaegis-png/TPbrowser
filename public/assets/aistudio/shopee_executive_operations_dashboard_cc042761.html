@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopee Seller Command Center - Quản Trị & Vận Hành</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        bgMain: '#0F1117',
+                        bgCard: '#161B26',
+                        bgCardHover: '#1C2230',
+                        borderSubtle: '#262D3D',
+                        shopeeOrange: '#EE4D2D',
+                        shopeeOrangeHover: '#D73B1C',
+                        financeGold: '#F59E0B',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0F1117;
+            color: #F3F4F6;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        /* Custom Range Sliders */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #262D3D;
+            height: 6px;
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #EE4D2D;
+            cursor: pointer;
+            border: 2px solid #0F1117;
+            box-shadow: 0 0 0 2px rgba(238, 77, 45, 0.3);
+            transition: transform 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        input[type="range"].gold-slider::-webkit-slider-thumb {
+            background: #F59E0B;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0F1117;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #262D3D;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+        .tab-transition {
+            animation: fadeIn 0.25s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-shopeeOrange selection:text-white">
+
+    <!-- TOP NAVIGATION HEADER -->
+    <header class="sticky top-0 z-40 bg-[#0F1117]/95 backdrop-blur-md border-b border-borderSubtle">
+        <div class="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                
+                <!-- Brand & Store Info -->
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-shopeeOrange to-[#FF7337] flex items-center justify-center shadow-lg shadow-shopeeOrange/20 shrink-0">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">Shopee Command Center</h1>
+                                <span class="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-shopeeOrange/15 text-shopeeOrange border border-shopeeOrange/30">MALL / SHOP YÊU THÍCH+</span>
+                            </div>
+                            <p class="text-xs text-gray-400">Gian hàng: <span class="text-gray-200 font-medium">AuraHome Official Store</span> • Đồng bộ Real-time</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Role Switcher & Timeframe Filter -->
+                <div class="flex flex-wrap items-center justify-between sm:justify-end gap-3">
+                    
+                    <!-- Role Tabs -->
+                    <div class="inline-flex p-1 rounded-xl bg-bgCard border border-borderSubtle" role="tablist">
+                        <button id="btn-tab-owner" onclick="switchView('owner')" class="px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 bg-shopeeOrange text-white shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>Chủ Shop</span>
+                        </button>
+                        <button id="btn-tab-ops" onclick="switchView('ops')" class="px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 text-gray-400 hover:text-white">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>Vận Hành</span>
+                        </button>
+                        <button id="btn-tab-all" onclick="switchView('all')" class="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 text-gray-400 hover:text-white hidden sm:inline-flex items-center gap-1.5" title="Xem tổng hợp cả 2 góc nhìn">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                            <span>Tổng hợp</span>
+                        </button>
+                    </div>
+
+                    <!-- Timeframe Selector -->
+                    <div class="relative">
+                        <select id="timeframe-select" onchange="changeTimeframe(this.value)" class="appearance-none bg-bgCard border border-borderSubtle hover:border-gray-600 text-gray-200 text-xs sm:text-sm font-medium rounded-xl pl-3.5 pr-9 py-2.5 focus:outline-none focus:border-shopeeOrange cursor-pointer transition">
+                            <option value="today">Hôm nay</option>
+                            <option value="7d">7 ngày qua</option>
+                            <option value="30d" selected>30 ngày qua</option>
+                            <option value="month">Tháng này</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-gray-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <main class="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+
+        <!-- ===================================================================== -->
+        <!-- TAB 1: GÓC NHÌN CHỦ SHOP (TÀI CHÍNH & TĂNG TRƯỞNG)                    -->
+        <!-- ===================================================================== -->
+        <section id="section-owner" class="space-y-6 tab-transition">
+            
+            <!-- Section Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-borderSubtle pb-3">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-financeGold"></span>
+                        <h2 class="text-lg sm:text-xl font-bold text-white tracking-tight">Góc Nhìn Chủ Shop — Tài Chính & Tăng Trưởng</h2>
+                    </div>
+                    <p class="text-xs sm:text-sm text-gray-400 mt-0.5">Kiểm soát dòng tiền thực nhận, biên lợi nhuận ròng, hiệu quả đốt Ads (CIR/ROAS) và tốc độ xoay vòng vốn.</p>
+                </div>
+                <div class="text-xs text-gray-400 bg-bgCard px-3 py-1.5 rounded-lg border border-borderSubtle self-start sm:self-auto">
+                    Biên lợi nhuận gộp mục tiêu: <span class="text-financeGold font-bold" id="target-gross-margin-badge">42.0%</span>
+                </div>
+            </div>
+
+            <!-- 6 KPI CARDS GRID -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                
+                <!-- Card 1: Net Revenue -->
+                <div class="bg-bgCard border border-borderSubtle hover:border-gray-700 rounded-2xl p-4 flex flex-col justify-between transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-gray-400">Doanh thu thuần</span>
+                        <span class="p-1.5 rounded-lg bg-shopeeOrange/10 text-shopeeOrange">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                        </span>
+                    </div>
+                    <div class="my-2.5">
+                        <div class="text-xl sm:text-2xl font-extrabold text-white tracking-tight" id="kpi-net-rev">845.2 tr đ</div>
+                        <p class="text-[11px] text-gray-500 mt-0.5">Sau trừ hoàn hủy & voucher shop</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-xs" id="kpi-net-rev-delta">
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">+14.2%</span>
+                        <span class="text-gray-500">so với kỳ trước</span>
+                    </div>
+                </div>
+
+                <!-- Card 2: Net Profit & Margin (Gold Highlight) -->
+                <div class="bg-bgCard border border-financeGold/40 hover:border-financeGold/70 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden transition">
+                    <div class="absolute top-0 right-0 w-20 h-20 bg-financeGold/5 rounded-bl-full pointer-events-none"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-financeGold">Lợi nhuận ròng</span>
+                        <span class="px-2 py-0.5 rounded-md bg-financeGold/15 text-financeGold text-xs font-bold" id="kpi-net-margin">Biên 21.4%</span>
+                    </div>
+                    <div class="my-2.5">
+                        <div class="text-xl sm:text-2xl font-extrabold text-financeGold tracking-tight" id="kpi-net-profit">180.9 tr đ</div>
+                        <p class="text-[11px] text-gray-400 mt-0.5">Tiền tươi thực lãi về túi</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-xs" id="kpi-net-profit-delta">
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">+18.6%</span>
+                        <span class="text-gray-500">so với kỳ trước</span>
+                    </div>
+                </div>
+
+                <!-- Card 3: Marketing CIR & ROAS -->
+                <div class="bg-bgCard border border-borderSubtle hover:border-gray-700 rounded-2xl p-4 flex flex-col justify-between transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-gray-400">CIR (ACOS) / ROAS</span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400" id="kpi-cir-status">AN TOÀN</span>
+                    </div>
+                    <div class="my-2.5">
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-xl sm:text-2xl font-extrabold text-white" id="kpi-cir">11.8%</span>
+                            <span class="text-sm font-bold text-shopeeOrange" id="kpi-roas">ROAS 8.47</span>
+                        </div>
+                        <p class="text-[11px] text-gray-400 mt-0.5">Ngưỡng hòa vốn CIR: <span class="text-gray-200 font-semibold" id="kpi-breakeven-cir">33.2%</span></p>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-xs" id="kpi-cir-delta">
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">-1.4% CIR</span>
+                        <span class="text-gray-500">tối ưu hơn kỳ trước</span>
+                    </div>
+                </div>
+
+                <!-- Card 4: AOV -->
+                <div class="bg-bgCard border border-borderSubtle hover:border-gray-700 rounded-2xl p-4 flex flex-col justify-between transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-gray-400">Giá trị TB đơn (AOV)</span>
+                        <span class="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        </span>
+                    </div>
+                    <div class="my-2.5">
+                        <div class="text-xl sm:text-2xl font-extrabold text-white tracking-tight" id="kpi-aov">318.000 đ</div>
+                        <p class="text-[11px] text-gray-500 mt-0.5" id="kpi-orders-count">Tổng 2.658 đơn thành công</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-xs" id="kpi-aov-delta">
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">+6.5%</span>
+                        <span class="text-gray-500">nhờ combo mua kèm</span>
+                    </div>
+                </div>
+
+                <!-- Card 5: Repeat Purchase Rate -->
+                <div class="bg-bgCard border border-borderSubtle hover:border-gray-700 rounded-2xl p-4 flex flex-col justify-between transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-gray-400">Tỷ lệ khách quay lại</span>
+                        <span class="p-1.5 rounded-lg bg-purple-500/10 text-purple-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </span>
+                    </div>
+                    <div class="my-2.5">
+                        <div class="text-xl sm:text-2xl font-extrabold text-white tracking-tight" id="kpi-repeat">28.4%</div>
+                        <p class="text-[11px] text-gray-500 mt-0.5">Khách mua từ lần thứ 2 trở lên</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-xs" id="kpi-repeat-delta">
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">+3.1%</span>
+                        <span class="text-gray-500">so với kỳ trước</span>
+                    </div>
+                </div>
+
+                <!-- Card 6: Return/Cancel Rate & Inventory Turnover -->
+                <div class="bg-bgCard border border-borderSubtle hover:border-gray-700 rounded-2xl p-4 flex flex-col justify-between transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-gray-400">Hoàn hủy & Tồn kho</span>
+                        <span class="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                        </span>
+                    </div>
+                    <div class="my-2.5">
+                        <div class="flex items-baseline justify-between">
+                            <div>
+                                <span class="text-xl font-extrabold text-white" id="kpi-return-rate">2.1%</span>
+                                <span class="text-[11px] text-gray-400 block">Hoàn hủy</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xl font-extrabold text-financeGold" id="kpi-inv-days">24 ngày</span>
+                                <span class="text-[11px] text-gray-400 block">Vòng quay kho</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-xs" id="kpi-inv-delta">
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">-3 ngày</span>
+                        <span class="text-gray-500">tốc độ xả hàng tốt</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- CHARTS ROW: Combo Bar+Line Chart & Cashflow Donut Chart -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Combo Chart (7 cols) -->
+                <div class="lg:col-span-7 bg-bgCard border border-borderSubtle rounded-2xl p-5 flex flex-col">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                        <div>
+                            <h3 class="text-base font-bold text-white">Tăng Trưởng Doanh Thu Thuần, Lợi Nhuận & Chi Phí Ads</h3>
+                            <p class="text-xs text-gray-400">So sánh dòng tiền thực thu với ngân sách quảng cáo theo thời gian (Đơn vị: Triệu đồng)</p>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs">
+                            <span class="flex items-center gap-1.5 text-gray-300"><span class="w-2.5 h-2.5 rounded-sm bg-shopeeOrange"></span>Doanh thu thuần</span>
+                            <span class="flex items-center gap-1.5 text-gray-300"><span class="w-2.5 h-2.5 rounded-full bg-financeGold"></span>Lợi nhuận ròng</span>
+                            <span class="flex items-center gap-1.5 text-gray-300"><span class="w-2.5 h-2.5 rounded-sm bg-sky-500"></span>Chi phí Ads</span>
+                        </div>
+                    </div>
+                    <div class="relative flex-1 min-h-[280px] w-full">
+                        <canvas id="revenueProfitChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Cashflow Structure Donut Chart (5 cols) -->
+                <div class="lg:col-span-5 bg-bgCard border border-borderSubtle rounded-2xl p-5 flex flex-col">
+                    <div class="mb-3">
+                        <h3 class="text-base font-bold text-white">Cơ Cấu Dòng Tiền Trên 100% Doanh Thu</h3>
+                        <p class="text-xs text-gray-400">Phân rã từng đồng doanh thu đi đâu trước khi thành lợi nhuận ròng</p>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center flex-1">
+                        <div class="relative h-[220px] flex items-center justify-center">
+                            <canvas id="cashflowDonutChart"></canvas>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span class="text-[11px] text-gray-400">Lãi ròng</span>
+                                <span class="text-lg font-extrabold text-financeGold" id="donut-center-profit">21.4%</span>
+                            </div>
+                        </div>
+                        <div class="space-y-2.5 text-xs" id="cashflow-legend-list">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- INTERACTIVE PROFIT & CIR SIMULATOR -->
+            <div class="bg-bgCard border border-borderSubtle rounded-2xl p-5 sm:p-6">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-4 border-b border-borderSubtle">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 text-[11px] font-bold rounded bg-financeGold/15 text-financeGold border border-financeGold/30">CÔNG CỤ MÔ PHỎNG</span>
+                            <h3 class="text-base sm:text-lg font-bold text-white">Bộ Giả Lập Biên Lợi Nhuận & Điểm Hòa Vốn ROAS</h3>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">Kéo thanh trượt để kiểm tra sức chịu đựng của gian hàng khi tăng ngân sách Ads hoặc sàn tăng phí dịch vụ.</p>
+                    </div>
+                    <button onclick="resetSimulator()" class="self-start md:self-auto px-3 py-1.5 text-xs font-medium text-gray-300 hover:text-white bg-[#1F2636] hover:bg-[#2A3347] rounded-lg border border-borderSubtle transition">
+                        Đặt lại thông số thực tế
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5 items-center">
+                    
+                    <!-- Sliders (7 cols) -->
+                    <div class="lg:col-span-7 space-y-5">
+                        <!-- Slider 1: CIR % -->
+                        <div>
+                            <div class="flex justify-between text-xs sm:text-sm mb-1.5">
+                                <label for="sim-cir" class="font-medium text-gray-200">Tỷ lệ chi phí Quảng cáo / Doanh thu (CIR / ACOS)</label>
+                                <span class="font-bold text-shopeeOrange" id="sim-cir-val">11.8%</span>
+                            </div>
+                            <input type="range" id="sim-cir" min="2" max="45" step="0.2" value="11.8" class="w-full" oninput="updateSimulator()">
+                            <div class="flex justify-between text-[11px] text-gray-500 mt-1">
+                                <span>2% (Tự nhiên cao)</span>
+                                <span>15% (Tiêu chuẩn)</span>
+                                <span>45% (Đốt tiền xả kho)</span>
+                            </div>
+                        </div>
+
+                        <!-- Slider 2: Platform Fees % -->
+                        <div>
+                            <div class="flex justify-between text-xs sm:text-sm mb-1.5">
+                                <label for="sim-fee" class="font-medium text-gray-200">Tổng phí sàn Shopee (Cố định + Thanh toán + Freeship Xtra/Voucher Xtra)</label>
+                                <span class="font-bold text-sky-400" id="sim-fee-val">13.5%</span>
+                            </div>
+                            <input type="range" id="sim-fee" min="6" max="25" step="0.5" value="13.5" class="w-full" oninput="updateSimulator()">
+                            <div class="flex justify-between text-[11px] text-gray-500 mt-1">
+                                <span>6% (Shop thường không gói)</span>
+                                <span>13.5% (Đủ gói Xtra)</span>
+                                <span>25% (Ngành hàng phí cao)</span>
+                            </div>
+                        </div>
+
+                        <!-- Slider 3: COGS % -->
+                        <div>
+                            <div class="flex justify-between text-xs sm:text-sm mb-1.5">
+                                <label for="sim-cogs" class="font-medium text-gray-200">Giá vốn hàng bán (COGS % trên doanh thu)</label>
+                                <span class="font-bold text-financeGold" id="sim-cogs-val">48.0%</span>
+                            </div>
+                            <input type="range" id="sim-cogs" min="20" max="75" step="0.5" value="48.0" class="w-full gold-slider" oninput="updateSimulator()">
+                            <div class="flex justify-between text-[11px] text-gray-500 mt-1">
+                                <span>20% (Hàng sản xuất/Mỹ phẩm)</span>
+                                <span>48% (Bán lẻ tiêu chuẩn)</span>
+                                <span>75% (Hàng thương mại biên mỏng)</span>
+                            </div>
+                        </div>
+                        
+                        <p class="text-[11px] text-gray-500 italic">* Hệ thống tự động cộng thêm <span class="text-gray-300 font-medium">5.3%</span> chi phí cố định khác (Đóng gói, nhân sự kho, tỷ lệ hoàn hủy).</p>
+                    </div>
+
+                    <!-- Output Result Box (5 cols) -->
+                    <div class="lg:col-span-5 bg-[#0F1117] border border-borderSubtle rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-borderSubtle pb-3">
+                            <span class="text-xs font-medium text-gray-400">Doanh thu giả định kỳ này</span>
+                            <span class="text-sm font-bold text-white" id="sim-base-rev">845.2 tr đ</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="p-3 rounded-xl bg-bgCard border border-borderSubtle">
+                                <span class="text-[11px] text-gray-400 block">Biên lợi nhuận ròng</span>
+                                <span class="text-xl sm:text-2xl font-extrabold text-financeGold mt-0.5 block" id="sim-net-margin">21.4%</span>
+                            </div>
+                            <div class="p-3 rounded-xl bg-bgCard border border-borderSubtle">
+                                <span class="text-[11px] text-gray-400 block">Lợi nhuận ròng dự kiến</span>
+                                <span class="text-xl sm:text-2xl font-extrabold text-emerald-400 mt-0.5 block" id="sim-net-profit">180.9 tr đ</span>
+                            </div>
+                        </div>
+
+                        <div class="p-3.5 rounded-xl bg-bgCard border border-borderSubtle space-y-2">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-gray-400">Ngưỡng CIR hòa vốn tối đa:</span>
+                                <span class="font-bold text-white" id="sim-max-cir">33.2%</span>
+                            </div>
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-gray-400">Điểm hòa vốn ROAS tối thiểu:</span>
+                                <span class="font-bold text-shopeeOrange" id="sim-breakeven-roas">3.01</span>
+                            </div>
+                            <div class="pt-1.5 border-t border-borderSubtle/70 flex items-center gap-2 text-xs" id="sim-advice-box">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+                                <span class="text-emerald-400 font-medium">Biên an toàn cao: Có thể đẩy thêm ngân sách Ads để chiếm thị phần.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- DIVIDER WHEN IN COMBINED VIEW -->
+        <div id="combined-divider" class="hidden border-t-2 border-dashed border-borderSubtle my-8"></div>
+
+        <!-- ===================================================================== -->
+        <!-- TAB 2: GÓC NHÌN NHÂN VIÊN VẬN HÀNH (SỨC KHỎE SHOP & CHUYỂN ĐỔI)        -->
+        <!-- ===================================================================== -->
+        <section id="section-ops" class="hidden space-y-6 tab-transition">
+            
+            <!-- Section Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-borderSubtle pb-3">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-shopeeOrange"></span>
+                        <h2 class="text-lg sm:text-xl font-bold text-white tracking-tight">Góc Nhìn Nhân Viên Vận Hành — Sức Khỏe Shop & Chuyển Đổi</h2>
+                    </div>
+                    <p class="text-xs sm:text-sm text-gray-400 mt-0.5">Giám sát chỉ số Sao Quả Tạ, tốc độ xử lý đơn, tỷ lệ phản hồi chat và tối ưu chuyển đổi từng SKU.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Trạng thái vận hành: TỐT (0 điểm phạt)
+                    </span>
+                </div>
+            </div>
+
+            <!-- SHOP HEALTH & SAO QUA TA MONITOR (3 PILLARS) -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                
+                <!-- Pillar 1: Order Fulfillment -->
+                <div class="bg-bgCard border border-borderSubtle rounded-2xl p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="p-2 rounded-xl bg-shopeeOrange/15 text-shopeeOrange">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-white">Xử Lý Đơn Hàng</h3>
+                                <p class="text-[11px] text-gray-400">Giữ nhãn Giao Nhanh & tránh phạt</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-400">ĐẠT CHUẨN</span>
+                    </div>
+
+                    <div class="space-y-3.5 pt-1">
+                        <!-- LSR -->
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-gray-300">Tỷ lệ giao hàng trễ (LSR)</span>
+                                <div>
+                                    <span class="font-bold text-white" id="ops-lsr">0.8%</span>
+                                    <span class="text-gray-500 text-[11px]"> / mục tiêu &lt; 2.0%</span>
+                                </div>
+                            </div>
+                            <div class="w-full h-2 bg-[#0F1117] rounded-full overflow-hidden">
+                                <div id="ops-lsr-bar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: 40%"></div>
+                            </div>
+                        </div>
+
+                        <!-- NFR -->
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-gray-300">Tỷ lệ đơn không thành công (NFR)</span>
+                                <div>
+                                    <span class="font-bold text-white" id="ops-nfr">1.1%</span>
+                                    <span class="text-gray-500 text-[11px]"> / mục tiêu &lt; 2.0%</span>
+                                </div>
+                            </div>
+                            <div class="w-full h-2 bg-[#0F1117] rounded-full overflow-hidden">
+                                <div id="ops-nfr-bar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: 55%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Prep Time -->
+                        <div class="pt-1 flex items-center justify-between text-xs border-t border-borderSubtle/70">
+                            <span class="text-gray-400">Thời gian chuẩn bị hàng TB:</span>
+                            <span class="font-bold text-sky-400" id="ops-prep-time">0.42 ngày (Chuẩn &lt; 1.0 ngày)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pillar 2: Customer Service -->
+                <div class="bg-bgCard border border-borderSubtle rounded-2xl p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="p-2 rounded-xl bg-sky-500/15 text-sky-400">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-white">Chăm Sóc Khách Hàng</h3>
+                                <p class="text-[11px] text-gray-400">Tốc độ phản hồi & Uy tín đánh giá</p>
+                            </div>
+                        </div>
+                        <span id="ops-cs-badge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-400">XUẤT SẮC</span>
+                    </div>
+
+                    <div class="space-y-3.5 pt-1">
+                        <!-- CRR -->
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-gray-300">Tỷ lệ phản hồi chat (CRR)</span>
+                                <div>
+                                    <span class="font-bold text-white" id="ops-crr">96.5%</span>
+                                    <span class="text-gray-500 text-[11px]"> / mục tiêu &gt; 90%</span>
+                                </div>
+                            </div>
+                            <div class="w-full h-2 bg-[#0F1117] rounded-full overflow-hidden">
+                                <div id="ops-crr-bar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: 96.5%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Shop Rating -->
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-gray-300">Đánh giá Shop (Rating)</span>
+                                <div>
+                                    <span class="font-bold text-financeGold" id="ops-rating">4.92 / 5.0 ★</span>
+                                    <span class="text-gray-500 text-[11px]"> / mục tiêu &gt; 4.8</span>
+                                </div>
+                            </div>
+                            <div class="w-full h-2 bg-[#0F1117] rounded-full overflow-hidden">
+                                <div class="h-full bg-financeGold rounded-full" style="width: 98.4%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Avg Chat Response Time -->
+                        <div class="pt-1 flex items-center justify-between text-xs border-t border-borderSubtle/70">
+                            <span class="text-gray-400">Thời gian phản hồi chat TB:</span>
+                            <span class="font-bold text-emerald-400" id="ops-chat-time">3 phút 40 giây (Mục tiêu &lt; 10p)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pillar 3: Policy Compliance & Sao Qua Ta -->
+                <div class="bg-bgCard border border-borderSubtle rounded-2xl p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="p-2 rounded-xl bg-purple-500/15 text-purple-400">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-white">Tuân Thủ & Sao Quả Tạ</h3>
+                                <p class="text-[11px] text-gray-400">Kiểm soát vi phạm đăng bán & Pre-order</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-400">AN TOÀN</span>
+                    </div>
+
+                    <div class="space-y-3 pt-1">
+                        <!-- Sao Qua Ta Gauge -->
+                        <div class="p-3 rounded-xl bg-[#0F1117] border border-borderSubtle flex items-center justify-between">
+                            <div>
+                                <span class="text-xs text-gray-400 block">Điểm phạt Sao Quả Tạ quý này</span>
+                                <span class="text-xs text-gray-500">Mức phạt cấp 1 bắt đầu từ 3 điểm</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-2xl font-extrabold text-emerald-400" id="ops-sqt">0</span>
+                                <span class="text-sm font-semibold text-gray-500"> / 12</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2.5 text-xs">
+                            <div class="p-2.5 rounded-xl bg-[#0F1117] border border-borderSubtle">
+                                <span class="text-gray-400 block text-[11px]">Vi phạm đăng bán</span>
+                                <span class="font-bold text-white mt-0.5 block" id="ops-violations">0 sản phẩm</span>
+                            </div>
+                            <div class="p-2.5 rounded-xl bg-[#0F1117] border border-borderSubtle">
+                                <span class="text-gray-400 block text-[11px]">Tỷ lệ hàng đặt trước</span>
+                                <span class="font-bold text-white mt-0.5 block" id="ops-preorder">1.5% <span class="text-gray-500 font-normal">(&lt;10%)</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- CONVERSION FUNNEL SECTION -->
+            <div class="bg-bgCard border border-borderSubtle rounded-2xl p-5 sm:p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
+                    <div>
+                        <h3 class="text-base font-bold text-white">Phễu Lưu Lượng & Tỷ Lệ Chuyển Đổi (Conversion Funnel)</h3>
+                        <p class="text-xs text-gray-400">Theo dõi hành trình khách hàng từ lúc nhìn thấy sản phẩm đến khi hoàn tất đơn hàng</p>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs">
+                        <span class="px-2.5 py-1 rounded-lg bg-[#0F1117] border border-borderSubtle text-gray-300">
+                            CTR Toàn Shop: <strong class="text-shopeeOrange" id="funnel-ctr-badge">4.12%</strong>
+                        </span>
+                        <span class="px-2.5 py-1 rounded-lg bg-[#0F1117] border border-borderSubtle text-gray-300">
+                            CR Toàn Shop: <strong class="text-emerald-400" id="funnel-cr-badge">3.45%</strong>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 4-Step Visual Funnel Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="funnel-steps-container">
+                    <!-- Step 1 -->
+                    <div class="relative bg-[#0F1117] border border-borderSubtle rounded-xl p-4">
+                        <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
+                            <span>1. Lượt hiển thị (Impressions)</span>
+                            <span class="text-gray-500">100%</span>
+                        </div>
+                        <div class="text-2xl font-extrabold text-white" id="funnel-impressions">1.870.400</div>
+                        <div class="w-full h-1.5 bg-gray-800 rounded-full mt-3 overflow-hidden">
+                            <div class="h-full bg-gray-400 rounded-full" style="width: 100%"></div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-2">Từ Tìm kiếm, Gợi ý & Shopee Ads</p>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="relative bg-[#0F1117] border border-borderSubtle rounded-xl p-4">
+                        <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
+                            <span>2. Lượt truy cập (Traffic)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-shopeeOrange/15 text-shopeeOrange font-bold" id="funnel-ctr-step">CTR 4.12%</span>
+                        </div>
+                        <div class="text-2xl font-extrabold text-white" id="funnel-traffic">77.060</div>
+                        <div class="w-full h-1.5 bg-gray-800 rounded-full mt-3 overflow-hidden">
+                            <div class="h-full bg-shopeeOrange rounded-full" style="width: 68%"></div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-2">Đo sức hút ảnh bìa, giá & tiêu đề</p>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="relative bg-[#0F1117] border border-borderSubtle rounded-xl p-4">
+                        <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
+                            <span>3. Thêm vào giỏ hàng</span>
+                            <span class="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 font-bold" id="funnel-atc-rate">ATC 14.8%</span>
+                        </div>
+                        <div class="text-2xl font-extrabold text-white" id="funnel-atc">11.405</div>
+                        <div class="w-full h-1.5 bg-gray-800 rounded-full mt-3 overflow-hidden">
+                            <div class="h-full bg-sky-500 rounded-full" style="width: 42%"></div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-2">Khách quan tâm & cân nhắc mua</p>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="relative bg-[#0F1117] border border-emerald-500/30 rounded-xl p-4">
+                        <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
+                            <span>4. Đơn thành công</span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-bold" id="funnel-cr-step">CR 3.45%</span>
+                        </div>
+                        <div class="text-2xl font-extrabold text-emerald-400" id="funnel-orders">2.658</div>
+                        <div class="w-full h-1.5 bg-gray-800 rounded-full mt-3 overflow-hidden">
+                            <div class="h-full bg-emerald-500 rounded-full" style="width: 24%"></div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-2">Tỷ lệ chốt đơn cuối cùng trên Traffic</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SKU PERFORMANCE & ACTIONABLE ALERTS TABLE -->
+            <div class="bg-bgCard border border-borderSubtle rounded-2xl p-5 sm:p-6 space-y-4">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-base sm:text-lg font-bold text-white">Bảng Hiệu Suất SKU & Cảnh Báo Hành Động Tự Động</h3>
+                        <p class="text-xs text-gray-400">Hệ thống tự động quét chỉ số từng mã hàng để đề xuất việc cần làm ngay cho nhân viên vận hành</p>
+                    </div>
+
+                    <!-- Search & Status Filter -->
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                        <div class="relative">
+                            <input type="text" id="sku-search" onkeyup="renderSkuTable()" placeholder="Tìm tên SKU hoặc mã..." class="w-full sm:w-56 bg-[#0F1117] border border-borderSubtle focus:border-shopeeOrange rounded-xl pl-9 pr-3 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none">
+                            <svg class="w-4 h-4 text-gray-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+
+                        <select id="sku-filter" onchange="renderSkuTable()" class="bg-[#0F1117] border border-borderSubtle focus:border-shopeeOrange rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none cursor-pointer">
+                            <option value="all">Tất cả trạng thái (8 SKU)</option>
+                            <option value="action">Cần xử lý ngay (Cảnh báo)</option>
+                            <option value="stock">Sắp hết hàng</option>
+                            <option value="ctr">CTR thấp (Sửa ảnh/giá)</option>
+                            <option value="cr">CR thấp (Sửa mô tả/voucher)</option>
+                            <option value="good">Đang tăng trưởng tốt</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Responsive Table -->
+                <div class="overflow-x-auto rounded-xl border border-borderSubtle">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-[#0F1117] border-b border-borderSubtle text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                                <th class="py-3.5 px-4">Sản phẩm / Mã SKU</th>
+                                <th class="py-3.5 px-3 text-right">Tồn kho</th>
+                                <th class="py-3.5 px-3 text-right">Traffic</th>
+                                <th class="py-3.5 px-3 text-right">CTR (%)</th>
+                                <th class="py-3.5 px-3 text-right">Tỷ lệ CĐ (CR)</th>
+                                <th class="py-3.5 px-3 text-center">Đánh giá</th>
+                                <th class="py-3.5 px-4">Đề xuất hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sku-table-body" class="divide-y divide-borderSubtle text-xs sm:text-sm">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-borderSubtle bg-[#0F1117] py-4 px-4 sm:px-6 lg:px-8 mt-8">
+        <div class="max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
+            <span>Shopee Seller Command Center • Dữ liệu mô phỏng phục vụ quản trị & vận hành thực chiến</span>
+            <span>Mẹo: Chuyển sang chế độ <strong class="text-gray-300">Tổng hợp</strong> trên thanh menu để đối chiếu Tài chính & Vận hành cùng lúc</span>
+        </div>
+    </footer>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // =========================================================================
+        // 1. MOCK DATASETS BY TIMEFRAME (Hôm nay, 7 ngày qua, 30 ngày qua, Tháng này)
+        // =========================================================================
+        const dashboardData = {
+            today: {
+                netRev: 31.4,
+                netRevDelta: "+8.4%",
+                netProfit: 6.9,
+                netMargin: 22.0,
+                netProfitDelta: "+11.2%",
+                cir: 10.9,
+                cirDelta: "-0.8% CIR",
+                aov: "325.000 đ",
+                ordersCount: "Tổng 97 đơn thành công",
+                aovDelta: "+4.2%",
+                repeatRate: "29.5%",
+                repeatDelta: "+1.8%",
+                returnRate: "1.6%",
+                invDays: "23 ngày",
+                invDelta: "-2 ngày",
+                cogsPct: 47.5,
+                feePct: 13.5,
+                otherPct: 6.1,
+                chartLabels: ["00h", "04h", "08h", "12h", "16h", "20h", "23h"],
+                revSeries: [1.2, 0.8, 3.5, 6.8, 5.4, 8.9, 4.8],
+                profitSeries: [0.3, 0.2, 0.8, 1.5, 1.2, 1.9, 1.0],
+                adsSeries: [0.1, 0.1, 0.4, 0.8, 0.6, 0.9, 0.5],
+                ops: {
+                    lsr: "0.0%", lsrBar: 5,
+                    nfr: "0.5%", nfrBar: 25,
+                    prepTime: "0.35 ngày (Chuẩn < 1.0 ngày)",
+                    crr: "98.2%", crrBar: 98.2,
+                    rating: "4.95 / 5.0 ★",
+                    chatTime: "2 phút 15 giây (Mục tiêu < 10p)",
+                    sqt: 0, violations: "0 sản phẩm", preorder: "1.2%",
+                    impressions: "68.400", traffic: "2.940", ctr: "4.30%", atc: "455", atcRate: "15.5%", orders: "97", cr: "3.30%"
+                }
+            },
+            "7d": {
+                netRev: 212.8,
+                netRevDelta: "+12.1%",
+                netProfit: 44.3,
+                netMargin: 20.8,
+                netProfitDelta: "+15.0%",
+                cir: 12.4,
+                cirDelta: "-1.1% CIR",
+                aov: "312.000 đ",
+                ordersCount: "Tổng 682 đơn thành công",
+                aovDelta: "+5.1%",
+                repeatRate: "27.8%",
+                repeatDelta: "+2.4%",
+                returnRate: "2.2%",
+                invDays: "25 ngày",
+                invDelta: "-1 ngày",
+                cogsPct: 48.0,
+                feePct: 13.5,
+                otherPct: 5.3,
+                chartLabels: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"],
+                revSeries: [26.5, 28.0, 29.4, 27.8, 33.1, 36.2, 31.8],
+                profitSeries: [5.4, 5.8, 6.1, 5.6, 7.0, 7.8, 6.6],
+                adsSeries: [3.2, 3.5, 3.6, 3.7, 4.1, 4.4, 3.9],
+                ops: {
+                    lsr: "0.9%", lsrBar: 45,
+                    nfr: "1.2%", nfrBar: 60,
+                    prepTime: "0.45 ngày (Chuẩn < 1.0 ngày)",
+                    crr: "95.8%", crrBar: 95.8,
+                    rating: "4.91 / 5.0 ★",
+                    chatTime: "4 phút 05 giây (Mục tiêu < 10p)",
+                    sqt: 0, violations: "0 sản phẩm", preorder: "1.5%",
+                    impressions: "465.200", traffic: "19.350", ctr: "4.16%", atc: "2.840", atcRate: "14.7%", orders: "682", cr: "3.52%"
+                }
+            },
+            "30d": {
+                netRev: 845.2,
+                netRevDelta: "+14.2%",
+                netProfit: 180.9,
+                netMargin: 21.4,
+                netProfitDelta: "+18.6%",
+                cir: 11.8,
+                cirDelta: "-1.4% CIR",
+                aov: "318.000 đ",
+                ordersCount: "Tổng 2.658 đơn thành công",
+                aovDelta: "+6.5%",
+                repeatRate: "28.4%",
+                repeatDelta: "+3.1%",
+                returnRate: "2.1%",
+                invDays: "24 ngày",
+                invDelta: "-3 ngày",
+                cogsPct: 48.0,
+                feePct: 13.5,
+                otherPct: 5.3,
+                chartLabels: ["Tuần 1", "Tuần 2 (Sale đôi)", "Tuần 3", "Tuần 4 (Lương về)"],
+                revSeries: [175.4, 248.6, 189.2, 232.0],
+                profitSeries: [36.8, 54.7, 39.5, 49.9],
+                adsSeries: [20.1, 31.2, 22.0, 26.4],
+                ops: {
+                    lsr: "0.8%", lsrBar: 40,
+                    nfr: "1.1%", nfrBar: 55,
+                    prepTime: "0.42 ngày (Chuẩn < 1.0 ngày)",
+                    crr: "96.5%", crrBar: 96.5,
+                    rating: "4.92 / 5.0 ★",
+                    chatTime: "3 phút 40 giây (Mục tiêu < 10p)",
+                    sqt: 0, violations: "0 sản phẩm", preorder: "1.5%",
+                    impressions: "1.870.400", traffic: "77.060", ctr: "4.12%", atc: "11.405", atcRate: "14.8%", orders: "2.658", cr: "3.45%"
+                }
+            },
+            month: {
+                netRev: 612.5,
+                netRevDelta: "+16.8%",
+                netProfit: 134.1,
+                netMargin: 21.9,
+                netProfitDelta: "+20.4%",
+                cir: 11.3,
+                cirDelta: "-1.6% CIR",
+                aov: "321.000 đ",
+                ordersCount: "Tổng 1.908 đơn thành công",
+                aovDelta: "+7.0%",
+                repeatRate: "29.0%",
+                repeatDelta: "+3.4%",
+                returnRate: "1.9%",
+                invDays: "22 ngày",
+                invDelta: "-4 ngày",
+                cogsPct: 47.8,
+                feePct: 13.5,
+                otherPct: 5.5,
+                chartLabels: ["01-05", "06-10", "11-15 (Sale giữa tháng)", "16-20"],
+                revSeries: [118.0, 134.5, 215.0, 145.0],
+                profitSeries: [25.1, 29.2, 48.2, 31.6],
+                adsSeries: [13.2, 15.1, 25.4, 15.5],
+                ops: {
+                    lsr: "0.7%", lsrBar: 35,
+                    nfr: "1.0%", nfrBar: 50,
+                    prepTime: "0.40 ngày (Chuẩn < 1.0 ngày)",
+                    crr: "97.1%", crrBar: 97.1,
+                    rating: "4.93 / 5.0 ★",
+                    chatTime: "3 phút 15 giây (Mục tiêu < 10p)",
+                    sqt: 0, violations: "0 sản phẩm", preorder: "1.4%",
+                    impressions: "1.340.000", traffic: "56.280", ctr: "4.20%", atc: "8.440", atcRate: "15.0%", orders: "1.908", cr: "3.39%"
+                }
+            }
+        };
+
+        // =========================================================================
+        // 2. SKU PERFORMANCE DATASET
+        // =========================================================================
+        const skuList = [
+            {
+                code: "AH-DEN-01",
+                name: "Đèn Ngủ Cảm Biến Thông Minh AuraLite Pro",
+                stock: 14,
+                traffic: 18420,
+                ctr: 5.4,
+                cr: 4.8,
+                rating: 4.96,
+                category: "stock"
+            },
+            {
+                code: "AH-THAM-04",
+                name: "Thảm Lau Chân Siêu Thấm Diatomite Cao Cấp",
+                stock: 340,
+                traffic: 14210,
+                ctr: 1.85,
+                cr: 3.9,
+                rating: 4.88,
+                category: "ctr"
+            },
+            {
+                code: "AH-KE-02",
+                name: "Kệ Gia Vị Nhà Bếp Thép Carbon Sơn Tĩnh Điện",
+                stock: 185,
+                traffic: 12950,
+                ctr: 4.6,
+                cr: 1.45,
+                rating: 4.62,
+                category: "cr"
+            },
+            {
+                code: "AH-HOP-09",
+                name: "Set 6 Hộp Đựng Thực Phẩm Tủ Lạnh Kháng Khuẩn",
+                stock: 420,
+                traffic: 11340,
+                ctr: 4.9,
+                cr: 4.2,
+                rating: 4.95,
+                category: "good"
+            },
+            {
+                code: "AH-MAY-07",
+                name: "Máy Xay Tỏi Ớt Cầm Tay Sạc USB Inox 304",
+                stock: 9,
+                traffic: 8420,
+                ctr: 4.3,
+                cr: 4.1,
+                rating: 4.91,
+                category: "stock"
+            },
+            {
+                code: "AH-BINH-11",
+                name: "Bình Giữ Nhiệt Hiển Thị Nhiệt Độ LED 500ml",
+                stock: 260,
+                traffic: 5640,
+                ctr: 2.05,
+                cr: 3.5,
+                rating: 4.85,
+                category: "ctr"
+            },
+            {
+                code: "AH-MUC-03",
+                name: "Móc Treo Quần Áo Chống Trượt Nhung Cao Cấp (Set 10)",
+                stock: 510,
+                traffic: 3890,
+                ctr: 3.8,
+                cr: 1.62,
+                rating: 4.74,
+                category: "cr"
+            },
+            {
+                code: "AH-GOI-05",
+                name: "Gối Công Thái Học Memory Foam Bảo Vệ Đốt Sống Cổ",
+                stock: 195,
+                traffic: 2190,
+                ctr: 4.5,
+                cr: 3.9,
+                rating: 4.94,
+                category: "good"
+            }
+        ];
+
+        let currentTimeframe = "30d";
+        let currentView = "owner";
+        let comboChartInstance = null;
+        let donutChartInstance = null;
+
+        // =========================================================================
+        // 3. VIEW & TIMEFRAME SWITCHING
+        // =========================================================================
+        function switchView(view) {
+            currentView = view;
+            const secOwner = document.getElementById("section-owner");
+            const secOps = document.getElementById("section-ops");
+            const divider = document.getElementById("combined-divider");
+
+            const btnOwner = document.getElementById("btn-tab-owner");
+            const btnOps = document.getElementById("btn-tab-ops");
+            const btnAll = document.getElementById("btn-tab-all");
+
+            // Reset button styles
+            const inactiveClass = "px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 text-gray-400 hover:text-white";
+            const activeClass = "px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 bg-shopeeOrange text-white shadow-sm";
+
+            btnOwner.className = inactiveClass;
+            btnOps.className = inactiveClass;
+            btnAll.className = "px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 text-gray-400 hover:text-white hidden sm:inline-flex items-center gap-1.5";
+
+            if (view === "owner") {
+                secOwner.classList.remove("hidden");
+                secOps.classList.add("hidden");
+                divider.classList.add("hidden");
+                btnOwner.className = activeClass;
+            } else if (view === "ops") {
+                secOwner.classList.add("hidden");
+                secOps.classList.remove("hidden");
+                divider.classList.add("hidden");
+                btnOps.className = activeClass;
+            } else {
+                secOwner.classList.remove("hidden");
+                secOps.classList.remove("hidden");
+                divider.classList.remove("hidden");
+                btnAll.className = "px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 bg-shopeeOrange text-white shadow-sm hidden sm:inline-flex items-center gap-1.5";
+            }
+        }
+
+        function changeTimeframe(tf) {
+            currentTimeframe = tf;
+            const d = dashboardData[tf];
+
+            // Update Owner KPI Cards
+            document.getElementById("kpi-net-rev").textContent = `${d.netRev.toFixed(1)} tr đ`;
+            document.getElementById("kpi-net-rev-delta").innerHTML = `<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">${d.netRevDelta}</span><span class="text-gray-500">so với kỳ trước</span>`;
+
+            document.getElementById("kpi-net-profit").textContent = `${d.netProfit.toFixed(1)} tr đ`;
+            document.getElementById("kpi-net-margin").textContent = `Biên ${d.netMargin.toFixed(1)}%`;
+            document.getElementById("kpi-net-profit-delta").innerHTML = `<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">${d.netProfitDelta}</span><span class="text-gray-500">so với kỳ trước</span>`;
+
+            const roas = (100 / d.cir).toFixed(2);
+            const breakevenCir = (100 - d.cogsPct - d.feePct - d.otherPct).toFixed(1);
+            document.getElementById("kpi-cir").textContent = `${d.cir.toFixed(1)}%`;
+            document.getElementById("kpi-roas").textContent = `ROAS ${roas}`;
+            document.getElementById("kpi-breakeven-cir").textContent = `${breakevenCir}%`;
+            document.getElementById("kpi-cir-delta").innerHTML = `<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">${d.cirDelta}</span><span class="text-gray-500">tối ưu hơn kỳ trước</span>`;
+
+            document.getElementById("kpi-aov").textContent = d.aov;
+            document.getElementById("kpi-orders-count").textContent = d.ordersCount;
+            document.getElementById("kpi-aov-delta").innerHTML = `<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">${d.aovDelta}</span><span class="text-gray-500">nhờ combo mua kèm</span>`;
+
+            document.getElementById("kpi-repeat").textContent = d.repeatRate;
+            document.getElementById("kpi-repeat-delta").innerHTML = `<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">${d.repeatDelta}</span><span class="text-gray-500">so với kỳ trước</span>`;
+
+            document.getElementById("kpi-return-rate").textContent = d.returnRate;
+            document.getElementById("kpi-inv-days").textContent = d.invDays;
+            document.getElementById("kpi-inv-delta").innerHTML = `<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">${d.invDelta}</span><span class="text-gray-500">tốc độ xả hàng tốt</span>`;
+
+            // Update Ops Health & Funnel
+            document.getElementById("ops-lsr").textContent = d.ops.lsr;
+            document.getElementById("ops-lsr-bar").style.width = `${d.ops.lsrBar}%`;
+            document.getElementById("ops-nfr").textContent = d.ops.nfr;
+            document.getElementById("ops-nfr-bar").style.width = `${d.ops.nfrBar}%`;
+            document.getElementById("ops-prep-time").textContent = d.ops.prepTime;
+
+            document.getElementById("ops-crr").textContent = d.ops.crr;
+            document.getElementById("ops-crr-bar").style.width = `${d.ops.crrBar}%`;
+            document.getElementById("ops-rating").textContent = d.ops.rating;
+            document.getElementById("ops-chat-time").textContent = d.ops.chatTime;
+
+            document.getElementById("ops-sqt").textContent = d.ops.sqt;
+            document.getElementById("ops-violations").textContent = d.ops.violations;
+            document.getElementById("ops-preorder").innerHTML = `${d.ops.preorder} <span class="text-gray-500 font-normal">(&lt;10%)</span>`;
+
+            document.getElementById("funnel-ctr-badge").textContent = d.ops.ctr;
+            document.getElementById("funnel-cr-badge").textContent = d.ops.cr;
+            document.getElementById("funnel-impressions").textContent = d.ops.impressions;
+            document.getElementById("funnel-traffic").textContent = d.ops.traffic;
+            document.getElementById("funnel-ctr-step").textContent = `CTR ${d.ops.ctr}`;
+            document.getElementById("funnel-atc").textContent = d.ops.atc;
+            document.getElementById("funnel-atc-rate").textContent = `ATC ${d.ops.atcRate}`;
+            document.getElementById("funnel-orders").textContent = d.ops.orders;
+            document.getElementById("funnel-cr-step").textContent = `CR ${d.ops.cr}`;
+
+            // Sync Simulator with active timeframe baseline
+            resetSimulator();
+
+            // Re-render Charts
+            updateCharts(d);
+        }
+
+        // =========================================================================
+        // 4. CHART.JS INITIALIZATION & UPDATES
+        // =========================================================================
+        function updateCharts(d) {
+            // 1. Combo Bar + Line Chart
+            const ctxCombo = document.getElementById("revenueProfitChart").getContext("2d");
+            if (comboChartInstance) {
+                comboChartInstance.destroy();
+            }
+
+            comboChartInstance = new Chart(ctxCombo, {
+                type: "bar",
+                data: {
+                    labels: d.chartLabels,
+                    datasets: [
+                        {
+                            type: "line",
+                            label: "Lợi nhuận ròng (tr đ)",
+                            data: d.profitSeries,
+                            borderColor: "#F59E0B",
+                            backgroundColor: "#F59E0B",
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            tension: 0.35,
+                            yAxisID: "y",
+                            order: 1
+                        },
+                        {
+                            type: "bar",
+                            label: "Doanh thu thuần (tr đ)",
+                            data: d.revSeries,
+                            backgroundColor: "rgba(238, 77, 45, 0.85)",
+                            hoverBackgroundColor: "#EE4D2D",
+                            borderRadius: 6,
+                            barPercentage: 0.55,
+                            yAxisID: "y",
+                            order: 2
+                        },
+                        {
+                            type: "bar",
+                            label: "Chi phí Ads (tr đ)",
+                            data: d.adsSeries,
+                            backgroundColor: "rgba(56, 189, 248, 0.8)",
+                            hoverBackgroundColor: "#38BDF8",
+                            borderRadius: 6,
+                            barPercentage: 0.55,
+                            yAxisID: "y",
+                            order: 3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: "#0F1117",
+                            titleColor: "#F9FAFB",
+                            bodyColor: "#D1D5DB",
+                            borderColor: "#262D3D",
+                            borderWidth: 1,
+                            padding: 10,
+                            callbacks: {
+                                label: function(ctx) {
+                                    return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} triệu đ`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: "#9CA3AF", font: { size: 11 } }
+                        },
+                        y: {
+                            grid: { color: "rgba(38, 45, 61, 0.6)" },
+                            ticks: {
+                                color: "#9CA3AF",
+                                font: { size: 11 },
+                                callback: (val) => val + " tr"
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 2. Cashflow Structure Donut Chart
+            const ctxDonut = document.getElementById("cashflowDonutChart").getContext("2d");
+            if (donutChartInstance) {
+                donutChartInstance.destroy();
+            }
+
+            const cashflowItems = [
+                { label: "Giá vốn hàng bán (COGS)", pct: d.cogsPct, color: "#4B5563" },
+                { label: "Phí sàn Shopee & Dịch vụ", pct: d.feePct, color: "#38BDF8" },
+                { label: "Chi phí Ads & Affiliate", pct: d.cir, color: "#EE4D2D" },
+                { label: "Hoàn hủy & Đóng gói", pct: d.otherPct, color: "#A855F7" },
+                { label: "Lợi nhuận ròng thực nhận", pct: d.netMargin, color: "#F59E0B" }
+            ];
+
+            document.getElementById("donut-center-profit").textContent = `${d.netMargin.toFixed(1)}%`;
+
+            // Build Custom Legend List
+            const legendContainer = document.getElementById("cashflow-legend-list");
+            legendContainer.innerHTML = cashflowItems.map(item => `
+                <div class="flex items-center justify-between py-1 border-b border-borderSubtle/50 last:border-none">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${item.color}"></span>
+                        <span class="text-gray-300 truncate">${item.label}</span>
+                    </div>
+                    <span class="font-bold text-white ml-2">${item.pct.toFixed(1)}%</span>
+                </div>
+            `).join("");
+
+            donutChartInstance = new Chart(ctxDonut, {
+                type: "doughnut",
+                data: {
+                    labels: cashflowItems.map(i => i.label),
+                    datasets: [{
+                        data: cashflowItems.map(i => i.pct),
+                        backgroundColor: cashflowItems.map(i => i.color),
+                        borderColor: "#161B26",
+                        borderWidth: 3,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "70%",
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: "#0F1117",
+                            titleColor: "#F9FAFB",
+                            bodyColor: "#D1D5DB",
+                            borderColor: "#262D3D",
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(ctx) {
+                                    const val = ctx.parsed;
+                                    const amount = (d.netRev * val / 100).toFixed(1);
+                                    return ` ${val.toFixed(1)}% (~${amount} tr đ)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // =========================================================================
+        // 5. PROFIT & CIR INTERACTIVE SIMULATOR
+        // =========================================================================
+        function resetSimulator() {
+            const d = dashboardData[currentTimeframe];
+            document.getElementById("sim-cir").value = d.cir;
+            document.getElementById("sim-fee").value = d.feePct;
+            document.getElementById("sim-cogs").value = d.cogsPct;
+            updateSimulator();
+        }
+
+        function updateSimulator() {
+            const d = dashboardData[currentTimeframe];
+            const simCir = parseFloat(document.getElementById("sim-cir").value);
+            const simFee = parseFloat(document.getElementById("sim-fee").value);
+            const simCogs = parseFloat(document.getElementById("sim-cogs").value);
+            const fixedOpsCost = 5.3; // Đóng gói, hoàn hủy, nhân sự kho
+
+            document.getElementById("sim-cir-val").textContent = `${simCir.toFixed(1)}%`;
+            document.getElementById("sim-fee-val").textContent = `${simFee.toFixed(1)}%`;
+            document.getElementById("sim-cogs-val").textContent = `${simCogs.toFixed(1)}%`;
+            document.getElementById("sim-base-rev").textContent = `${d.netRev.toFixed(1)} tr đ`;
+
+            const maxCir = Math.max(0, 100 - simCogs - simFee - fixedOpsCost);
+            const netMargin = 100 - simCogs - simFee - fixedOpsCost - simCir;
+            const netProfit = (d.netRev * netMargin) / 100;
+            const breakevenRoas = maxCir > 0 ? (100 / maxCir).toFixed(2) : "∞";
+
+            const marginEl = document.getElementById("sim-net-margin");
+            const profitEl = document.getElementById("sim-net-profit");
+            const adviceBox = document.getElementById("sim-advice-box");
+
+            marginEl.textContent = `${netMargin.toFixed(1)}%`;
+            profitEl.textContent = `${netProfit.toFixed(1)} tr đ`;
+            document.getElementById("sim-max-cir").textContent = `${maxCir.toFixed(1)}%`;
+            document.getElementById("sim-breakeven-roas").textContent = breakevenRoas;
+
+            if (netMargin >= 15) {
+                marginEl.className = "text-xl sm:text-2xl font-extrabold text-financeGold mt-0.5 block";
+                profitEl.className = "text-xl sm:text-2xl font-extrabold text-emerald-400 mt-0.5 block";
+                adviceBox.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span><span class="text-emerald-400 font-medium">Biên an toàn cao (${netMargin.toFixed(1)}%): Có thể đẩy thêm ngân sách Ads để chiếm thị phần.</span>`;
+            } else if (netMargin > 0) {
+                marginEl.className = "text-xl sm:text-2xl font-extrabold text-amber-400 mt-0.5 block";
+                profitEl.className = "text-xl sm:text-2xl font-extrabold text-amber-400 mt-0.5 block";
+                adviceBox.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 shrink-0"></span><span class="text-amber-400 font-medium">Biên lợi nhuận mỏng (${netMargin.toFixed(1)}%): Cần tối ưu giá thầu Ads hoặc tăng giá bán combo.</span>`;
+            } else {
+                marginEl.className = "text-xl sm:text-2xl font-extrabold text-rose-500 mt-0.5 block";
+                profitEl.className = "text-xl sm:text-2xl font-extrabold text-rose-500 mt-0.5 block";
+                adviceBox.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span><span class="text-rose-400 font-medium">Cảnh báo lỗ ròng (${netMargin.toFixed(1)}%): Chi phí Ads vượt ngưỡng hòa vốn, cần giảm thầu ngay!</span>`;
+            }
+        }
+
+        // =========================================================================
+        // 6. SKU TABLE & ACTIONABLE RECOMMENDATIONS ENGINE
+        // =========================================================================
+        function getSkuActionBadge(sku) {
+            if (sku.stock < 20) {
+                return {
+                    label: "Sắp hết hàng — Nhập gấp",
+                    classes: "bg-rose-500/15 text-rose-400 border border-rose-500/30",
+                    dot: "bg-rose-400"
+                };
+            }
+            if (sku.ctr < 2.5) {
+                return {
+                    label: "Tối ưu ảnh bìa / Giá mồi",
+                    classes: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
+                    dot: "bg-amber-400"
+                };
+            }
+            if (sku.cr < 2.0) {
+                return {
+                    label: "Kiểm tra đánh giá / Voucher",
+                    classes: "bg-purple-500/15 text-purple-400 border border-purple-500/30",
+                    dot: "bg-purple-400"
+                };
+            }
+            return {
+                label: "Tăng trưởng tốt — Đẩy Ads",
+                classes: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+                dot: "bg-emerald-400"
+            };
+        }
+
+        function renderSkuTable() {
+            const keyword = document.getElementById("sku-search").value.toLowerCase().trim();
+            const filter = document.getElementById("sku-filter").value;
+            const tbody = document.getElementById("sku-table-body");
+
+            const filtered = skuList.filter(sku => {
+                const matchKeyword = sku.name.toLowerCase().includes(keyword) || sku.code.toLowerCase().includes(keyword);
+                if (!matchKeyword) return false;
+
+                if (filter === "all") return true;
+                if (filter === "action") return sku.category !== "good";
+                return sku.category === filter;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-gray-500">Không tìm thấy mã SKU nào phù hợp với điều kiện lọc.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(sku => {
+                const badge = getSkuActionBadge(sku);
+                const stockColor = sku.stock < 20 ? "text-rose-400 font-bold" : "text-gray-200";
+                const ctrColor = sku.ctr < 2.5 ? "text-amber-400 font-bold" : "text-gray-200";
+                const crColor = sku.cr < 2.0 ? "text-purple-400 font-bold" : "text-emerald-400 font-semibold";
+
+                return `
+                    <tr class="hover:bg-bgCardHover/60 transition">
+                        <td class="py-3.5 px-4">
+                            <div class="font-semibold text-white">${sku.name}</div>
+                            <div class="text-[11px] text-gray-500 font-mono mt-0.5">${sku.code}</div>
+                        </td>
+                        <td class="py-3.5 px-3 text-right ${stockColor}">${sku.stock} sp</td>
+                        <td class="py-3.5 px-3 text-right text-gray-300">${sku.traffic.toLocaleString("vi-VN")}</td>
+                        <td class="py-3.5 px-3 text-right ${ctrColor}">${sku.ctr.toFixed(2)}%</td>
+                        <td class="py-3.5 px-3 text-right ${crColor}">${sku.cr.toFixed(2)}%</td>
+                        <td class="py-3.5 px-3 text-center">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0F1117] text-financeGold font-semibold text-xs">
+                                ${sku.rating.toFixed(2)} ★
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${badge.classes}">
+                                <span class="w-1.5 h-1.5 rounded-full ${badge.dot}"></span>
+                                ${badge.label}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        // Initialize on load
+        window.addEventListener("DOMContentLoaded", () => {
+            changeTimeframe("30d");
+            renderSkuTable();
+        });
+    </script>
+</body>
+</html>

@@ -21,3 +21,11 @@ Trình duyệt cá nhân viết bằng **Rust (`tao` + `wry`)** dung lượng ch
 - **`Alt + W`**: Đóng Tab đang chọn
 - **`Alt + M`**: Đổi chế độ khung (`1 Tab` → `Xoắn Ốc BSP` → `Chia Cột`)
 - **`Alt + 1..8`**: Chuyển nhanh tới Tab số 1..8
+
+## Chạy bản Web Runtime (Node.js 22)
+- Khởi động dev server trên cổng `3000`: `npm run dev`
+- Biên dịch TypeScript: `npm run build`
+- Chạy bản production: `npm start`
+- Kiểm thử unit test logic trạng thái: `npm test`
+- Lưu ý môi trường web: các tính năng thuần Windows desktop (khay hệ thống Win32, cào cookie WebView2 trực tiếp từ Shopee/TikTok, extension uBlock MV3) được thay bằng dữ liệu mẫu kiểm toán đa shop và mở liên kết ngoài ở tab trình duyệt.
+
