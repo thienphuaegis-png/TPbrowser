@@ -118,6 +118,8 @@ pub struct ShellLayout {
 #[allow(dead_code)]
 pub const DEFAULT_LEFT_SIDEBAR_WIDTH: u32 = 228;
 pub const LEFT_SIDEBAR_COLLAPSED_WIDTH: u32 = 54;
+/// Dragging the vertical sidebar below this width enters Compact Mode.
+pub const SIDEBAR_COLLAPSE_THRESHOLD: i32 = 60;
 #[allow(dead_code)]
 pub const TOP_TABBAR_HEIGHT: u32 = 36;
 pub const RIGHT_AI_DOCK_WIDTH: u32 = 360;
@@ -259,13 +261,34 @@ pub fn compute_content_panes(
 
     match view_mode {
         ContentViewMode::SingleTab => vec![area],
-        ContentViewMode::ColumnsBsp => compute_columns_in_area(area, count, gap),
-        ContentViewMode::RowsBsp => compute_rows_in_area(area, count, gap),
+        ContentViewMode::ColumnsBsp => compute_columns_in_area(area, count, master_ratio, gap),
+        ContentViewMode::RowsBsp => compute_rows_in_area(area, count, master_ratio, gap),
         ContentViewMode::SpiralBsp => compute_spiral_in_area(area, count, master_ratio, gap),
     }
 }
 
-pub fn compute_rows_in_area(area: PaneRect, count: usize, gap: u32) -> Vec<PaneRect> {
+pub fn compute_rows_in_area(area: PaneRect, count: usize, master_ratio: f32, gap: u32) -> Vec<PaneRect> {
+    if count == 2 {
+        let ratio = master_ratio.clamp(0.25, 0.75);
+        let avail_h = area.height.saturating_sub(gap).max(80);
+        let first_h = ((avail_h as f32) * ratio).round() as u32;
+        let first_h = first_h.max(40).min(avail_h.saturating_sub(40));
+        let second_h = avail_h.saturating_sub(first_h).max(40);
+        return vec![
+            PaneRect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: first_h,
+            },
+            PaneRect {
+                x: area.x,
+                y: area.y + (first_h + gap) as i32,
+                width: area.width,
+                height: second_h,
+            },
+        ];
+    }
     let total_gap = gap.saturating_mul((count.saturating_sub(1)) as u32);
     let avail_h = area.height.saturating_sub(total_gap).max(count as u32 * 40);
     let row_h = avail_h / (count as u32);
@@ -289,7 +312,28 @@ pub fn compute_rows_in_area(area: PaneRect, count: usize, gap: u32) -> Vec<PaneR
     out
 }
 
-pub fn compute_columns_in_area(area: PaneRect, count: usize, gap: u32) -> Vec<PaneRect> {
+pub fn compute_columns_in_area(area: PaneRect, count: usize, master_ratio: f32, gap: u32) -> Vec<PaneRect> {
+    if count == 2 {
+        let ratio = master_ratio.clamp(0.25, 0.75);
+        let avail_w = area.width.saturating_sub(gap).max(80);
+        let first_w = ((avail_w as f32) * ratio).round() as u32;
+        let first_w = first_w.max(40).min(avail_w.saturating_sub(40));
+        let second_w = avail_w.saturating_sub(first_w).max(40);
+        return vec![
+            PaneRect {
+                x: area.x,
+                y: area.y,
+                width: first_w,
+                height: area.height,
+            },
+            PaneRect {
+                x: area.x + (first_w + gap) as i32,
+                y: area.y,
+                width: second_w,
+                height: area.height,
+            },
+        ];
+    }
     let total_gap = gap.saturating_mul((count.saturating_sub(1)) as u32);
     let avail_w = area.width.saturating_sub(total_gap).max(count as u32 * 40);
     let col_w = avail_w / (count as u32);

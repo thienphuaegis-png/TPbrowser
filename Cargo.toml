@@ -6,8 +6,11 @@ description = "TPbrowser — Trình duyệt cá nhân Rust (Tab Ngang/Dọc, Tra
 
 [dependencies]
 tao = "0.37.2"
-wry = "0.57.1"
+wry = { version = "0.57.1", features = ["devtools"] }
 webview2-com = "=0.39.1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-core = "0.62.2"
 
 [profile.release]
 opt-level = "z"

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TPbrowser — Vertical Sidebar: Hiện tại vs Đề xuất</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#0c0d10;color:#f3efe6;font-family:"Segoe UI",Arial,sans-serif;padding:24px}
+  h1{font-size:20px;margin:0 0 6px;color:#e5c372;font-weight:700}
+  .sub{color:#a8a296;font-size:13px;margin-bottom:22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:1120px}
+  .panel{background:#15171c;border:1px solid rgba(212,175,55,.25);border-radius:14px;padding:16px}
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#e5c372;margin:0 0 12px}
+  .panel p{font-size:12px;color:#bcb5a7;margin:0 0 12px;line-height:1.5}
+  .browser{height:620px;border:1px solid #353944;border-radius:10px;overflow:hidden;display:flex;background:#101216}
+  .sidebar{width:218px;background:#181a20;border-right:1px solid #30333b;display:flex;flex-direction:column;position:relative}
+  .content{flex:1;background:#0e1014;display:flex;align-items:center;justify-content:center;color:#6f7580;font-size:13px}
+  .top{padding:10px 9px;border-bottom:1px solid #30333b}
+  .row{display:flex;align-items:center;gap:7px}
+  .brand{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e2be68,#b5872e);color:#fff;font-weight:800;font-size:11px}
+  .menu{height:28px;flex:1;border:1px solid rgba(212,175,55,.35);background:#20232a;color:#e5c372;border-radius:7px;text-align:left;padding:0 9px;font-size:11px}
+  .win{display:flex;gap:3px;margin-top:8px;justify-content:flex-end}
+  .win i{font-style:normal;width:22px;height:20px;border-radius:4px;color:#bdb7aa;background:#24272e;display:flex;align-items:center;justify-content:center;font-size:11px}
+  .url{margin-top:9px;height:27px;border:1px solid #383c46;border-radius:999px;color:#a8a296;padding:5px 9px;font-size:10px;background:#111318}
+  .section{padding:10px 9px 0}
+  .label{font-size:9px;color:#777e8c;text-transform:uppercase;letter-spacing:1px;margin:0 4px 6px}
+  .essential{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px}
+  .essential span{height:28px;border:1px solid #3b3f49;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#d8c28a;font-size:11px;background:#20232a}
+  .tab{height:34px;border-radius:7px;display:flex;align-items:center;gap:8px;padding:0 9px;color:#c5c8ce;font-size:11px;margin-bottom:3px}
+  .tab b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tab.active{background:#2b2f38;color:#fff;border-left:2px solid #d4af37;padding-left:7px}
+  .tab .dot{width:14px;height:14px;border-radius:4px;background:#3e4654;flex:none}
+  .tab .close{margin-left:auto;color:#747b87}
+  .worker{margin:8px 9px;border:1px dashed #454a57;border-radius:7px;padding:8px;color:#8f96a3;font-size:10px}
+  .spaces{margin-top:auto;border-top:1px solid #30333b;padding:9px}
+  .space{height:28px;display:flex;align-items:center;gap:7px;color:#a8a296;font-size:11px}
+  .space.active{color:#e5c372}
+  .dot-space{width:9px;height:9px;border-radius:50%;background:#d4af37}
+  .proposed .sidebar{width:194px;background:#181a20}
+  .proposed .top{padding:9px 8px 8px}
+  .proposed .top .row{gap:5px}
+  .proposed .menu{flex:none;width:31px;padding:0;text-align:center;font-size:0;border-color:transparent;background:#20232a}
+  .proposed .menu:after{content:"☰";font-size:14px}
+  .proposed .brand{display:none}
+  .proposed .win{margin:0 0 0 auto;gap:2px}
+  .proposed .win i{width:21px;height:21px;background:transparent;color:#a8a296}
+  .proposed .url{margin-top:8px;height:25px;background:#20232a;border-color:#2d3139}
+  .proposed .section{padding-top:9px}
+  .proposed .label{font-size:8px;margin-bottom:5px}
+  .proposed .essential{grid-template-columns:repeat(5,1fr);gap:4px}
+  .proposed .essential span{height:26px;background:#20232a;border-color:transparent;font-size:10px}
+  .proposed .tab{height:31px;margin-bottom:2px;border-radius:5px;padding-left:8px}
+  .proposed .tab.active{border-left:2px solid #d4af37;padding-left:6px;background:#272b33}
+  .proposed .worker{margin:7px 8px;padding:7px}
+  .callout{margin-top:12px;border-left:3px solid #d4af37;padding:9px 10px;background:#20232a;color:#d8d0c0;font-size:11px;line-height:1.45}
+  .legend{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:#aaa394}
+  .legend span{display:inline-flex;align-items:center;gap:5px}.sw{width:10px;height:10px;border-radius:3px;background:#2b2f38}.sw.gold{background:#d4af37}.sw.gray{background:#20232a}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}.browser{height:560px}}
+</style>
+</head>
+<body>
+  <h1>TPbrowser — Sidebar dọc theo kết cấu Zen</h1>
+  <div class="sub">Giữ nguyên màu AURELIA; thay đổi kết cấu và thứ tự hiển thị của sidebar vertical.</div>
+  <div class="grid">
+    <section class="panel">
+      <h2>Hiện tại</h2>
+      <p>Brand và các điều khiển chiếm nhiều trọng lượng ở đầu sidebar. Tab, URL, pinned và vùng worker cùng cạnh tranh sự chú ý.</p>
+      <div class="browser">
+        <aside class="sidebar">
+          <div class="top">
+            <div class="row"><div class="brand">TP</div><button class="menu">Menu & Cài đặt</button></div>
+            <div class="win"><i>—</i><i>□</i><i>×</i></div>
+            <div class="url">🔗  Nhập URL hoặc tìm kiếm</div>
+          </div>
+          <div class="section"><div class="label">Tab ghim</div><div class="essential"><span>◉</span><span>◉</span><span>◉</span><span>◉</span></div></div>
+          <div class="section"><div class="label">Tabs</div><div class="tab active"><span class="dot"></span><b>Google Gemini</b><span class="close">×</span></div><div class="tab"><span class="dot"></span><b>Trang bắt đầu</b><span class="close">×</span></div><div class="tab"><span class="dot"></span><b>YouTube</b><span class="close">×</span></div></div>
+          <div class="worker">BOT / AI worker region<br><span>được giữ riêng khỏi tab người dùng</span></div>
+          <div class="spaces"><div class="space active"><span class="dot-space"></span> Cá nhân</div><div class="space"><span class="dot-space" style="background:#6f7784"></span> Công việc</div></div>
+        </aside><main class="content">Trang web đang mở</main>
+      </div>
+    </section>
+    <section class="panel proposed">
+      <h2>Đề xuất theo Zen</h2>
+      <p>Ở đầu sidebar chỉ còn Menu và ba nút cửa sổ. Phần còn lại ưu tiên Essentials, danh sách tab dọc và Spaces.</p>
+      <div class="browser">
+        <aside class="sidebar">
+          <div class="top">
+            <div class="row"><button class="menu" title="Menu"></button><div class="win"><i>—</i><i>□</i><i>×</i></div></div>
+            <div class="url">Nhập URL hoặc tìm kiếm</div>
+          </div>
+          <div class="section"><div class="label">Essentials</div><div class="essential"><span>◉</span><span>◉</span><span>◉</span><span>◉</span><span>◉</span></div></div>
+          <div class="section"><div class="label">Tabs</div><div class="tab active"><span class="dot"></span><b>Google Gemini</b><span class="close">×</span></div><div class="tab"><span class="dot"></span><b>Trang bắt đầu</b><span class="close">×</span></div><div class="tab"><span class="dot"></span><b>YouTube</b><span class="close">×</span></div></div>
+          <div class="worker">Worker / Extension<br><span>chỉ xuất hiện khi có</span></div>
+          <div class="spaces"><div class="space active"><span class="dot-space"></span> Cá nhân</div><div class="space"><span class="dot-space" style="background:#6f7784"></span> Công việc</div></div>
+        </aside><main class="content">Trang web đang mở</main>
+      </div>
+      <div class="callout"><b>Giữ nguyên:</b> màu AURELIA, chức năng native, logo/brand asset, workspace, pinned tab, worker, context menu và command bar. Chỉ thay kết cấu sidebar vertical.</div>
+    </section>
+  </div>
+  <div class="legend"><span><i class="sw gold"></i>Accent AURELIA giữ nguyên</span><span><i class="sw gray"></i>Kết cấu sidebar gọn theo Zen</span><span><i class="sw"></i>Content area giữ nguyên</span></div>
+</body>
+</html>

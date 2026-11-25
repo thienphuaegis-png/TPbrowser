@@ -1,9 +1,13 @@
 use std::{
+    collections::hash_map::RandomState,
     env,
+    fs,
+    hash::{BuildHasher, Hasher},
     io::{self, BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
+    path::PathBuf,
     process::{Command, Stdio},
-    sync::mpsc,
+    sync::{mpsc, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -14,6 +18,86 @@ use std::os::windows::process::CommandExt;
 use crate::json_mini::{parse_json, JsonVal};
 
 pub const DEFAULT_MCP_PORT: u16 = 17777;
+static MCP_AUTH_TOKEN: OnceLock<String> = OnceLock::new();
+
+pub fn generate_auth_token() -> String {
+    let hi = RandomState::new().build_hasher().finish();
+    let lo = RandomState::new().build_hasher().finish();
+    format!("tp_{:016x}{:016x}", hi, lo)
+}
+
+pub fn set_auth_token(token: String) {
+    let trimmed = token.trim().to_string();
+    if !trimmed.is_empty() {
+        let _ = MCP_AUTH_TOKEN.set(trimmed);
+    }
+}
+
+fn active_auth_token() -> Option<String> {
+    if let Ok(env_tok) = env::var("TP_MCP_TOKEN") {
+        let t = env_tok.trim();
+        if !t.is_empty() {
+            return Some(t.to_string());
+        }
+    }
+    MCP_AUTH_TOKEN.get().cloned().filter(|t| !t.is_empty())
+}
+
+fn require_local_auth_from_env() -> bool {
+    env::var("TP_MCP_REQUIRE_LOCAL_AUTH")
+        .ok()
+        .map(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    let ab = a.as_bytes();
+    let bb = b.as_bytes();
+    if ab.len() != bb.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (&x, &y) in ab.iter().zip(bb.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let h = host.trim();
+    if h.is_empty() {
+        return false;
+    }
+    let without_port = if h.starts_with('[') {
+        h.split(']').next().unwrap_or("").trim_start_matches('[')
+    } else {
+        h.split(':').next().unwrap_or("")
+    };
+    without_port.eq_ignore_ascii_case("localhost")
+        || without_port == "127.0.0.1"
+        || without_port == "::1"
+}
+
+fn is_authorized_request(
+    auth_header: Option<&str>,
+    host_header: Option<&str>,
+    has_proxy_header: bool,
+    expected_token: Option<&str>,
+    require_local_auth: bool,
+) -> bool {
+    let Some(expected) = expected_token.map(str::trim).filter(|t| !t.is_empty()) else {
+        return !has_proxy_header;
+    };
+
+    if let Some(raw_auth) = auth_header {
+        let mut parts = raw_auth.trim().splitn(2, char::is_whitespace);
+        let scheme = parts.next().unwrap_or("");
+        let token = parts.next().unwrap_or("").trim();
+        return scheme.eq_ignore_ascii_case("Bearer") && constant_time_eq(token, expected);
+    }
+
+    !require_local_auth && !has_proxy_header && host_header.is_none_or(is_loopback_host)
+}
 
 
 #[derive(Debug, Clone)]
@@ -60,7 +144,25 @@ where
     });
 }
 
-fn handle_http_conn<F>(mut stream: TcpStream, dispatch: F) -> io::Result<()>
+fn handle_http_conn<F>(stream: TcpStream, dispatch: F) -> io::Result<()>
+where
+    F: Fn(McpBridgeMsg) + Send + Sync + Clone + 'static,
+{
+    let tok = active_auth_token();
+    handle_http_conn_with_auth(
+        stream,
+        dispatch,
+        tok.as_deref(),
+        require_local_auth_from_env(),
+    )
+}
+
+fn handle_http_conn_with_auth<F>(
+    mut stream: TcpStream,
+    dispatch: F,
+    expected_token: Option<&str>,
+    require_local_auth: bool,
+) -> io::Result<()>
 where
     F: Fn(McpBridgeMsg) + Send + Sync + Clone + 'static,
 {
@@ -82,6 +184,9 @@ where
     let mut content_len: usize = 0;
     let mut chunked = false;
     let mut has_origin = false;
+    let mut has_proxy_header = false;
+    let mut auth_header: Option<String> = None;
+    let mut host_header: Option<String> = None;
     loop {
         let mut hline = String::new();
         if reader.read_line(&mut hline)? == 0 {
@@ -96,6 +201,19 @@ where
             let vl = v.trim();
             if key.eq_ignore_ascii_case("origin") {
                 has_origin = true;
+            } else if key.eq_ignore_ascii_case("authorization") {
+                auth_header = Some(vl.to_string());
+            } else if key.eq_ignore_ascii_case("host") {
+                host_header = Some(vl.to_string());
+            } else if key.eq_ignore_ascii_case("cf-connecting-ip")
+                || key.eq_ignore_ascii_case("x-forwarded-for")
+                || key.eq_ignore_ascii_case("x-forwarded-host")
+                || key.eq_ignore_ascii_case("x-real-ip")
+                || key.eq_ignore_ascii_case("forwarded")
+                || key.eq_ignore_ascii_case("cf-ray")
+                || key.eq_ignore_ascii_case("cf-visitor")
+            {
+                has_proxy_header = true;
             }
             if key.eq_ignore_ascii_case("content-length") {
                 content_len = vl.parse::<usize>().unwrap_or(0);
@@ -111,17 +229,6 @@ where
         return write_http_resp(&mut stream, 403, "Forbidden", "application/json", r#"{"error":"browser origin not permitted"}"#);
     }
 
-    let body = if chunked {
-        read_chunked_body(&mut reader)?
-    } else if content_len > 0 {
-        let capped = content_len.min(8 * 1024 * 1024);
-        let mut buf = vec![0u8; capped];
-        reader.read_exact(&mut buf)?;
-        String::from_utf8_lossy(&buf).to_string()
-    } else {
-        String::new()
-    };
-
     if method == "OPTIONS" {
         return write_http_resp(&mut stream, 204, "No Content", "text/plain", "");
     }
@@ -134,6 +241,33 @@ where
             .unwrap_or_else(|_| r#"{"ok":true,"app":"TPbrowser"}"#.to_string());
         return write_http_resp(&mut stream, 200, "OK", "application/json", &info);
     }
+
+    if !is_authorized_request(
+        auth_header.as_deref(),
+        host_header.as_deref(),
+        has_proxy_header,
+        expected_token,
+        require_local_auth,
+    ) {
+        return write_http_resp(
+            &mut stream,
+            401,
+            "Unauthorized",
+            "application/json",
+            r#"{"error":"unauthorized"}"#,
+        );
+    }
+
+    let body = if chunked {
+        read_chunked_body(&mut reader)?
+    } else if content_len > 0 {
+        let capped = content_len.min(8 * 1024 * 1024);
+        let mut buf = vec![0u8; capped];
+        reader.read_exact(&mut buf)?;
+        String::from_utf8_lossy(&buf).to_string()
+    } else {
+        String::new()
+    };
 
     if path == "/wake" {
         dispatch(McpBridgeMsg::WakeWindow);
@@ -199,15 +333,27 @@ fn write_http_resp(
     body: &str,
 ) -> io::Result<()> {
     let bytes = body.as_bytes();
+    let extra_auth_hdr = if status == 401 {
+        "WWW-Authenticate: Bearer\r\n"
+    } else {
+        ""
+    };
     let header = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}; charset=utf-8\r\nContent-Length: {}\r\nMcp-Session-Id: tpbrowser-local\r\nConnection: close\r\n\r\n",
-        status, reason, content_type, bytes.len()
+        "HTTP/1.1 {} {}\r\n{}Content-Type: {}; charset=utf-8\r\nContent-Length: {}\r\nMcp-Session-Id: tpbrowser-local\r\nConnection: close\r\n\r\n",
+        status, reason, extra_auth_hdr, content_type, bytes.len()
     );
     stream.write_all(header.as_bytes())?;
     if !bytes.is_empty() {
         stream.write_all(bytes)?;
     }
-    stream.flush()
+    stream.flush()?;
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    // Drain any already-buffered request body bytes non-blockingly so Windows
+    // Winsock does not emit a TCP RST when closing after an early 401/403.
+    let _ = stream.set_nonblocking(true);
+    let mut drain = [0u8; 4096];
+    while matches!(stream.read(&mut drain), Ok(n) if n > 0) {}
+    Ok(())
 }
 
 pub fn handle_jsonrpc_message<F>(raw: &str, dispatch: &F) -> Option<String>
@@ -335,6 +481,7 @@ where
         "resources/list" => {
             let list = JsonVal::Arr(vec![
                 resource_desc("tpbrowser://tabs", "Open Browser Tabs", "Live list of tabs, URLs, titles and active index", "application/json"),
+                resource_desc("tpbrowser://windows", "Window Sync & Recovery State", "Live multi-window geometry, monitor clamping, and crash recovery snapshot", "application/json"),
                 resource_desc("tpbrowser://tasks", "TPbrowser Cowork Tasks", "Tasks and reminders from tasks/tasks.json", "application/json"),
                 resource_desc("tpbrowser://skills", "TPbrowser Recorded Skills", "Domain automation skills from skills/skills.json", "application/json"),
             ]);
@@ -424,7 +571,19 @@ fn build_tools_list() -> JsonVal {
     JsonVal::Arr(vec![
         tool_def(
             "tp_list_tabs",
-            "List all open TPbrowser tabs (index, id, title, url, profile, active) and current layout/chat state.",
+            "List all open TPbrowser tabs (index, id, title, url, profile, active) and current layout/window recovery state.",
+            vec![],
+            vec![],
+        ),
+        tool_def(
+            "tp_window_recovery_status",
+            "Inspect live multi-window geometry, open windows/tab counts, DPI/monitor sync status, and crash recovery snapshot availability.",
+            vec![],
+            vec![],
+        ),
+        tool_def(
+            "tp_recover_windows",
+            "Recover windows/tabs from the last recovery snapshot and clamp all visible windows inside current monitor work areas.",
             vec![],
             vec![],
         ),
@@ -494,6 +653,12 @@ fn build_tools_list() -> JsonVal {
             "tp_discover_shopee_shops",
             "Read the recognized Shopee shop table in an existing tab. Account identity is unavailable.",
             vec![("tab_id", prop("integer", "Optional existing tab ID; defaults to active tab"))],
+            vec![],
+        ),
+        tool_def(
+            "tp_get_scan_state",
+            "Get current multi-shop e-commerce scan state, step, queue, and recent scanner logs directly from TPbrowser memory.",
+            vec![],
             vec![],
         ),
         tool_def(
@@ -661,6 +826,23 @@ fn is_health_ok(port: u16) -> bool {
     buf.contains("200 OK")
 }
 
+fn resolve_bridge_auth_token() -> Option<String> {
+    if let Some(tok) = active_auth_token() {
+        return Some(tok);
+    }
+    let exe_dir = env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let raw = fs::read_to_string(exe_dir.join("config.json")).ok()?;
+    let val = parse_json(&raw).ok()?;
+    val.get("mcp_auth_token")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+}
+
 fn http_post_mcp(port: u16, json_body: &str) -> Result<Option<String>, String> {
     let mut stream = TcpStream::connect_timeout(
         &format!("127.0.0.1:{}", port).parse().unwrap(),
@@ -671,9 +853,13 @@ fn http_post_mcp(port: u16, json_body: &str) -> Result<Option<String>, String> {
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
     let bytes = json_body.as_bytes();
+    let auth_hdr = resolve_bridge_auth_token()
+        .map(|tok| format!("Authorization: Bearer {}\r\n", tok))
+        .unwrap_or_default();
     let req = format!(
-        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n{}Content-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         port,
+        auth_hdr,
         bytes.len()
     );
     stream.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
@@ -727,6 +913,132 @@ mod tests {
         assert!(native.contains("native-only"));
     }
 
+    #[test]
+    fn proxied_mcp_requests_require_bearer_token_and_reject_bad_auth() {
+        fn request_with_auth(headers: &str, path: &str, body: &str, expected: Option<&str>, require_local: bool) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let exp = expected.map(ToString::to_string);
+            let worker = thread::spawn(move || {
+                let (stream, _) = listener.accept().unwrap();
+                handle_http_conn_with_auth(
+                    stream,
+                    |msg| match msg {
+                        McpBridgeMsg::ToolCall { reply, .. } => {
+                            let _ = reply.send(Ok("authed-ok".into()));
+                        }
+                        McpBridgeMsg::WakeWindow => {}
+                        _ => {}
+                    },
+                    exp.as_deref(),
+                    require_local,
+                )
+                .unwrap();
+            });
+            let mut client = TcpStream::connect(addr).unwrap();
+            write!(
+                client,
+                "POST {} HTTP/1.1\r\n{}Content-Length: {}\r\n\r\n{}",
+                path,
+                headers,
+                body.len(),
+                body
+            )
+            .unwrap();
+            let _ = client.flush();
+            let _ = client.shutdown(std::net::Shutdown::Write);
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 1024];
+            loop {
+                match client.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => raw.extend_from_slice(&buf[..n]),
+                }
+            }
+            let response = String::from_utf8_lossy(&raw).to_string();
+            worker.join().unwrap();
+            response
+        }
+
+        let body = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"tp_eval_js","arguments":{"code":"1+1"}}}"#;
+        let token = "tp_test_secret_token";
+
+        // Proxied via Cloudflare tunnel without Bearer token -> 401
+        let cf_no_auth = request_with_auth(
+            "Host: demo.trycloudflare.com\r\nCF-Connecting-IP: 1.2.3.4\r\n",
+            "/mcp",
+            body,
+            Some(token),
+            false,
+        );
+        assert!(cf_no_auth.starts_with("HTTP/1.1 401"));
+        assert!(cf_no_auth.contains("WWW-Authenticate: Bearer"));
+        assert!(!cf_no_auth.contains("authed-ok"));
+
+        // Proxied via X-Forwarded-For with wrong token -> 401
+        let xff_bad_auth = request_with_auth(
+            "Host: 127.0.0.1:17777\r\nX-Forwarded-For: 8.8.8.8\r\nAuthorization: Bearer wrong\r\n",
+            "/mcp",
+            body,
+            Some(token),
+            false,
+        );
+        assert!(xff_bad_auth.starts_with("HTTP/1.1 401"));
+        assert!(!xff_bad_auth.contains("authed-ok"));
+
+        // Proxied /wake without token -> 401
+        let wake_no_auth = request_with_auth(
+            "Host: demo.trycloudflare.com\r\nCF-Ray: abc\r\n",
+            "/wake",
+            "",
+            Some(token),
+            false,
+        );
+        assert!(wake_no_auth.starts_with("HTTP/1.1 401"));
+
+        // Proxied with valid Bearer token -> 200 OK
+        let cf_valid_auth = request_with_auth(
+            "Host: demo.trycloudflare.com\r\nCF-Connecting-IP: 1.2.3.4\r\nAuthorization: Bearer tp_test_secret_token\r\n",
+            "/mcp",
+            body,
+            Some(token),
+            false,
+        );
+        assert!(cf_valid_auth.starts_with("HTTP/1.1 200"));
+        assert!(cf_valid_auth.contains("authed-ok"));
+
+        // Direct loopback without proxy headers -> allowed when require_local_auth=false
+        let local_no_auth = request_with_auth(
+            "Host: 127.0.0.1:17777\r\n",
+            "/mcp",
+            body,
+            Some(token),
+            false,
+        );
+        assert!(local_no_auth.starts_with("HTTP/1.1 200"));
+        assert!(local_no_auth.contains("authed-ok"));
+
+        // Direct loopback with wrong Authorization header -> still rejected 401
+        let local_wrong_auth = request_with_auth(
+            "Host: localhost:17777\r\nAuthorization: Bearer invalid\r\n",
+            "/mcp",
+            body,
+            Some(token),
+            false,
+        );
+        assert!(local_wrong_auth.starts_with("HTTP/1.1 401"));
+
+        // Direct loopback with require_local_auth=true without token -> 401
+        let strict_local = request_with_auth(
+            "Host: 127.0.0.1:17777\r\n",
+            "/mcp",
+            body,
+            Some(token),
+            true,
+        );
+        assert!(strict_local.starts_with("HTTP/1.1 401"));
+    }
+
 
     #[test]
     fn test_initialize_and_tools_list() {
@@ -752,5 +1064,13 @@ mod tests {
         let tools = tv.get("result").unwrap().get("tools").unwrap().as_arr().unwrap();
         assert!(tools.len() >= 15);
         assert!(tools.iter().any(|t| t.get("name").and_then(|n| n.as_str()) == Some("tp_eval_js")));
+        assert!(tools.iter().any(|t| t.get("name").and_then(|n| n.as_str()) == Some("tp_recover_windows")));
+        assert!(tools.iter().any(|t| t.get("name").and_then(|n| n.as_str()) == Some("tp_window_recovery_status")));
+
+        let res_req = r#"{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}"#;
+        let res_resp = handle_jsonrpc_message(res_req, &dummy).unwrap();
+        let rv = parse_json(&res_resp).unwrap();
+        let resources = rv.get("result").unwrap().get("resources").unwrap().as_arr().unwrap();
+        assert!(resources.iter().any(|r| r.get("uri").and_then(|u| u.as_str()) == Some("tpbrowser://windows")));
     }
 }

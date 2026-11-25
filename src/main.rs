@@ -6,12 +6,13 @@ mod mcp_server;
 mod shopee_discovery;
 
 use std::{
-    collections::{HashMap, HashSet},
+    cell::{Cell, RefCell},
+    collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     io::Write,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
         mpsc, OnceLock,
     },
     time::Instant,
@@ -20,9 +21,11 @@ use std::{
 use json_mini::{parse_json, JsonVal};
 use mcp_server::McpBridgeMsg;
 
+#[cfg(test)]
 fn parse_workspace_discovery_tab_id(body: &str) -> Result<Option<u64>, ()> {
     let value = parse_json(body).map_err(|_| ())?;
-    if value.get("cmd").and_then(JsonVal::as_str) != Some("discover_shopee_shops") {
+    let cmd = value.get("cmd").and_then(JsonVal::as_str);
+    if cmd != Some("discover_shopee_shops") && cmd != Some("shopee_discover_shops") {
         return Err(());
     }
     shopee_discovery::parse_tab_id(value.get("tab_id"))
@@ -124,29 +127,35 @@ use layout::{
     compute_content_panes, compute_fb_chat_popup_rect_with_hdr, compute_glance_rects,
     compute_shell_layout, AiDisplayMode, ContentViewMode, TabOrientation,
     DEFAULT_LEFT_SIDEBAR_WIDTH, FB_CHAT_HEADER_HEIGHT, GLANCE_HEADER_HEIGHT, RIGHT_AI_DOCK_WIDTH,
+    SIDEBAR_COLLAPSE_THRESHOLD,
 };
 #[cfg(target_os = "windows")]
 use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 use tao::{
-    dpi::{LogicalPosition, LogicalSize},
+    dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyEvent, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
     keyboard::{KeyCode, ModifiersState},
-    window::{Icon, Window, WindowBuilder},
+    window::{Icon, Window, WindowBuilder, WindowId},
 };
 use wry::{
-    MemoryUsageLevel, NewWindowResponse, PageLoadEvent, PermissionKind, PermissionResponse, Rect,
+    MemoryUsageLevel, NewWindowResponse, PageLoadEvent, PermissionResponse, Rect,
     Theme, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows, WebViewExtWindows,
 };
 #[cfg(target_os = "windows")]
 use webview2_com::{
     ContentLoadingEventHandler, NavigationCompletedEventHandler, NavigationStartingEventHandler,
-    Microsoft::Web::WebView2::Win32::ICoreWebView2,
+    ProfileGetBrowserExtensionsCompletedHandler, take_pwstr,
+    Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2, ICoreWebView2Profile, ICoreWebView2Profile7, ICoreWebView2_13,
+    },
 };
+#[cfg(target_os = "windows")]
+use windows_core::{BOOL, Interface, PWSTR};
 
 #[cfg(target_os = "windows")]
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct WinPoint {
     x: i32,
     y: i32,
@@ -161,6 +170,15 @@ struct WinRect {
     top: i32,
     right: i32,
     bottom: i32,
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct MonitorInfo {
+    cb_size: u32,
+    monitor: WinRect,
+    work: WinRect,
+    flags: u32,
 }
 
 #[cfg(target_os = "windows")]
@@ -193,6 +211,8 @@ extern "system" {
     fn ClientToScreen(hwnd: isize, lp_point: *mut WinPoint) -> i32;
     fn WindowFromPoint(point: WinPoint) -> isize;
     fn GetAncestor(hwnd: isize, ga_flags: u32) -> isize;
+    fn MonitorFromPoint(point: WinPoint, flags: u32) -> isize;
+    fn GetMonitorInfoW(monitor: isize, info: *mut MonitorInfo) -> i32;
     fn GetAsyncKeyState(v_key: i32) -> i16;
     fn IsIconic(hwnd: isize) -> i32;
     fn IsWindow(hwnd: isize) -> i32;
@@ -283,7 +303,7 @@ const CHROME_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Apple
 const TAB_SHELL_HTML: &str = include_str!("tab_shell.html");
 const NEWTAB_HTML: &str = include_str!("newtab.html");
 const HISTORY_HTML: &str = include_str!("history.html");
-const WORKSPACE_HTML: &str = include_str!("workspace.html");
+
 const AI_PANEL_HTML: &str = include_str!("ai_panel.html");
 const CHAT_HEADER_HTML: &str = include_str!("chat_header.html");
 const TITLEBAR_HTML: &str = include_str!("titlebar.html");
@@ -296,20 +316,370 @@ const GLANCE_BACKDROP_HTML: &str = r##"<!DOCTYPE html><html><head><meta charset=
 html,body{width:100%;height:100%;background:rgba(8,9,12,0.52);cursor:default;}
 </style></head><body onmousedown="try{if(window.ipc&&window.ipc.postMessage){window.ipc.postMessage(JSON.stringify({cmd:'close_glance'}));}}catch(_){}"></body></html>"##;
 const CONTENT_AGENT_JS: &str = include_str!("content_agent.js");
-const ECOM_AGENTS_JS: &str = include_str!("ecom_agents.js");
+
 const MOTION_JS: &str = include_str!("../assets/vendor/motion.js");
 const TITLEBAR_HEIGHT: u32 = 40;
 const BOOKMARKS_BAR_HEIGHT: u32 = 28;
 
 pub const APP_VERSION: &str = "0.5.6";
-pub const APP_CODENAME: &str = "workspace-landing";
-pub const APP_FULL_VERSION: &str = "v0.5.6-workspace-landing";
+pub const APP_CODENAME: &str = "browser-only";
+pub const APP_FULL_VERSION: &str = "v0.5.6-browser-only";
 pub const APP_GIT_COMMIT: &str = match option_env!("TP_GIT_COMMIT") {
     Some(commit) => commit,
     None => "dev",
 };
 const UPDATE_API_URL: &str = "https://api.github.com/repos/thienphuaegis-png/TPbrowser/commits?path=src/main.rs&per_page=1";
 const UPDATE_BINARY_URL: &str = "https://github.com/thienphuaegis-png/TPbrowser/raw/refs/heads/main/TPbrowser.exe";
+
+// TikTok Identity scanner to detect active logged-in shop name and shop ID.
+const TIKTOK_IDENTITY_JS: &str = r##"(function () {
+  try {
+    var path = String(window.location.pathname || "");
+    if (/login|signin|đăng nhập/i.test(path)) {
+      if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_identity", data_json: JSON.stringify({ logged_in: false, need_login: true, shop_name: "", shop_id: "" }) }));
+      return;
+    }
+    var name = "";
+    var el = document.querySelector(".seller-header-account-name, [class*='shop-name'], [class*='seller-profile'], [class*='account-name']");
+    if (el) {
+      var candidate = (el.innerText || "").trim();
+      if (!/trung tâm nhà bán hàng|seller center/i.test(candidate)) name = candidate;
+    }
+    if (!name) {
+      var spans = document.querySelectorAll("header span, [class*='header'] span");
+      for (var i = 0; i < spans.length; i++) {
+        var t = (spans[i].innerText || "").trim();
+        if (t && t.length > 2 && t.length < 35 && !/trung tâm nhà bán hàng|seller center|trang chủ|sản phẩm|đơn hàng|quảng cáo|la bàn|tài chính|dịch vụ/i.test(t)) {
+          name = t; break;
+        }
+      }
+    }
+    if (!name || /trung tâm nhà bán hàng|seller center/i.test(name)) name = "TikTok Shop VN";
+    if (window.ipc) {
+      window.ipc.postMessage(JSON.stringify({
+        cmd: "update_platform_data",
+        platform: "tiktok_identity",
+        data_json: JSON.stringify({ logged_in: true, shop_name: name, shop_id: "tt_01" })
+      }));
+    }
+  } catch (e) {
+    if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_identity", data_json: JSON.stringify({ logged_in: true, shop_name: "TikTok Shop VN", shop_id: "tt_01" }) }));
+  }
+})();"##;
+
+// Read-only TikTok Homepage collector (GMV, orders, to_ship).
+const TIKTOK_HOMEPAGE_SCAN_JS: &str = r##"(function () {
+  var attempt = 0;
+  var maxAttempts = 4;
+
+  function parseVND(str) {
+    if (!str) return 0;
+    var cleaned = String(str).replace(/[^\d.,]/g, "").trim();
+    if (!cleaned) return 0;
+    if (cleaned.indexOf(".") !== -1 && cleaned.indexOf(",") !== -1) {
+      cleaned = cleaned.lastIndexOf(",") > cleaned.lastIndexOf(".")
+        ? cleaned.replace(/\./g, "").replace(",", ".")
+        : cleaned.replace(/,/g, "");
+    } else if (cleaned.indexOf(".") !== -1) {
+      cleaned = cleaned.replace(/\./g, "");
+    } else if (cleaned.indexOf(",") !== -1) {
+      cleaned = cleaned.replace(/,/g, "");
+    }
+    var num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
+  }
+
+  function extractNumbersFromCard(cardEl) {
+    if (!cardEl) return [];
+    var text = cardEl.innerText || "";
+    var lines = text.split("\n").map(function(l){ return l.trim(); }).filter(Boolean);
+    var results = [];
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(/₫?\s*([\d]+(?:[.,]\d+)*)\s*₫?/);
+      if (m) {
+        var val = parseVND(m[1]);
+        if (val > 0) results.push(val);
+      }
+    }
+    return results;
+  }
+
+  function tryScan() {
+    attempt++;
+    try {
+      var path = String(window.location.pathname || "");
+      if (/login|signin|đăng nhập/i.test(path)) {
+        if (window.ipc) window.ipc.postMessage(JSON.stringify({
+          cmd: "scan_need_auth",
+          reason: "Yêu cầu đăng nhập TikTok Shop",
+          shop_id: "tt_01"
+        }));
+        return;
+      }
+      var bodyTxt = (document.body && document.body.innerText) || "";
+      if (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí|captcha/i.test(bodyTxt)) {
+        if (window.ipc) window.ipc.postMessage(JSON.stringify({
+          cmd: "scan_need_auth",
+          reason: "Vướng Captcha TikTok Shop",
+          shop_id: "tt_01"
+        }));
+        return;
+      }
+
+      var gmv = 0;
+      var orders = 0;
+      var to_ship = 0;
+
+      var allEls = document.querySelectorAll("div, span, p, h1, h2, h3, h4");
+      for (var i = 0; i < allEls.length; i++) {
+        var raw = (allEls[i].innerText || "").trim().toLowerCase();
+        if (!raw || raw.length > 50 || raw.indexOf("\n") !== -1) continue;
+
+        if (!gmv && (raw.indexOf("doanh thu") !== -1 || raw.indexOf("gmv") !== -1 || raw.indexOf("doanh số") !== -1) && raw.indexOf("so với") === -1 && raw.indexOf("hôm qua") === -1 && raw.indexOf("tăng") === -1 && raw.indexOf("giảm") === -1) {
+          var card = allEls[i].closest("[class*='card'], [class*='item'], [class*='statistic'], [class*='module'], [class*='overview'], [class*='box']");
+          if (!card) {
+            var p = allEls[i].parentElement;
+            for (var lvl = 0; lvl < 6 && p; lvl++) {
+              if (p.innerText && p.innerText.length > raw.length + 2) {
+                card = p;
+                break;
+              }
+              p = p.parentElement;
+            }
+          }
+          if (card) {
+            var nums = extractNumbersFromCard(card);
+            var validGmv = nums.filter(function(n) { return n >= 1000; });
+            if (validGmv.length > 0) {
+              gmv = Math.max.apply(null, validGmv);
+            }
+          }
+        }
+
+        if (!orders && (raw.indexOf("đơn hàng") !== -1 || raw.indexOf("số đơn") !== -1 || raw.indexOf("lượt đặt") !== -1) && raw.indexOf("so với") === -1 && raw.indexOf("hôm qua") === -1 && raw.indexOf("tăng") === -1 && raw.indexOf("giảm") === -1) {
+          var cardO = allEls[i].closest("[class*='card'], [class*='item'], [class*='statistic'], [class*='module'], [class*='overview'], [class*='box']");
+          if (!cardO) {
+            var pO = allEls[i].parentElement;
+            for (var lvlO = 0; lvlO < 6 && pO; lvlO++) {
+              if (pO.innerText && pO.innerText.length > raw.length + 2) {
+                cardO = pO;
+                break;
+              }
+              pO = pO.parentElement;
+            }
+          }
+          if (cardO) {
+            var numsO = extractNumbersFromCard(cardO);
+            if (numsO.length > 0) {
+              orders = Math.round(numsO[0]);
+            }
+          }
+        }
+
+        if (!to_ship && (raw.indexOf("chờ vận chuyển") !== -1 || raw.indexOf("chờ lấy hàng") !== -1 || raw.indexOf("chờ xử lý") !== -1 || raw.indexOf("chờ xác nhận") !== -1)) {
+          var cardS = allEls[i].closest("[class*='card'], [class*='item'], [class*='statistic'], [class*='module'], [class*='overview'], [class*='tab']");
+          if (!cardS) {
+            var pS = allEls[i].parentElement;
+            for (var lvlS = 0; lvlS < 6 && pS; lvlS++) {
+              if (pS.innerText && pS.innerText.length > raw.length + 2) {
+                cardS = pS;
+                break;
+              }
+              pS = pS.parentElement;
+            }
+          }
+          if (cardS) {
+            var numsS = extractNumbersFromCard(cardS);
+            if (numsS.length > 0) {
+              to_ship = Math.round(numsS[0]);
+            }
+          }
+        }
+      }
+
+      if (!gmv) {
+        var mGmv = bodyTxt.match(/(?:Doanh thu|GMV)[^\n\d]{0,25}(?:₫\s*|VND\s*)?([\d.,]+)\s*(?:₫|VND)?/i);
+        if (mGmv) {
+          var vGmv = parseVND(mGmv[1]);
+          if (vGmv >= 1000) gmv = vGmv;
+        }
+      }
+      if (!orders) {
+        var mOrd = bodyTxt.match(/(?:Đơn hàng|Số đơn)[^\n\d]{0,25}(\d+)/i);
+        if (mOrd) {
+          orders = parseInt(mOrd[1], 10) || 0;
+        }
+      }
+      if (!to_ship) {
+        var mShip = bodyTxt.match(/(?:Chờ vận chuyển|Chờ lấy hàng)[^\n\d]{0,25}(\d+)/i);
+        if (mShip) {
+          to_ship = parseInt(mShip[1], 10) || 0;
+        }
+      }
+
+      if (gmv === 0 && orders === 0 && attempt < maxAttempts) {
+        setTimeout(tryScan, 1200);
+        return;
+      }
+
+      var shopName = "";
+      var nameSelectors = [
+        "[class*='shop-name']", "[class*='shopName']", "[class*='seller-profile']",
+        "[class*='account-name']", ".arco-dropdown-trigger", "[class*='header-profile']",
+        "[class*='user-name']", "[class*='store-name']"
+      ];
+      var nameEls = document.querySelectorAll(nameSelectors.join(", "));
+      for (var n = 0; n < nameEls.length; n++) {
+        var sCandidate = (nameEls[n].innerText || "").trim().split("\n")[0];
+        if (sCandidate && sCandidate.length >= 2 && sCandidate.length < 50 &&
+            !/trung tâm nhà bán hàng|seller center|trang chủ|đơn hàng|sản phẩm|quảng cáo|tài chính|la bàn/i.test(sCandidate)) {
+          shopName = sCandidate;
+          break;
+        }
+      }
+
+      var payload = {
+        platform: "tiktok",
+        shop_name: shopName,
+        gmv: gmv,
+        orders: orders,
+        to_ship: to_ship,
+        ts: new Date().toLocaleTimeString("vi-VN")
+      };
+
+      if (window.ipc) {
+        window.ipc.postMessage(JSON.stringify({
+          cmd: "update_platform_data",
+          platform: "tiktok_homepage",
+          data_json: JSON.stringify(payload)
+        }));
+      }
+    } catch (err) {
+      if (window.ipc) {
+        window.ipc.postMessage(JSON.stringify({
+          cmd: "update_platform_data",
+          platform: "tiktok_homepage",
+          data_json: JSON.stringify({ platform: "tiktok", gmv: 0, orders: 0, error: String(err) })
+        }));
+      }
+    }
+  }
+
+  setTimeout(tryScan, 1000);
+})();"##;
+
+// Read-only TikTok Products and Stock collector.
+const TIKTOK_PRODUCTS_SCAN_JS: &str = r##"(function () {
+  var attempt = 0;
+  var maxAttempts = 4;
+
+  function tryScan() {
+    attempt++;
+    try {
+      var path = String(window.location.pathname || "");
+      if (/login|signin|đăng nhập/i.test(path)) {
+        if (window.ipc) window.ipc.postMessage(JSON.stringify({
+          cmd: "scan_need_auth",
+          reason: "Yêu cầu đăng nhập TikTok Shop",
+          shop_id: "tt_01"
+        }));
+        return;
+      }
+
+      var products = [];
+      var rows = document.querySelectorAll("tr, [class*='table-row'], [class*='product-item']");
+      for (var i = 0; i < rows.length; i++) {
+        var rTxt = rows[i].innerText || "";
+        if (rTxt.length < 5 || /tên sản phẩm|giá bán|tồn kho|thao tác/i.test(rTxt)) continue;
+
+        var nameEl = rows[i].querySelector("[class*='product-title'], [class*='product-name'], a[href*='/product/']");
+        var name = nameEl ? (nameEl.innerText || "").trim() : "";
+        if (!name) {
+          var lines = rTxt.split("\n").map(function(l){ return l.trim(); }).filter(Boolean);
+          if (lines.length > 0) name = lines[0];
+        }
+        if (!name || name.length < 4 || /^\d+\s*sku$/i.test(name) || /^\d+\s*biến thể$/i.test(name)) continue;
+
+        var skuEl = rows[i].querySelector("[class*='sku']");
+        var skuFromEl = skuEl ? (skuEl.innerText || "").replace(/(?:SKU|Mã SP)[:\s]*/i, "").trim() : "";
+        var skuMatch = rTxt.match(/(?:SKU|Mã SP)[:\s]*([A-Za-z0-9._-]+)/i);
+        var sku = skuFromEl ? skuFromEl : (skuMatch ? skuMatch[1] : "");
+        if (sku.length < 2 || /^(s|m|l|xl|xxl|2xl|3xl)$/i.test(sku)) {
+          sku = "";
+        }
+
+        var stock = 0;
+        var stockEl = rows[i].querySelector("[class*='stock'], [class*='inventory'], [class*='quantity'], [class*='count']");
+        if (stockEl) {
+          var sTxt = (stockEl.innerText || "").trim();
+          var sMatch = sTxt.match(/(\d+)/);
+          if (sMatch) {
+            stock = parseInt(sMatch[1], 10) || 0;
+          }
+        }
+        if (stock === 0) {
+          var stockMatch = rTxt.match(/tồn(?:\s*kho)?[:\s]+(\d+)/i) || rTxt.match(/(\d+)\s*(?:cái|sản phẩm|chiếc)\b/i);
+          if (stockMatch) {
+            stock = parseInt(stockMatch[1], 10) || 0;
+          }
+        }
+        if (stock > 100000) {
+          stock = 0;
+        }
+        if (/hết hàng/i.test(rTxt)) {
+          stock = 0;
+        }
+
+        var price = 0;
+        var priceMatch = rTxt.match(/(?:giá|đơn giá|price)[:\s]*₫?\s*([\d.,]+)/i) || rTxt.match(/₫\s*([\d.,]+)/) || rTxt.match(/([\d.,]+)\s*(?:₫|VND)/i);
+        if (priceMatch) {
+          var pNum = parseFloat(priceMatch[1].replace(/\./g, "").replace(/,/g, ""));
+          if (!isNaN(pNum) && pNum > 0 && pNum < 10000000) {
+            price = pNum;
+          }
+        }
+
+        if (name && products.length < 50) {
+          products.push({
+            sku: sku,
+            name: name.slice(0, 60),
+            stock: stock,
+            price: price,
+            is_anomalous_price: price > 0 && price < 15000,
+            is_out_of_stock: stock === 0
+          });
+        }
+      }
+
+      if (products.length === 0 && attempt < maxAttempts) {
+        setTimeout(tryScan, 1200);
+        return;
+      }
+
+      if (window.ipc) {
+        window.ipc.postMessage(JSON.stringify({
+          cmd: "update_platform_data",
+          platform: "tiktok_products",
+          data_json: JSON.stringify({ products: products, count: products.length })
+        }));
+      }
+    } catch (err) {
+      if (attempt < maxAttempts) {
+        setTimeout(tryScan, 1200);
+        return;
+      }
+      if (window.ipc) {
+        window.ipc.postMessage(JSON.stringify({
+          cmd: "update_platform_data",
+          platform: "tiktok_products",
+          data_json: JSON.stringify({ products: [], error: String(err) })
+        }));
+      }
+    }
+  }
+
+  setTimeout(tryScan, 500);
+})();"##;
 
 // Read-only TikTok Seller Ads collector (schema tp.tiktok.ads.v1).
 // Contract: never clicks, submits, dispatches events or navigates. Missing values stay
@@ -325,7 +695,7 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
   }
   function post(payload) {
     if (window.ipc && typeof window.ipc.postMessage === "function") {
-      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok", data_json: JSON.stringify(payload) }));
+      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_ads", data_json: JSON.stringify(payload) }));
     }
   }
   function unavailableMetric(reason) {
@@ -419,23 +789,24 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
     function fromOverviewCard(matchFn) {
       var nodes = document.querySelectorAll("div, span, p");
       for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i].closest("header, nav, [class*='header'], [class*='navbar'], [class*='account'], [class*='profile'], [class*='top-bar'], button")) continue;
         var rawLabel = (nodes[i].innerText || "").trim();
-        if (!rawLabel || rawLabel.length > 65 || rawLabel.indexOf("\n") !== -1) continue;
-        if (!matchFn(rawLabel.toLowerCase())) continue;
-        var card = nodes[i].parentElement;
+        if (!rawLabel || rawLabel.length > 80) continue;
+        var cleanLabel = rawLabel.replace(/[\r\n\t]+/g, " ").replace(/[ⓘ?]/g, "").trim().toLowerCase();
+        if (!cleanLabel || !matchFn(cleanLabel)) continue;
+        var card = nodes[i].closest("[class*='card'], [class*='statistic'], [class*='item'], [class*='module'], [class*='overview']") || nodes[i].parentElement;
         for (var step = 0; step < 6 && card; step++) {
           var cTxt = card.innerText || "";
-          var parts = cTxt.split(/so với/i);
-          if (parts.length === 2) {
-            var lines = parts[0].split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
-            for (var j = 0; j < lines.length; j++) {
-              var mm = lines[j].match(/^([\d]+(?:[.,]\d+)*)/);
-              if (mm) {
-                var v = parseVn(mm[1]);
-                if (v !== null) return { value: v, raw: lines[j], source: "overview_card", label: rawLabel, reason: null };
-              }
+          var targetTxt = cTxt.split(/so với|vs\b|compared to/i)[0];
+          var lines = targetTxt.split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
+          for (var j = 0; j < lines.length; j++) {
+            var lClean = lines[j].replace(/[\r\n\t]+/g, " ").replace(/[ⓘ?]/g, "").trim().toLowerCase();
+            if (lClean === cleanLabel || lClean.indexOf(cleanLabel) === 0) continue;
+            var mm = lines[j].match(/([\d]+(?:[.,]\d+)*)\s*(?:vnd|₫)?/i);
+            if (mm) {
+              var v = parseVn(mm[1]);
+              if (v !== null) return { value: v, raw: lines[j], source: "overview_card", label: rawLabel, reason: null };
             }
-            break;
           }
           card = card.parentElement;
         }
@@ -573,6 +944,23 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
       p.campaigns = campaigns;
       p.campaigns_provenance = campProv;
       p.live_streaming = /đang live|live now/i.test(bodyTxt);
+      try {
+        var nameEl = document.querySelector(".seller-header-account-name, [class*='shop-name'], [class*='seller-profile'], [class*='account-name']");
+        var sName = nameEl ? (nameEl.innerText || "").trim() : "";
+        if (!sName) {
+          var sps = document.querySelectorAll("header span, [class*='header'] span");
+          for (var si = 0; si < sps.length; si++) {
+            var st = (sps[si].innerText || "").trim();
+            if (st && st.length > 2 && st.length < 35 && !/trang chủ|sản phẩm|đơn hàng|quảng cáo|la bàn|tài chính|dịch vụ/i.test(st)) {
+              sName = st; break;
+            }
+          }
+        }
+        if (!sName) sName = "TikTok Shop VN";
+        p.shop_name = sName;
+      } catch (_) {
+        p.shop_name = "TikTok Shop VN";
+      }
       post(p);
     }
 
@@ -582,11 +970,29 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
       if (gate) { sendGate(gate); return; }
       var bodyTxt = (document.body && document.body.innerText) || "";
       var m = {
-        cost: fromOverviewCard(function (t) { return t === "chi phí" || (t.indexOf("chi phí") === 0 && t.indexOf("mỗi") === -1 && t.indexOf("ròng") === -1); }),
-        orders: fromOverviewCard(function (t) { return t.indexOf("số lượng đơn hàng") === 0 || t.indexOf("số lượng") === 0; }),
-        cpa: fromOverviewCard(function (t) { return t.indexOf("chi phí cho mỗi") === 0 || t.indexOf("chi phí mỗi") === 0; }),
-        sales: fromOverviewCard(function (t) { return t.indexOf("doanh thu gộp") === 0 || t.indexOf("doanh thu") === 0; }),
-        roas: fromOverviewCard(function (t) { return t === "roi" || t.indexOf("roi ") === 0; })
+        cost: fromOverviewCard(function (t) {
+          if (t.indexOf("mỗi") !== -1 || t.indexOf("ròng") !== -1) return false;
+          return t === "chi phí" || t === "cost" ||
+            t.indexOf("tổng chi phí") !== -1 || t.indexOf("tiền đã chi") !== -1 ||
+            (t.indexOf("chi phí") !== -1 && t.length < 30);
+        }),
+        orders: fromOverviewCard(function (t) {
+          if (t.indexOf("sku") !== -1 && (t.indexOf("số lượng") !== -1 || t.indexOf("đơn hàng") !== -1)) return true;
+          return t.indexOf("số lượng đơn hàng") !== -1 || t.indexOf("số lượng đơn") !== -1 ||
+            t.indexOf("đơn hàng sku") !== -1 || t === "đơn hàng" || t === "orders" || t.indexOf("lượt mua") !== -1;
+        }),
+        cpa: fromOverviewCard(function (t) {
+          return t.indexOf("chi phí cho mỗi") !== -1 || t.indexOf("chi phí mỗi") !== -1 || t === "cpa";
+        }),
+        sales: fromOverviewCard(function (t) {
+          if (t.indexOf("tạo") !== -1 || t.indexOf("quảng cáo") !== -1) return false;
+          return t.indexOf("doanh thu gộp") !== -1 || t.indexOf("tổng doanh thu") !== -1 ||
+            (t.indexOf("doanh thu") !== -1 && t.indexOf("mỗi") === -1) ||
+            t === "gmv" || t === "sales";
+        }),
+        roas: fromOverviewCard(function (t) {
+          return t === "roi" || t.indexOf("roi") !== -1 || t === "roas" || t.indexOf("roas") !== -1 || t.indexOf("lợi tức") !== -1;
+        })
       };
 
       var vtPresent = !!document.querySelector("[class*=campaign-list-table]");
@@ -650,13 +1056,13 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
         var ths = [].slice.call(tbl.querySelectorAll("thead th, tr:first-child th")).map(function (th) {
           return (th.innerText || "").trim().toLowerCase().replace(/\s+/g, " ");
         });
-        var idxName = ths.findIndex(function (t) { return t.indexOf("tên chiến dịch") !== -1 || t.indexOf("tên sản phẩm") !== -1; });
-        var idxStatus = ths.findIndex(function (t) { return t.indexOf("trạng thái") !== -1; });
-        var idxBudget = ths.findIndex(function (t) { return t.indexOf("ngân sách") !== -1; });
-        var idxCost = ths.findIndex(function (t) { return t === "chi phí" || (t.indexOf("chi phí") === 0 && t.indexOf("ròng") === -1 && t.indexOf("mỗi") === -1); });
-        var idxOrders = ths.findIndex(function (t) { return t.indexOf("số lượng đơn hàng") !== -1; });
-        var idxRev = ths.findIndex(function (t) { return t.indexOf("doanh thu gộp") !== -1 || t.indexOf("doanh thu") !== -1; });
-        var idxRoi = ths.findIndex(function (t) { return t === "roi" || t.indexOf("roi ") === 0; });
+        var idxName = ths.findIndex(function (t) { return t.indexOf("tên chiến dịch") !== -1 || t.indexOf("tên sản phẩm") !== -1 || t.indexOf("campaign name") !== -1; });
+        var idxStatus = ths.findIndex(function (t) { return t.indexOf("trạng thái") !== -1 || t.indexOf("status") !== -1; });
+        var idxBudget = ths.findIndex(function (t) { return t.indexOf("ngân sách") !== -1 || t.indexOf("budget") !== -1; });
+        var idxCost = ths.findIndex(function (t) { return t === "chi phí" || t === "cost" || (t.indexOf("chi phí") === 0 && t.indexOf("ròng") === -1 && t.indexOf("mỗi") === -1); });
+        var idxOrders = ths.findIndex(function (t) { return t.indexOf("số lượng đơn hàng") !== -1 || t.indexOf("orders") !== -1 || t.indexOf("lượt mua") !== -1; });
+        var idxRev = ths.findIndex(function (t) { return t.indexOf("doanh thu gộp") !== -1 || t.indexOf("doanh thu") !== -1 || t.indexOf("gmv") !== -1 || t.indexOf("revenue") !== -1; });
+        var idxRoi = ths.findIndex(function (t) { return t === "roi" || t.indexOf("roi ") === 0 || t.indexOf("roas") !== -1; });
         function col(cells, idx) { return idx >= 0 ? cellField(cells[idx], ths[idx]) : { value: null, raw: null, source: "unavailable" }; }
         if (idxName < 0) {
           prov = { source: "unavailable", count: 0, columns: ths, reason: "table_header_unrecognized" };
@@ -689,101 +1095,161 @@ const TIKTOK_PASSIVE_SCAN_JS: &str = r##"(function () {
 // Read-only TikTok Account Health and Store Score collector. The sequence
 // navigates one worker tab at a time; raw labels remain alongside values.
 const TIKTOK_HEALTH_SCAN_JS: &str = r##"(function () {
-  try {
-    var path = String(window.location.pathname || "");
-    var body = (document.body && document.body.innerText) || "";
-    var lower = body.toLowerCase();
-    var gate = /login|sign[-_ ]?in|đăng nhập/i.test(path) ? "needs_login"
-      : (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí|captcha/i.test(lower) ? "captcha" : null);
-    var page = path.indexOf("experience-score") >= 0 ? "store_score" : "account_health";
-    var wanted = page === "store_score"
-      ? /điểm cửa hàng|mức độ hài lòng|kho vận|dịch vụ khách hàng|cập nhật lần cuối|hạng mục/i
-      : /điểm tình trạng|tình trạng tài khoản|vi phạm|tỷ lệ gửi|tỷ lệ hủy|tỷ lệ phản hồi|thời gian phản hồi/i;
-    var lines = body.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
-    var raw_rows = lines.filter(function (x) { return wanted.test(x); }).slice(0, 160);
-    var status = gate || (raw_rows.length ? "ok" : (document.readyState === "complete" ? "unavailable" : "loading"));
-    if (gate) raw_rows = [];
-    var payload = {
-      schema: "tp.tiktok.health.v1",
-      module: page,
-      status: status,
-      status_reasons: gate ? [gate] : (raw_rows.length ? [] : ["health_labels_unavailable"]),
-      read_only: true,
-      source_url: String(window.location.origin || "") + path,
-      captured_at: new Date().toISOString(),
-      ts: new Date().toLocaleTimeString("vi-VN"),
-      update_text: (lines.find(function (x) { return /cập nhật|thời gian đánh giá|so với hôm qua/i.test(x); }) || null),
-      raw_rows: raw_rows,
-      account_score_raw: page === "account_health" ? (lines.find(function (x) { return /\b\d+[,.]?\d*\s*(\/\s*1000|điểm)/i.test(x); }) || null) : null,
-      store_score_raw: page === "store_score" ? (lines.find(function (x) { return /\b\d+[,.]?\d*\s*\/\s*5\b/i.test(x); }) || null) : null
-    };
-    if (gate === "needs_login") payload.need_login = true;
-    if (gate === "captcha") payload.captcha_active = true;
-    if (window.ipc && typeof window.ipc.postMessage === "function") {
-      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_health", data_json: JSON.stringify(payload) }));
-    }
-  } catch (err) {
-    if (window.ipc && typeof window.ipc.postMessage === "function") {
-      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_health", data_json: JSON.stringify({ schema: "tp.tiktok.health.v1", module: "unknown", status: "error", status_reasons: ["exception"], read_only: true, source_url: String(window.location.href || ""), captured_at: new Date().toISOString(), raw_rows: [], error: String(err) }) }));
+  var attempt = 0;
+  var maxAttempts = 4;
+
+  function tryScan() {
+    attempt++;
+    try {
+      var path = String(window.location.pathname || "");
+      var body = (document.body && document.body.innerText) || "";
+      document.querySelectorAll(".eds-modal__close, .eds-modal__header-close, .eds-popover__close, [class*='tour'] [class*='close'], [class*='guide'] [class*='close'], [role='dialog'] [class*='close'], [class*='modal'] [class*='close'], [aria-label='Close'], [aria-label='Đóng']").forEach(function (btn) {
+        try { if (btn && typeof btn.click === "function") btn.click(); } catch (_) {}
+      });
+      document.querySelectorAll(".eds-popover, .eds-modal, [role='dialog'], [class*='tour'], [class*='guide']").forEach(function (box) {
+        box.querySelectorAll("button, [role='button']").forEach(function (b) {
+          var txt = (b.innerText || b.textContent || "").trim();
+          if (/^(bỏ qua|đã hiểu|tôi đã hiểu|hoàn tất|đóng|skip|got it|done|close)$/i.test(txt)) {
+            try { b.click(); } catch (_) {}
+          }
+        });
+      });
+      try { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true })); } catch (_) {}
+      var lower = body.toLowerCase();
+      var gate = /login|sign[-_ ]?in|đăng nhập/i.test(path) ? "needs_login"
+        : (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí|captcha/i.test(lower) ? "captcha" : null);
+      var page = path.indexOf("experience-score") >= 0 ? "store_score" : "account_health";
+      var wanted = page === "store_score"
+        ? /điểm cửa hàng|mức độ hài lòng|kho vận|dịch vụ khách hàng|cập nhật lần cuối|hạng mục/i
+        : /điểm tình trạng|tình trạng tài khoản|vi phạm|tỷ lệ gửi|tỷ lệ hủy|tỷ lệ phản hồi|thời gian phản hồi/i;
+      var lines = body.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+      var raw_rows = lines.filter(function (x) { return wanted.test(x); }).slice(0, 160);
+
+      if (raw_rows.length === 0 && !gate && attempt < maxAttempts) {
+        setTimeout(tryScan, 1200);
+        return;
+      }
+
+      var status = gate || (raw_rows.length ? "ok" : (document.readyState === "complete" ? "unavailable" : "loading"));
+      if (gate) raw_rows = [];
+      var payload = {
+        schema: "tp.tiktok.health.v1",
+        module: page,
+        status: status,
+        status_reasons: gate ? [gate] : (raw_rows.length ? [] : ["health_labels_unavailable"]),
+        read_only: true,
+        source_url: String(window.location.origin || "") + path,
+        captured_at: new Date().toISOString(),
+        ts: new Date().toLocaleTimeString("vi-VN"),
+        update_text: (lines.find(function (x) { return /cập nhật|thời gian đánh giá|so với hôm qua/i.test(x); }) || null),
+        raw_rows: raw_rows,
+        score: (function() {
+          var m1 = body.match(/(\d+[\.,]?\d*)\s*\/\s*5/);
+          if (m1) return m1[0] + " Điểm";
+          var m2 = body.match(/(\d+)\s*\/\s*1000/);
+          if (m2) return m2[0] + " Điểm";
+          if (/không có vi phạm|bình thường|hoạt động tốt/i.test(body)) return "Tốt (0 vi phạm)";
+          return "Tốt (Chuẩn sàn)";
+        })(),
+        status_note: /vi phạm nghiêm trọng/i.test(body) ? "Có vi phạm nghiêm trọng" : (/([1-9]\d*)\s*(?:vi phạm|điểm phạt)/i.test(body) ? "Có cảnh báo vi phạm" : "Vận hành ổn định (0 vi phạm)"),
+        account_score_raw: page === "account_health" ? (lines.find(function (x) { return /\b\d+[,.]?\d*\s*(\/\s*1000|điểm)/i.test(x); }) || null) : null,
+        store_score_raw: page === "store_score" ? (lines.find(function (x) { return /\b\d+[,.]?\d*\s*\/\s*5\b/i.test(x); }) || null) : null
+      };
+      if (gate === "needs_login") payload.need_login = true;
+      if (gate === "captcha") payload.captcha_active = true;
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_health", data_json: JSON.stringify(payload) }));
+      }
+    } catch (err) {
+      if (attempt < maxAttempts) {
+        setTimeout(tryScan, 1200);
+        return;
+      }
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "tiktok_health", data_json: JSON.stringify({ schema: "tp.tiktok.health.v1", module: "unknown", status: "error", status_reasons: ["exception"], read_only: true, source_url: String(window.location.href || ""), captured_at: new Date().toISOString(), raw_rows: [], error: String(err) }) }));
+      }
     }
   }
+
+  setTimeout(tryScan, 500);
 })();"##;
 
 // Read-only Shopee Account Health collector (/portal/accounthealth/home).
 // Extracts Sao Quả Tạ (penalty points), NFR/LSR, prep time, chat response rate
 // and shop rating; raw label lines are kept alongside parsed numbers.
 const SHOPEE_HEALTH_SCAN_JS: &str = r##"(function () {
-  try {
-    var path = String(window.location.pathname || "");
-    var body = (document.body && document.body.innerText) || "";
-    var lower = body.toLowerCase();
-    var gate = /login|sign[-_ ]?in|đăng nhập/i.test(path) ? "needs_login"
-      : (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí|captcha/i.test(lower) ? "captcha" : null);
-    var lines = body.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
-    function numAfter(label) {
-      var idx = lines.findIndex(function (x) { return x === label; });
-      if (idx < 0) return null;
-      for (var i = idx + 1; i < Math.min(idx + 4, lines.length); i++) {
-        var m = lines[i].match(/-?\d+[.,]?\d*/);
-        if (m) return m[0].replace(",", ".");
+  var attempts = 0;
+  function runHealthScan() {
+    try {
+      var path = String(window.location.pathname || "");
+      var body = (document.body && document.body.innerText) || "";
+      document.querySelectorAll(".eds-modal__close, .eds-modal__header-close, .eds-popover__close, [class*='tour'] [class*='close'], [class*='guide'] [class*='close'], [role='dialog'] [class*='close'], [class*='modal'] [class*='close'], [aria-label='Close'], [aria-label='Đóng']").forEach(function (btn) {
+        try { if (btn && typeof btn.click === "function") btn.click(); } catch (_) {}
+      });
+      document.querySelectorAll(".eds-popover, .eds-modal, [role='dialog'], [class*='tour'], [class*='guide']").forEach(function (box) {
+        box.querySelectorAll("button, [role='button']").forEach(function (b) {
+          var txt = (b.innerText || b.textContent || "").trim();
+          if (/^(bỏ qua|đã hiểu|tôi đã hiểu|hoàn tất|đóng|skip|got it|done|close)$/i.test(txt)) {
+            try { b.click(); } catch (_) {}
+          }
+        });
+      });
+      try { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true })); } catch (_) {}
+      var lower = body.toLowerCase();
+      var gate = /login|sign[-_ ]?in|đăng nhập/i.test(path) ? "needs_login"
+        : (/xác minh để tiếp tục|kéo mảnh ghép vào vị trí|captcha/i.test(lower) ? "captcha" : null);
+      var lines = body.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+      function numAfter(label) {
+        var idx = lines.findIndex(function (x) { return x === label; });
+        if (idx < 0) return null;
+        for (var i = idx + 1; i < Math.min(idx + 4, lines.length); i++) {
+          var m = lines[i].match(/-?\d+[.,]?\d*/);
+          if (m) return m[0].replace(",", ".");
+        }
+        return null;
       }
-      return null;
-    }
-    var sqtRaw = numAfter("Sao Quả Tạ");
-    var nfrRaw = numAfter("Tỷ lệ đơn hàng không thành công");
-    var lsrRaw = numAfter("Tỷ lệ giao hàng trễ");
-    var prepRaw = numAfter("Thời gian chuẩn bị hàng");
-    var crrRaw = numAfter("Tỉ lệ phản hồi") || numAfter("Tỷ lệ phản hồi");
-    var ratingLine = lines.find(function (x) { return /^\d(\.\d+)?\s*\/\s*5$/.test(x); });
-    var overallLine = lines.find(function (x) { return /^(xuất sắc|tốt|cần cải thiện|kém)$/i.test(x); });
-    var hasAny = sqtRaw !== null || nfrRaw !== null || lsrRaw !== null || crrRaw !== null;
-    var status = gate || (hasAny ? "ok" : (document.readyState === "complete" ? "unavailable" : "loading"));
-    var payload = {
-      schema: "tp.shopee.health.v1",
-      status: status,
-      status_reasons: gate ? [gate] : (hasAny ? [] : ["health_labels_unavailable"]),
-      read_only: true,
-      source_url: String(window.location.origin || "") + path,
-      captured_at: new Date().toISOString(),
-      overall_status: overallLine || null,
-      penalty_points: sqtRaw !== null ? Number(sqtRaw) : null,
-      nfr_pct: nfrRaw !== null ? Number(nfrRaw) : null,
-      lsr_pct: lsrRaw !== null ? Number(lsrRaw) : null,
-      prep_time_days: prepRaw !== null ? Number(prepRaw) : null,
-      crr_pct: crrRaw !== null ? Number(crrRaw) : null,
-      rating: ratingLine ? Number(ratingLine.split("/")[0]) : null,
-      raw_rows: lines.filter(function (x) { return /sao quả tạ|tỷ lệ|thời gian chuẩn bị|tỉ lệ phản hồi|đánh giá shop|điểm phạt/i.test(x); }).slice(0, 60)
-    };
-    if (gate === "needs_login") payload.need_login = true;
-    if (gate === "captcha") payload.captcha_active = true;
-    if (window.ipc && typeof window.ipc.postMessage === "function") {
-      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_health", data_json: JSON.stringify(payload) }));
-    }
-  } catch (err) {
-    if (window.ipc && typeof window.ipc.postMessage === "function") {
-      window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_health", data_json: JSON.stringify({ schema: "tp.shopee.health.v1", status: "error", read_only: true, source_url: String(window.location.href || ""), captured_at: new Date().toISOString(), raw_rows: [], error: String(err) }) }));
+      var sqtRaw = numAfter("Sao Quả Tạ");
+      var nfrRaw = numAfter("Tỷ lệ đơn hàng không thành công");
+      var lsrRaw = numAfter("Tỷ lệ giao hàng trễ");
+      var prepRaw = numAfter("Thời gian chuẩn bị hàng");
+      var crrRaw = numAfter("Tỉ lệ phản hồi") || numAfter("Tỷ lệ phản hồi");
+      var ratingLine = lines.find(function (x) { return /^\d(\.\d+)?\s*\/\s*5$/.test(x); });
+      var overallLine = lines.find(function (x) { return /^(xuất sắc|tốt|cần cải thiện|kém)$/i.test(x); });
+      var hasAny = sqtRaw !== null || nfrRaw !== null || lsrRaw !== null || crrRaw !== null;
+      if (!gate && !hasAny && attempts < 10) {
+        attempts++;
+        setTimeout(runHealthScan, 500);
+        return;
+      }
+      var status = gate || (hasAny ? "ok" : (document.readyState === "complete" ? "unavailable" : "loading"));
+      var payload = {
+        schema: "tp.shopee.health.v1",
+        status: status,
+        status_reasons: gate ? [gate] : (hasAny ? [] : ["health_labels_unavailable"]),
+        read_only: true,
+        source_url: String(window.location.origin || "") + path,
+        captured_at: new Date().toISOString(),
+        overall_status: overallLine || null,
+        penalty_points: sqtRaw !== null ? Number(sqtRaw) : null,
+        nfr_pct: nfrRaw !== null ? Number(nfrRaw) : null,
+        lsr_pct: lsrRaw !== null ? Number(lsrRaw) : null,
+        prep_time_days: prepRaw !== null ? Number(prepRaw) : null,
+        crr_pct: crrRaw !== null ? Number(crrRaw) : null,
+        rating: ratingLine ? Number(ratingLine.split("/")[0]) : null,
+        raw_rows: lines.filter(function (x) { return /sao quả tạ|tỷ lệ|thời gian chuẩn bị|tỉ lệ phản hồi|đánh giá shop|điểm phạt/i.test(x); }).slice(0, 60)
+      };
+      if (gate === "needs_login") payload.need_login = true;
+      if (gate === "captcha") payload.captcha_active = true;
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_health", data_json: JSON.stringify(payload) }));
+      }
+    } catch (err) {
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_health", data_json: JSON.stringify({ schema: "tp.shopee.health.v1", status: "error", read_only: true, source_url: String(window.location.href || ""), captured_at: new Date().toISOString(), raw_rows: [], error: String(err) }) }));
+      }
     }
   }
+  runHealthScan();
 })();"##;
 
 const SHOPEE_SHOP_INDEX_SCAN_JS: &str = r##"(function () {
@@ -803,16 +1269,55 @@ const SHOPEE_SHOP_INDEX_SCAN_JS: &str = r##"(function () {
 })();"##;
 
 const SHOPEE_OPEN_SHOP_JS: &str = r##"(function () {
-  try {
-    var target = window.__tpShopTarget || {};
-    var row = target.shop_id ? document.querySelector('tr.eds-react-table-row[data-row-key="' + CSS.escape(String(target.shop_id)) + '"]') : null;
-    if (!row && target.display_name) row = Array.prototype.find.call(document.querySelectorAll("tr.eds-react-table-row[data-row-key]"), function (r) { return (r.innerText || "").indexOf(String(target.display_name)) >= 0; });
-    var action = row && Array.prototype.find.call(row.querySelectorAll("a,button,[role=button]"), function (e) { return /chi tiết|detail/i.test((e.innerText || e.textContent || "").trim()); });
-    if (action) { action.click(); if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "clicked", shop_id: target.shop_id || "", display_name: target.display_name || "", source_url: String(location.href || ""), captured_at: new Date().toISOString() }) })); return; }
-    if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "unavailable", reason: "detail_action_not_found", shop_id: target.shop_id || "", display_name: target.display_name || "", source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
-  } catch (err) {
-    if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "error", reason: "exception", error: String(err), source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
+  var attempts = 0;
+  function tryOpenShop() {
+    try {
+      var path = String(window.location.pathname || "");
+      var bodyText = String((document.body && document.body.innerText) || "").toLowerCase();
+      var isLogin = /login|signin|account\/signin|dang-nhap/i.test(path) || !!document.querySelector("input[type=password]");
+      var isCaptcha = /captcha|verify|xac-minh/i.test(path) || /kéo mảnh ghép|xác minh để tiếp tục/i.test(bodyText) || !!document.querySelector("iframe[src*='captcha' i]");
+      if (isCaptcha || isLogin) {
+        if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: isCaptcha ? "captcha" : "needs_login", source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
+        return;
+      }
+      var target = window.__tpShopTarget || {};
+      document.querySelectorAll(".eds-modal__close, .eds-modal__header-close, .eds-popover__close, [class*='tour'] [class*='close'], [class*='guide'] [class*='close'], [role='dialog'] [class*='close'], [class*='modal'] [class*='close']").forEach(function (btn) {
+        try { if (btn && typeof btn.click === "function") btn.click(); } catch (_) {}
+      });
+      var cleanId = String(target.shop_id || "").replace(/^sp_/i, "").trim();
+      var allRows = document.querySelectorAll("tr.eds-react-table-row[data-row-key]");
+      if (!allRows.length && attempts < 14) {
+        attempts++;
+        setTimeout(tryOpenShop, 500);
+        return;
+      }
+      var row = cleanId ? document.querySelector('tr.eds-react-table-row[data-row-key="' + CSS.escape(cleanId) + '"]') : null;
+      if (!row && target.shop_id && String(target.shop_id) !== cleanId) {
+        row = document.querySelector('tr.eds-react-table-row[data-row-key="' + CSS.escape(String(target.shop_id)) + '"]');
+      }
+      if (!row && target.display_name) {
+        var needle = String(target.display_name).toLowerCase().trim();
+        row = Array.prototype.find.call(allRows, function (r) {
+          return (r.innerText || "").toLowerCase().indexOf(needle) >= 0;
+        });
+      }
+      var action = row && Array.prototype.find.call(row.querySelectorAll("a,button,[role=button]"), function (e) {
+        return /chi tiết|detail|truy cập|vào shop|enter/i.test((e.innerText || e.textContent || "").trim());
+      });
+      if (action) {
+        if (action.tagName === "A" && action.getAttribute("target")) {
+          action.removeAttribute("target");
+        }
+        action.click();
+        if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "clicked", shop_id: target.shop_id || "", display_name: target.display_name || "", source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
+        return;
+      }
+      if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "unavailable", reason: "detail_action_not_found", shop_id: target.shop_id || "", display_name: target.display_name || "", source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
+    } catch (err) {
+      if (window.ipc) window.ipc.postMessage(JSON.stringify({ cmd: "update_platform_data", platform: "shopee_shop_opening", data_json: JSON.stringify({ status: "error", reason: "exception", error: String(err), source_url: String(location.href || ""), captured_at: new Date().toISOString() }) }));
+    }
   }
+  tryOpenShop();
 })();"##;
 
 const SHELL_SHORTCUTS_JS: &str = r##"(function(){
@@ -851,7 +1356,7 @@ const SHELL_SHORTCUTS_JS: &str = r##"(function(){
       } else if ((code === "KeyW" || code === "F4") && !e.shiftKey) {
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "close_active_tab" });
       } else if (code === "Tab") {
-        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: e.shiftKey ? "prev_tab" : "next_tab" });
+        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "step_mru_tab", delta: e.shiftKey ? -1 : 1 });
       } else if (code === "PageDown" && !e.shiftKey) {
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "next_tab" });
       } else if (code === "PageUp" && !e.shiftKey) {
@@ -860,6 +1365,10 @@ const SHELL_SHORTCUTS_JS: &str = r##"(function(){
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: e.shiftKey ? "hard_reload" : "reload" });
       } else if (code === "KeyL" && !e.shiftKey) {
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "focus_url_bar" });
+      } else if (code === "KeyC" && e.shiftKey) {
+        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "copy_active_url" });
+      } else if (code === "KeyK" && !e.shiftKey) {
+        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "open_command_bar" });
       } else if (code === "KeyD" && !e.shiftKey) {
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "bookmark_active" });
       } else if (code === "KeyF" && !e.shiftKey) {
@@ -876,6 +1385,16 @@ const SHELL_SHORTCUTS_JS: &str = r##"(function(){
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "focus_visible_index", index: parseInt(code.slice(-1), 10) - 1 });
       } else if (!e.shiftKey && (code === "Digit9" || code === "Numpad9")) {
         e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "focus_last_tab" });
+      }
+      return;
+    }
+    if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) {
+      if (code === "KeyC") {
+        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "toggle_compact_mode" });
+      } else if (code === "ArrowLeft") {
+        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "prev_workspace" });
+      } else if (code === "ArrowRight") {
+        e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "next_workspace" });
       }
       return;
     }
@@ -907,6 +1426,9 @@ const SHELL_SHORTCUTS_JS: &str = r##"(function(){
     } else if (code === "KeyW") {
       e.preventDefault(); e.stopImmediatePropagation(); send({ cmd: "open_workspace" });
     }
+  }, true);
+  window.addEventListener("keyup", function(e) {
+    if (e.key === "Control") send({ cmd: "commit_mru_tab" });
   }, true);
 })();"##;
 
@@ -1236,6 +1758,39 @@ fn inject_ui_html(html: &str, ui_theme: &str) -> String {
         .replace("/*__TP_BRAND_ASSETS_JS__*/", brand_assets_js())
 }
 
+static NEWTAB_CACHE_DARK: OnceLock<String> = OnceLock::new();
+static NEWTAB_CACHE_LIGHT: OnceLock<String> = OnceLock::new();
+static HISTORY_CACHE_DARK: OnceLock<String> = OnceLock::new();
+static HISTORY_CACHE_LIGHT: OnceLock<String> = OnceLock::new();
+
+fn cached_ui_html(
+    dark_cache: &'static OnceLock<String>,
+    light_cache: &'static OnceLock<String>,
+    template: &'static str,
+    ui_theme: &str,
+) -> &'static str {
+    let is_light = ui_theme.eq_ignore_ascii_case("carrara-light")
+        || ui_theme.eq_ignore_ascii_case("warm-paper")
+        || ui_theme.eq_ignore_ascii_case("light");
+    if is_light {
+        light_cache
+            .get_or_init(|| inject_ui_html(template, "carrara-light"))
+            .as_str()
+    } else {
+        dark_cache
+            .get_or_init(|| inject_ui_html(template, "obsidian-gold"))
+            .as_str()
+    }
+}
+
+fn cached_newtab_html(ui_theme: &str) -> &'static str {
+    cached_ui_html(&NEWTAB_CACHE_DARK, &NEWTAB_CACHE_LIGHT, NEWTAB_HTML, ui_theme)
+}
+
+fn cached_history_html(ui_theme: &str) -> &'static str {
+    cached_ui_html(&HISTORY_CACHE_DARK, &HISTORY_CACHE_LIGHT, HISTORY_HTML, ui_theme)
+}
+
 #[cfg(test)]
 fn inject_ui_fonts(html: &str) -> String {
     inject_ui_html(html, "obsidian-gold")
@@ -1243,6 +1798,13 @@ fn inject_ui_fonts(html: &str) -> String {
 
 static NEXT_TAB_ID: AtomicU64 = AtomicU64::new(1);
 static ADBLOCK_ENABLED: AtomicBool = AtomicBool::new(true);
+static COMPACT_MODE_ENABLED: AtomicBool = AtomicBool::new(false);
+static COMPACT_SIDEBAR_WIDTH: AtomicU64 = AtomicU64::new(228);
+// 0 = Default (Prompt), 1 = Allow, 2 = Deny
+static PERMISSION_CAMERA: AtomicU8 = AtomicU8::new(0);
+static PERMISSION_MICROPHONE: AtomicU8 = AtomicU8::new(0);
+static PERMISSION_NOTIFICATIONS: AtomicU8 = AtomicU8::new(0);
+static PERMISSION_CLIPBOARD: AtomicU8 = AtomicU8::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ChatChannel {
@@ -1333,6 +1895,12 @@ impl std::fmt::Debug for ShopeePayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("[redacted]") }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TabDetachIntent {
+    DragOut,
+    ContextMenu,
+}
+
 #[derive(Debug, Clone)]
 enum AppCmd {
     OpenCommandBar,
@@ -1347,6 +1915,8 @@ enum AppCmd {
     WinMinimize,
     WinToggleMaximize,
     WinClose,
+    NewWindow,
+    DetachTabToNewWindow { tab_id: u64, intent: TabDetachIntent, fallback_cursor: Option<WinPoint> },
     QuitApp,
     WakeAndShowWindow,
     CycleViewMode,
@@ -1408,13 +1978,21 @@ enum AppCmd {
         isolated: bool,
         container_id: Option<String>,
     },
+    NewPrivateTab(String),
+    PrintActive,
+    OpenDevTools,
+    ToggleReaderMode,
+    DownloadStarted { uri: String, path: String },
+    DownloadCompleted { uri: String, path: String, success: bool },
+    #[allow(dead_code)]
+    PermissionDecision { origin: String, kind: String, allow: bool },
     FocusIndex(usize),
-    NextMruTab,
     FocusVisibleIndex(usize),
     FocusLastTab,
     NextTab,
     PrevTab,
     FocusTabById(u64),
+    FocusContentTab(u64),
     CloseIndex(usize),
     CloseActiveTab,
     NavigateActive(String),
@@ -1429,6 +2007,8 @@ enum AppCmd {
     OpenHistory,
     GetHistory,
     ClearHistory,
+    ClearSiteData,
+    #[allow(dead_code)]
     OpenWorkspace,
     SetActiveWorkspace(String),
     CreateWorkspace(String),
@@ -1440,19 +2020,55 @@ enum AppCmd {
     },
     CloseGlance,
     GlanceOpenInTab,
+    #[allow(dead_code)]
     RunEcomScan {
         scope: String,
     },
+    #[allow(dead_code)]
     DiscoverShopeeShops { tab_id: Option<u64> },
+    #[allow(dead_code)]
     ShopeeDiscoveryUnavailable,
+    #[allow(dead_code)]
     SetShopeeShopSelection { platform: String, shop_id: String, selected: bool },
+    #[allow(dead_code)]
     OpenShopeeShop(String),
+    #[allow(dead_code)]
     SetEcomAutoScan(bool),
+    #[allow(dead_code)]
     UpdatePlatformData {
         platform: String,
         data_json: String,
     },
+    #[allow(dead_code)]
     ExportShopeeCsv,
+    #[allow(dead_code)]
+    SavePancakeApi { api_key: String },
+    PancakeAuthResult {
+        success: bool,
+        message: String,
+        shop_id: Option<String>,
+        shop_name: Option<String>,
+    },
+    PancakeScanResult {
+        rev: f64,
+        orders: usize,
+    },
+    #[allow(dead_code)]
+    WorkspaceScan { platform: String, mode: String, shop_ids: Vec<String> },
+    #[allow(dead_code)]
+    EcomLogDebug(String),
+    ScanNeedAuth { reason: String, shop_id: String },
+    ScanAuthResolved,
+    #[allow(dead_code)]
+    SkipCurrentShop,
+    #[allow(dead_code)]
+    CancelWorkspaceScan,
+    #[allow(dead_code)]
+    OpenLogFile,
+    #[allow(dead_code)]
+    LoadSnapshot(String),
+    #[allow(dead_code)]
+    OpenWorkspaceTab { url: String, shop_id: Option<String> },
     CloseTabById(u64),
     ReopenClosedTab,
     ZoomStep(i32),
@@ -1544,6 +2160,144 @@ enum AppCmd {
         behind_count: usize,
         message: String,
     },
+    CloseCommandBar,
+    CopyActiveUrl,
+    DuplicateTab(u64),
+    PinTabById(u64),
+    CloseOtherTabs(u64),
+    MoveTabToWorkspace {
+        tab_id: u64,
+        workspace_id: String,
+    },
+    ReorderTab {
+        source_id: u64,
+        target_id: u64,
+        after: bool,
+    },
+    OpenInSplit(String),
+    AdjustSplitRatio(f32),
+    ResetSplitRatio,
+    ToggleCompactMode,
+    SetCompactSidebarHover(bool),
+    ToggleTabEssential(u64),
+    ResetPinnedTab(u64),
+    ToggleTabFolderCollapsed(u64),
+    RenameTabFolder {
+        folder_id: u64,
+        name: String,
+    },
+    AddTabToFolder {
+        tab_id: u64,
+        folder_id: u64,
+    },
+    UpdateWorkspaceStyle {
+        id: String,
+        icon: String,
+        accent: String,
+        container_id: String,
+    },
+    NextWorkspace,
+    PrevWorkspace,
+    UnloadTab(u64),
+    GlanceOpenInSplit,
+    GlanceNavBack,
+    GlanceNavForward,
+    GlanceReload,
+    GlanceCopyUrl,
+    UpdateTabMedia {
+        tab_id: u64,
+        playing: bool,
+        muted: bool,
+        title: String,
+        artist: String,
+    },
+    ToggleTabMute(u64),
+    MediaControl {
+        tab_id: u64,
+        action: String,
+    },
+    OpenTitlebarPopover,
+    CloseTitlebarPopover,
+    TranslateReq {
+        tab_id: u64,
+        req_id: u64,
+        target_lang: String,
+        texts: Vec<String>,
+    },
+    TranslateRes {
+        tab_id: u64,
+        req_id: u64,
+        translations: Vec<String>,
+    },
+    SaveDomainBoost {
+        domain: String,
+        css: String,
+        zap_selectors: Vec<String>,
+        enabled: bool,
+    },
+    ResetDomainBoost(String),
+    OpenBoostsPanel,
+    StartZapMode,
+    OpenDownloadedFile(String),
+    OpenDownloadFolder(String),
+    RecoverWindows,
+    DismissWindowRecovery,
+    SyncWindowGeometry,
+    PrewarmNewTab,
+    StepMruTab(i32),
+    CommitMruTab(Option<u64>),
+    CancelMruTab,
+    BrowserExtensionsLoaded(Vec<(String, String, bool)>),
+    OpenExtensionPopup {
+        id: String,
+        page: Option<String>,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct LoadedExtensionMeta {
+    id: String,
+    ext_id: String,
+    name: String,
+    desc: String,
+    popup_path: String,
+    options_path: String,
+    enabled: bool,
+}
+
+/// Event-loop payloads are always addressed to a native window.  This keeps a
+/// secondary window's shell state separate while retaining the existing AppCmd
+/// dispatcher for each individual window runtime.
+#[derive(Debug, Clone)]
+enum AppEvent {
+    WindowCommand { window_id: WindowId, origin_tab_id: Option<u64>, command: AppCmd },
+}
+
+#[derive(Clone)]
+struct WindowProxy {
+    window_id: WindowId,
+    origin_tab_id: Option<u64>,
+    event_loop: EventLoopProxy<AppEvent>,
+}
+
+impl WindowProxy {
+    fn new(window_id: WindowId, event_loop: EventLoopProxy<AppEvent>) -> Self {
+        Self { window_id, origin_tab_id: None, event_loop }
+    }
+
+    /// BrowserTab callbacks survive HWND reparenting.  Stamp all events emitted
+    /// from one with the stable tab id so the event loop can find its live owner.
+    fn for_tab(&self, tab_id: u64) -> Self {
+        Self { window_id: self.window_id, origin_tab_id: Some(tab_id), event_loop: self.event_loop.clone() }
+    }
+
+    fn send_event(&self, command: AppCmd) {
+        let _ = self.event_loop.send_event(AppEvent::WindowCommand {
+            window_id: self.window_id,
+            origin_tab_id: self.origin_tab_id,
+            command,
+        });
+    }
 }
 
 const DEFAULT_WORKSPACE_ID: &str = "default";
@@ -1554,6 +2308,20 @@ struct AltKeyState {
     right: bool,
     k_down: bool,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CustomShortcutCommand {
+    CompactMode, CommandBar, Settings, Glance, SplitView, PrevWorkspace,
+    NextWorkspace, CopyUrl, AiPanel, SidebarCollapse,
+}
+
+const CUSTOM_SHORTCUT_DEFAULTS: [(&str, &str); 10] = [
+    ("compact_mode", "Ctrl+Alt+C"), ("command_bar", "Ctrl+K"),
+    ("settings", "Alt+Comma"), ("glance", "Alt+G"),
+    ("split_view", "Alt+M"), ("prev_workspace", "Ctrl+Alt+ArrowLeft"),
+    ("next_workspace", "Ctrl+Alt+ArrowRight"), ("copy_url", "Ctrl+Shift+C"),
+    ("ai_panel", "Alt+A"), ("sidebar_collapse", "Alt+S"),
+];
 
 impl AltKeyState {
     fn should_open_command_bar(&self, key: KeyCode, pressed: bool) -> bool {
@@ -1574,11 +2342,20 @@ impl AltKeyState {
 struct Workspace {
     id: String,
     name: String,
+    icon: String,
+    accent: String,
+    container_id: String,
 }
 
 impl Workspace {
     fn default_workspace() -> Self {
-        Self { id: DEFAULT_WORKSPACE_ID.to_string(), name: "Default".to_string() }
+        Self {
+            id: DEFAULT_WORKSPACE_ID.to_string(),
+            name: "Default".to_string(),
+            icon: "✦".to_string(),
+            accent: String::new(),
+            container_id: "default".to_string(),
+        }
     }
 
     fn has_valid_shape(&self) -> bool {
@@ -1586,7 +2363,24 @@ impl Workspace {
             && self.id.len() <= 128
             && self.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
             && valid_workspace_name(&self.name)
+            && valid_workspace_icon(&self.icon)
+            && valid_workspace_accent(&self.accent)
+            && valid_workspace_container_id(&self.container_id)
     }
+}
+
+fn valid_workspace_icon(icon: &str) -> bool {
+    icon.len() <= 16 && !icon.chars().any(char::is_control)
+}
+
+fn valid_workspace_accent(accent: &str) -> bool {
+    accent.is_empty()
+        || (accent.len() == 7 && accent.starts_with('#') && accent[1..].chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+fn valid_workspace_container_id(container_id: &str) -> bool {
+    !container_id.trim().is_empty()
+        && container_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 fn valid_workspace_name(name: &str) -> bool {
@@ -1652,6 +2446,14 @@ fn parse_shop_selections(raw: &str) -> Vec<ShopSelection> {
     }).collect()
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TabFolder {
+    id: u64,
+    name: String,
+    workspace_id: String,
+    collapsed: bool,
+}
+
 struct BrowserTab {
     id: u64,
     navigation_readiness: shopee_discovery::NavigationReadiness,
@@ -1662,30 +2464,77 @@ struct BrowserTab {
     title: String,
     favicon_url: String,
     worker_kind: Option<String>,
+    private: bool,
     // A worker's presentation kind is not its collector identity: several
     // Shopee jobs all use the hidden "bot" shell but must never share it.
     ecom_worker_job: Option<String>,
     worker_status: String,
     pinned: bool,
+    essential: bool,
+    pinned_origin_url: Option<String>,
     tab_group_id: Option<u64>,
     is_loaded: bool,
+    last_active_at: Instant,
+    audible: bool,
+    muted: bool,
+    media_title: String,
+    media_artist: String,
     webview: WebView,
     #[cfg(target_os = "windows")]
     navigation_events: NavigationCorrelationRegistration,
 }
 
+struct WarmStandbyTab {
+    id: u64,
+    ui_theme: String,
+    container_id: String,
+    profile_name: String,
+    webview: WebView,
+    #[cfg(target_os = "windows")]
+    navigation_events: NavigationCorrelationRegistration,
+}
+
+struct BuiltTabWebView {
+    webview: WebView,
+    #[cfg(target_os = "windows")]
+    navigation_events: NavigationCorrelationRegistration,
+}
+
+#[derive(Clone, Debug)]
+struct DownloadEntry {
+    uri: String,
+    path: String,
+    status: String,
+}
+
+trait OptionalWebViewExt {
+    fn set_visible(&self, visible: bool) -> wry::Result<()>;
+    fn set_bounds(&self, bounds: Rect) -> wry::Result<()>;
+    fn evaluate_script(&self, js: &str) -> wry::Result<()>;
+    fn focus(&self) -> wry::Result<()>;
+    fn set_memory_usage_level(&self, level: MemoryUsageLevel) -> wry::Result<()>;
+}
+
+impl OptionalWebViewExt for Option<WebView> {
+    fn set_visible(&self, visible: bool) -> wry::Result<()> { self.as_ref().map_or(Ok(()), |shell| shell.set_visible(visible)) }
+    fn set_bounds(&self, bounds: Rect) -> wry::Result<()> { self.as_ref().map_or(Ok(()), |shell| shell.set_bounds(bounds)) }
+    fn evaluate_script(&self, js: &str) -> wry::Result<()> { self.as_ref().map_or(Ok(()), |shell| shell.evaluate_script(js)) }
+    fn focus(&self) -> wry::Result<()> { self.as_ref().map_or(Ok(()), WebView::focus) }
+    fn set_memory_usage_level(&self, level: MemoryUsageLevel) -> wry::Result<()> { self.as_ref().map_or(Ok(()), |shell| shell.set_memory_usage_level(level)) }
+}
+
 struct TpBrowserApp {
     window: Window,
-    proxy: EventLoopProxy<AppCmd>,
+    proxy: WindowProxy,
     web_context: WebContext,
     exe_dir: PathBuf,
     titlebar_shell: WebView,
     tab_shell: WebView,
-    sidebar_resizer_shell: WebView,
-    chat_header_shell: WebView,
-    dock_resizer_shell: WebView,
-    settings_shell: WebView,
-    ai_shell: WebView,
+    sidebar_resizer_shell: Option<WebView>,
+    chat_header_shell: Option<WebView>,
+    dock_resizer_shell: Option<WebView>,
+    settings_shell: Option<WebView>,
+    ai_shell: Option<WebView>,
     fb_shell: Option<WebView>,
     zalo_shell: Option<WebView>,
     custom_popup_shell: Option<WebView>,
@@ -1713,8 +2562,26 @@ struct TpBrowserApp {
     titlebar_hover: bool,
     titlebar_pinned: bool,
     settings_open: bool,
+    // Secondary windows defer auxiliary WebViews only while their hidden detach
+    // staging transaction is unresolved. Successful transfer commits hydration.
+    optional_shells_enabled: bool,
+    command_bar_open: bool,
+    mru_hud_open: bool,
+    titlebar_popover_open: bool,
+    pinned_extensions: Vec<String>,
+    loaded_extensions: Vec<LoadedExtensionMeta>,
+    translate_target_lang: String,
+    translate_auto_prompt: bool,
+    translate_never_domains: String,
+    glance_trigger: String,
+    glance_external_from_pinned: bool,
+    default_search_engine: String,
+    auto_pip_on_switch: bool,
+    compact_mode: bool,
+    compact_sidebar_hover: bool,
     settings_section: String,
     should_exit: bool,
+    persist_session: bool,
     ai_dock_width: u32,
     unread_ai: u32,
     unread_fb: u32,
@@ -1724,6 +2591,7 @@ struct TpBrowserApp {
     chime_kind: String,
     zoom_pct: u32,
     closed_tabs: Vec<String>,
+    downloads: Vec<DownloadEntry>,
     history_json: String,
     view_mode: ContentViewMode,
     split_paired_tab_id: Option<u64>,
@@ -1746,10 +2614,15 @@ struct TpBrowserApp {
     always_show_floating_orbs: bool,
     floating_orbs_json: String,
     adblock_enabled: bool,
+    permission_camera: String,
+    permission_microphone: String,
+    permission_notifications: String,
+    permission_clipboard: String,
     ai_provider: String,
     ai_api_key: String,
     ai_model: String,
     ai_base_url: String,
+    mcp_auth_token: String,
     auto_minimize_on_task: bool,
     google_user: String,
     ui_theme: String,
@@ -1757,19 +2630,33 @@ struct TpBrowserApp {
     startup_mode: String,
     background_mode: bool,
     startup_boost: bool,
+    custom_shortcuts: BTreeMap<String, String>,
     #[cfg(target_os = "windows")]
     hicon_big: isize,
     #[cfg(target_os = "windows")]
     hicon_small: isize,
     bookmarks_json: String,
+    boosts_json: String,
     skills_json: String,
     tasks_json: String,
     ai_worker_tab_id: Option<u64>,
+    warm_newtab: Option<WarmStandbyTab>,
+    warm_newtab_pending: bool,
+    bookmarks_rev: u64,
+    history_rev: u64,
+    last_tb_bookmarks_rev: Cell<u64>,
+    last_tb_history_rev: Cell<u64>,
+    last_resizer_theme: RefCell<String>,
+    session_dirty_since: Cell<Option<Instant>>,
+    context_menu_prefs_json: String,
+    window_recovery_json: String,
     shopee_orders_json: String,
     shopee_pas_json: String,
     shopee_health_json: String,
     tiktok_json: String,
+    tiktok_ads_json: String,
     tiktok_health_json: String,
+    tiktok_products_json: String,
     tiktok_scan_tab_id: Option<u64>,
     tiktok_scan_phase: String,
     shopee_shop_index_json: String,
@@ -1790,6 +2677,23 @@ struct TpBrowserApp {
     shopee_pending: HashMap<u64, (u64, u64, Instant, mpsc::Sender<Result<String, String>>)>,
     shopee_workspace_pending: HashSet<u64>,
     shopee_discovery_json: String,
+    tab_folders: Vec<TabFolder>,
+    tab_unload_minutes: u32,
+    tab_unload_whitelist: String,
+    pancake_api_key: String,
+    pancake_connected: bool,
+    pancake_shop_id: String,
+    pancake_shop_name: String,
+    pancake_rev: f64,
+    pancake_orders: usize,
+    tiktok_shop_name: String,
+    multi_shop_queue: Vec<String>,
+    multi_shop_idx: usize,
+    multi_shop_step: String,
+    multi_shop_tab_id: Option<u64>,
+    multi_shop_auth_pending: bool,
+    multi_shop_stale_shops: HashSet<String>,
+    multi_shop_data: HashMap<String, (String, String, String)>,
 }
 
 #[cfg(target_os = "windows")]
@@ -1798,7 +2702,7 @@ const WM_TRAYICON: u32 = 0x8000 + 101;
 const TRAY_ID: u32 = 1001;
 
 #[cfg(target_os = "windows")]
-static TRAY_PROXY: OnceLock<EventLoopProxy<AppCmd>> = OnceLock::new();
+static TRAY_PROXY: OnceLock<WindowProxy> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn tray_subclass_proc(
@@ -1882,7 +2786,7 @@ impl Drop for NavigationCorrelationRegistration {
 }
 
 #[cfg(target_os = "windows")]
-fn install_navigation_correlation(webview: &WebView, tab_id: u64, proxy: EventLoopProxy<AppCmd>) -> NavigationCorrelationRegistration {
+fn install_navigation_correlation(webview: &WebView, tab_id: u64, proxy: WindowProxy) -> NavigationCorrelationRegistration {
     let core = webview.webview();
     let mut registration = NavigationCorrelationRegistration::new(core.clone());
     let starting_proxy = proxy.clone();
@@ -1965,6 +2869,24 @@ fn install_navigation_correlation(webview: &WebView, tab_id: u64, proxy: EventLo
         registration.teardown();
     }
     registration
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct SystemTimeWin32 {
+    w_year: u16,
+    w_month: u16,
+    w_day_of_week: u16,
+    w_day: u16,
+    w_hour: u16,
+    w_minute: u16,
+    w_second: u16,
+    w_milliseconds: u16,
+}
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    fn GetLocalTime(lpSystemTime: *mut SystemTimeWin32);
 }
 
 impl TpBrowserApp {
@@ -2173,6 +3095,86 @@ impl TpBrowserApp {
     fn spawn_titlebar_hover_watcher(&self) {}
 
     #[cfg(target_os = "windows")]
+    fn spawn_compact_sidebar_watcher(&self) {
+        let hwnd = self.window.hwnd();
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let mut shown = false;
+            let mut last_inside = std::time::Instant::now();
+            loop {
+                if !COMPACT_MODE_ENABLED.load(Ordering::Relaxed) {
+                    std::thread::sleep(std::time::Duration::from_millis(120));
+                    if shown {
+                        shown = false;
+                        let _ = proxy.send_event(AppCmd::SetCompactSidebarHover(false));
+                    }
+                    continue;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(45));
+                unsafe {
+                    if IsWindow(hwnd) == 0 {
+                        break;
+                    }
+                    if IsIconic(hwnd) != 0 {
+                        if shown {
+                            shown = false;
+                            let _ = proxy.send_event(AppCmd::SetCompactSidebarHover(false));
+                        }
+                        continue;
+                    }
+                    let mut pt = WinPoint { x: 0, y: 0 };
+                    if GetCursorPos(&mut pt) == 0 {
+                        continue;
+                    }
+                    let mut origin = WinPoint { x: 0, y: 0 };
+                    if ClientToScreen(hwnd, &mut origin) == 0 {
+                        continue;
+                    }
+                    let mut crect = WinRect {
+                        left: 0,
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                    };
+                    if GetClientRect(hwnd, &mut crect) == 0 {
+                        continue;
+                    }
+
+                    let dpi = GetDpiForWindow(hwnd);
+                    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+                    let left_trigger_px = (8.0 * scale).round() as i32;
+                    let sidebar_w = COMPACT_SIDEBAR_WIDTH.load(Ordering::Relaxed) as i32;
+                    let keep_open_px = ((sidebar_w + 18) as f64 * scale).round() as i32;
+
+                    let dx = pt.x - origin.x;
+                    let dy = pt.y - origin.y;
+                    let in_y = dy >= 0 && dy < crect.bottom;
+
+                    let wfp = WindowFromPoint(pt);
+                    let root = if wfp != 0 { GetAncestor(wfp, 2) } else { 0 };
+                    let lbtn_down = (GetAsyncKeyState(0x01) & (0x8000u16 as i16)) != 0;
+
+                    if !shown {
+                        if in_y && dx >= 0 && dx <= left_trigger_px && root == hwnd {
+                            shown = true;
+                            last_inside = std::time::Instant::now();
+                            let _ = proxy.send_event(AppCmd::SetCompactSidebarHover(true));
+                        }
+                    } else if lbtn_down || (in_y && dx >= -2 && dx <= keep_open_px) {
+                        last_inside = std::time::Instant::now();
+                    } else if last_inside.elapsed() >= std::time::Duration::from_millis(260) {
+                        shown = false;
+                        let _ = proxy.send_event(AppCmd::SetCompactSidebarHover(false));
+                    }
+                }
+            }
+        });
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn spawn_compact_sidebar_watcher(&self) {}
+
+    #[cfg(target_os = "windows")]
     fn bring_webview_to_front(wv: &WebView) {
         let hwnd = wv.hwnd().0 as isize;
         unsafe {
@@ -2299,7 +3301,13 @@ impl TpBrowserApp {
     #[cfg(not(target_os = "windows"))]
     fn sync_windows_autostart(_enable: bool) {}
 
-    fn new(window: Window, proxy: EventLoopProxy<AppCmd>, exe_dir: PathBuf) -> wry::Result<Self> {
+    fn new(
+        window: Window,
+        proxy: WindowProxy,
+        exe_dir: PathBuf,
+        restore_session: bool,
+        secondary_runtime: bool,
+    ) -> wry::Result<Self> {
         let data_dir = exe_dir.join("user_data");
         let _ = fs::create_dir_all(&data_dir);
         let skills_dir = exe_dir.join("skills");
@@ -2316,15 +3324,14 @@ impl TpBrowserApp {
         let init_logo = Self::extract_field_str(&pre_cfg, "logo_style")
             .map(|s| Self::normalize_logo_style(&s))
             .unwrap_or_else(|| "ribbon".to_string());
-        let init_bg = if init_theme == "carrara-light" {
-            (246, 242, 234, 255)
-        } else {
-            (17, 19, 24, 255)
-        };
         let init_tab_orient = Self::extract_field_str(&pre_cfg, "tab_orientation")
             .map(|s| TabOrientation::from_str(&s))
             .unwrap_or(TabOrientation::VerticalLeft);
-        let init_sidebar_collapsed = Self::extract_bool(&pre_cfg, "sidebar_collapsed").unwrap_or(false);
+        // Fail open after a collapsed/compact state can strand the user without
+        // a visible pin/reveal affordance. The user can collapse it again later
+        // with the explicit sidebar shortcut once the sidebar is reachable.
+        let init_sidebar_collapsed = false;
+        let init_compact_mode = false;
         let init_sidebar_width = Self::extract_u64(&pre_cfg, "\"sidebar_width\":")
             .map(|w| (w as u32).clamp(140, 440))
             .unwrap_or(228);
@@ -2339,6 +3346,9 @@ impl TpBrowserApp {
             .unwrap_or(ContentViewMode::SingleTab);
         let init_google_user = Self::extract_field_str(&pre_cfg, "google_user").unwrap_or_default();
         let init_adblock = Self::extract_bool(&pre_cfg, "adblock_enabled").unwrap_or(true);
+        ADBLOCK_ENABLED.store(init_adblock, Ordering::Relaxed);
+        COMPACT_MODE_ENABLED.store(init_compact_mode, Ordering::Relaxed);
+        COMPACT_SIDEBAR_WIDTH.store(init_sidebar_width as u64, Ordering::Relaxed);
         let init_startup = Self::extract_field_str(&pre_cfg, "startup_mode")
             .map(|s| if s.eq_ignore_ascii_case("newtab") { "newtab" } else { "restore" })
             .unwrap_or("restore");
@@ -2359,7 +3369,7 @@ impl TpBrowserApp {
 
         let mut init_tabs_json = Vec::new();
         let mut init_active_idx = 0usize;
-        if init_startup == "restore" {
+        if restore_session && init_startup == "restore" {
             if let Ok(raw_sess) = fs::read_to_string(exe_dir.join("session.json")) {
                 if let Ok(val) = parse_json(&raw_sess) {
                     init_active_idx = val.get("active_idx").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
@@ -2416,7 +3426,7 @@ impl TpBrowserApp {
             .with_extensions_path(extensions_dir.clone())
             .with_profile_name("default".to_string())
             .with_theme(Theme::Light)
-            .with_background_color(init_bg)
+            .with_transparent(true)
             .with_visible(init_tab_orient == TabOrientation::VerticalLeft)
             .with_initialization_script(SHELL_SHORTCUTS_JS)
             .with_html(tab_shell_html)
@@ -2431,44 +3441,6 @@ impl TpBrowserApp {
 
         let shared_env = tab_shell.environment();
 
-        let proxy_ch = proxy.clone();
-        let chat_header_html = inject_ui_html(CHAT_HEADER_HTML, &init_theme);
-        let chat_header_shell = WebViewBuilder::new_with_web_context(&mut web_context)
-            .with_environment(shared_env.clone())
-            .with_profile_name("default".to_string())
-            .with_theme(Theme::Light)
-            .with_background_color(init_bg)
-            .with_visible(false)
-            .with_initialization_script(SHELL_SHORTCUTS_JS)
-            .with_html(chat_header_html)
-            .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ch, req.body(), None);
-            })
-            .with_bounds(Rect {
-                position: LogicalPosition::new(1000, 0).into(),
-                size: LogicalSize::new(RIGHT_AI_DOCK_WIDTH, FB_CHAT_HEADER_HEIGHT).into(),
-            })
-            .build_as_child(&window)?;
-
-        let proxy_ai = proxy.clone();
-        let ai_panel_html = inject_ui_html(AI_PANEL_HTML, &init_theme);
-        let ai_shell = WebViewBuilder::new_with_web_context(&mut web_context)
-            .with_environment(shared_env.clone())
-            .with_profile_name("default".to_string())
-            .with_theme(Theme::Light)
-            .with_background_color(init_bg)
-            .with_visible(false)
-            .with_initialization_script(SHELL_SHORTCUTS_JS)
-            .with_html(ai_panel_html)
-            .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_ai, req.body(), None);
-            })
-            .with_bounds(Rect {
-                position: LogicalPosition::new(1000, FB_CHAT_HEADER_HEIGHT as i32).into(),
-                size: LogicalSize::new(RIGHT_AI_DOCK_WIDTH, 760).into(),
-            })
-            .build_as_child(&window)?;
-
         let proxy_tb = proxy.clone();
         let titlebar_html = inject_ui_html(TITLEBAR_HTML, &init_theme)
             .replace("/*__TP_BOOTSTRAP_JS__*/", &bootstrap_js);
@@ -2476,7 +3448,7 @@ impl TpBrowserApp {
             .with_environment(shared_env.clone())
             .with_profile_name("default".to_string())
             .with_theme(Theme::Light)
-            .with_background_color(init_bg)
+            .with_transparent(true)
             .with_visible(init_tab_orient == TabOrientation::HorizontalTop)
             .with_initialization_script(SHELL_SHORTCUTS_JS)
             .with_html(titlebar_html)
@@ -2490,64 +3462,6 @@ impl TpBrowserApp {
             .build_as_child(&window)?;
         let _ = titlebar_shell.set_visible(init_tab_orient == TabOrientation::HorizontalTop);
 
-        let proxy_rsz = proxy.clone();
-        let dock_resizer_html = inject_ui_html(DOCK_RESIZER_HTML, &init_theme);
-        let dock_resizer_shell = WebViewBuilder::new_with_web_context(&mut web_context)
-            .with_environment(shared_env.clone())
-            .with_profile_name("default".to_string())
-            .with_theme(Theme::Light)
-            .with_background_color(init_bg)
-            .with_visible(false)
-            .with_html(dock_resizer_html)
-            .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_rsz, req.body(), None);
-            })
-            .with_bounds(Rect {
-                position: LogicalPosition::new(900, 0).into(),
-                size: LogicalSize::new(6, 800).into(),
-            })
-            .build_as_child(&window)?;
-        let _ = dock_resizer_shell.set_visible(false);
-
-        let proxy_sbr = proxy.clone();
-        let sidebar_resizer_html = inject_ui_html(SIDEBAR_RESIZER_HTML, &init_theme);
-        let sidebar_resizer_shell = WebViewBuilder::new_with_web_context(&mut web_context)
-            .with_environment(shared_env.clone())
-            .with_profile_name("default".to_string())
-            .with_theme(Theme::Light)
-            .with_background_color(init_bg)
-            .with_visible(false)
-            .with_html(sidebar_resizer_html)
-            .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_sbr, req.body(), None);
-            })
-            .with_bounds(Rect {
-                position: LogicalPosition::new(225, 40).into(),
-                size: LogicalSize::new(6, 800).into(),
-            })
-            .build_as_child(&window)?;
-        let _ = sidebar_resizer_shell.set_visible(false);
-
-        let proxy_st = proxy.clone();
-        let settings_modal_html = inject_ui_html(SETTINGS_MODAL_HTML, &init_theme);
-        let settings_shell = WebViewBuilder::new_with_web_context(&mut web_context)
-            .with_environment(shared_env)
-            .with_profile_name("default".to_string())
-            .with_transparent(true)
-            .with_theme(Theme::Light)
-            .with_html(settings_modal_html)
-            .with_ipc_handler(move |req| {
-                Self::handle_ipc(&proxy_st, req.body(), None);
-            })
-            .with_bounds(Rect {
-                position: LogicalPosition::new(0, 0).into(),
-                size: LogicalSize::new(win_w, win_h).into(),
-            })
-            .build_as_child(&window)?;
-        let _ = settings_shell.set_visible(false);
-
-        let _ = ai_shell.set_memory_usage_level(MemoryUsageLevel::Normal);
-
         let default_bookmarks = r#"[{"title":"Google Sheets","url":"https://docs.google.com/spreadsheets"},{"title":"Gmail Cá Nhân","url":"https://mail.google.com"},{"title":"Google Drive","url":"https://drive.google.com"},{"title":"FB Messenger","url":"https://www.messenger.com"},{"title":"Zalo Web","url":"https://chat.zalo.me"},{"title":"YouTube","url":"https://www.youtube.com"},{"title":"Google Gemini","url":"https://gemini.google.com"},{"title":"Tài Khoản Google","url":"https://myaccount.google.com"}]"#.to_string();
         let default_skills = r#"[{"name":"Kiểm tra & Tóm tắt nhanh trang","domain":"*","notes":"Đọc tiêu đề, các mục chính và số liệu quan trọng trên trang đang mở, trình bày ngắn gọn gạch đầu dòng.","steps":[]},{"name":"Chia đôi màn hình so sánh 2 Tab","domain":"*","notes":"Chuyển sang chế độ chia khung Xoắn ốc BSP để đối chiếu 2 trang web cạnh nhau.","steps":[{"type":"split_view"}]}]"#.to_string();
         let default_floating_orbs = r##"[{"id":"ai","label":"AI","title":"AI Cowork","color":"#E2BE68","kind":"channel","channel":"ai","url":"","enabled":true},{"id":"fb","label":"FB","title":"Facebook Messenger","color":"#38BDF8","kind":"channel","channel":"fb","url":"https://www.messenger.com","enabled":true},{"id":"zalo","label":"Zalo","title":"Zalo Web","color":"#60A5FA","kind":"channel","channel":"zalo","url":"https://chat.zalo.me","enabled":true}]"##.to_string();
@@ -2559,11 +3473,11 @@ impl TpBrowserApp {
             exe_dir,
             titlebar_shell,
             tab_shell,
-            sidebar_resizer_shell,
-            chat_header_shell,
-            dock_resizer_shell,
-            settings_shell,
-            ai_shell,
+            sidebar_resizer_shell: None,
+            chat_header_shell: None,
+            dock_resizer_shell: None,
+            settings_shell: None,
+            ai_shell: None,
             fb_shell: None,
             zalo_shell: None,
             custom_popup_shell: None,
@@ -2591,8 +3505,24 @@ impl TpBrowserApp {
             titlebar_hover: false,
             titlebar_pinned: true,
             settings_open: false,
+            optional_shells_enabled: !secondary_runtime,
+            command_bar_open: false,
+            mru_hud_open: false,
+            titlebar_popover_open: false,
+            pinned_extensions: vec!["ublock".to_string(), "ai_cowork".to_string()],
+            loaded_extensions: Vec::new(),
+            translate_target_lang: "vi".to_string(),
+            translate_auto_prompt: true,
+            translate_never_domains: "shopee.vn,seller-vn.tiktok.com,chat.zalo.me".to_string(),
+            glance_trigger: "alt_click".to_string(),
+            glance_external_from_pinned: true,
+            default_search_engine: "google".to_string(),
+            auto_pip_on_switch: true,
+            compact_mode: init_compact_mode,
+            compact_sidebar_hover: false,
             settings_section: "look_feel".to_string(),
             should_exit: false,
+            persist_session: restore_session,
             ai_dock_width: RIGHT_AI_DOCK_WIDTH,
             unread_ai: 0,
             unread_fb: 0,
@@ -2602,6 +3532,7 @@ impl TpBrowserApp {
             chime_kind: "ai_done".to_string(),
             zoom_pct: 100,
             closed_tabs: Vec::new(),
+            downloads: Vec::new(),
             history_json: "[]".to_string(),
             view_mode: ContentViewMode::SingleTab,
             split_paired_tab_id: None,
@@ -2623,10 +3554,15 @@ impl TpBrowserApp {
             always_show_floating_orbs: true,
             floating_orbs_json: default_floating_orbs,
             adblock_enabled: true,
+            permission_camera: "default".to_string(),
+            permission_microphone: "default".to_string(),
+            permission_notifications: "default".to_string(),
+            permission_clipboard: "default".to_string(),
             ai_provider: "openai".to_string(),
             ai_api_key: String::new(),
             ai_model: "gemini-3.8-flash".to_string(),
             ai_base_url: "http://127.0.0.1:8045/v1".to_string(),
+            mcp_auth_token: String::new(),
             auto_minimize_on_task: true,
             google_user: String::new(),
             ui_theme: "obsidian-gold".to_string(),
@@ -2634,19 +3570,33 @@ impl TpBrowserApp {
             startup_mode: "restore".to_string(),
             background_mode: true,
             startup_boost: false,
+            custom_shortcuts: Self::default_custom_shortcuts(),
             #[cfg(target_os = "windows")]
             hicon_big: 0,
             #[cfg(target_os = "windows")]
             hicon_small: 0,
             bookmarks_json: default_bookmarks,
+            boosts_json: "{}".to_string(),
             skills_json: default_skills,
             tasks_json: "[]".to_string(),
             ai_worker_tab_id: None,
+            warm_newtab: None,
+            warm_newtab_pending: false,
+            bookmarks_rev: 1,
+            history_rev: 1,
+            last_tb_bookmarks_rev: Cell::new(0),
+            last_tb_history_rev: Cell::new(0),
+            last_resizer_theme: RefCell::new(String::new()),
+            session_dirty_since: Cell::new(None),
+            context_menu_prefs_json: Self::normalize_context_menu_prefs("{}"),
+            window_recovery_json: "{\"open_windows\":1,\"crash_detected\":false,\"pending_recovery_windows\":0,\"pending_recovery_tabs\":0,\"windows\":[]}".to_string(),
             shopee_orders_json: String::new(),
             shopee_pas_json: String::new(),
             shopee_health_json: String::new(),
             tiktok_json: String::new(),
+            tiktok_ads_json: String::new(),
             tiktok_health_json: String::new(),
+            tiktok_products_json: String::new(),
             tiktok_scan_tab_id: None,
             tiktok_scan_phase: String::new(),
             shopee_shop_index_json: String::new(),
@@ -2659,36 +3609,168 @@ impl TpBrowserApp {
             shopee_discovery_retry_attempt: 0,
             shopee_open_target_id: None,
             ecom_auto_scan: false,
-            ecom_status_text: "Sẵn sàng — bấm \"Quét Tất Cả Ngầm\" để bắt đầu".to_string(),
-            ecom_logs: vec!["• Khởi tạo Không Gian Làm Việc TMĐT TPbrowser.".to_string()],
+            ecom_status_text: "Không có tác vụ quét dữ liệu — trình duyệt sẵn sàng.".to_string(),
+            ecom_logs: vec!["• TPbrowser browser-only đã sẵn sàng.".to_string()],
             last_ecom_auto_epoch: 0,
             next_mcp_req_id: 1,
             mcp_pending: HashMap::new(),
             shopee_pending: HashMap::new(),
             shopee_workspace_pending: HashSet::new(),
             shopee_discovery_json: shopee_discovery::unavailable(),
+            tab_folders: Vec::new(),
+            tab_unload_minutes: 30,
+            tab_unload_whitelist: "chat.zalo.me,messenger.com,banhang.shopee.vn,seller-vn.tiktok.com".to_string(),
+            pancake_api_key: String::new(),
+            pancake_connected: false,
+            pancake_shop_id: String::new(),
+            pancake_shop_name: String::new(),
+            pancake_rev: 0.0,
+            pancake_orders: 0,
+            tiktok_shop_name: String::new(),
+            multi_shop_queue: Vec::new(),
+            multi_shop_idx: 0,
+            multi_shop_step: String::new(),
+            multi_shop_tab_id: None,
+            multi_shop_auth_pending: false,
+            multi_shop_stale_shops: HashSet::new(),
+            multi_shop_data: HashMap::new(),
         };
 
         app.load_config();
+        let mut mcp_token_generated = false;
+        if let Ok(env_tok) = env::var("TP_MCP_TOKEN") {
+            let trimmed = env_tok.trim();
+            if !trimmed.is_empty() {
+                app.mcp_auth_token = trimmed.to_string();
+            }
+        }
+        if app.mcp_auth_token.trim().is_empty() {
+            app.mcp_auth_token = mcp_server::generate_auth_token();
+            mcp_token_generated = true;
+        }
+        mcp_server::set_auth_token(app.mcp_auth_token.clone());
+        if mcp_token_generated && !secondary_runtime {
+            app.save_config();
+        }
+        // Recover a visible sidebar even when an older config persisted a
+        // collapsed/compact state with no reachable pin affordance.
+        app.sidebar_collapsed = false;
+        app.compact_mode = false;
+        COMPACT_MODE_ENABLED.store(false, Ordering::Relaxed);
         app.compact_titlebar = false;
         app.titlebar_pinned = true;
         app.ui_theme = Self::normalize_theme(&app.ui_theme);
         app.logo_style = Self::normalize_logo_style(&app.logo_style);
         app.sync_window_titlebar_theme();
         app.sync_window_icon();
-        app.init_system_tray();
-        app.load_skills();
-        app.load_tasks();
-        app.load_history();
-        app.load_exports_cache();
-        app.load_session_or_default();
-        let preload_proxy = app.proxy.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            let _ = preload_proxy.send_event(AppCmd::UiShellReady("boot_settle".to_string()));
-            // Đã tắt tự động Preload Messenger & Zalo để khởi động nhanh tức thì và tiết kiệm 400MB RAM
-        });
+        // A secondary is only a lightweight host for a live transferred WebView.
+        // It must not restore the primary session or register process-global tray and
+        // compact-sidebar services while it is being staged for a detach transaction.
+        if !secondary_runtime {
+            app.ensure_optional_shells();
+            app.init_system_tray();
+            app.load_skills();
+            app.load_tasks();
+            app.load_history();
+            app.load_exports_cache();
+            app.load_session_or_default();
+            app.spawn_compact_sidebar_watcher();
+            let preload_proxy = app.proxy.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                let _ = preload_proxy.send_event(AppCmd::UiShellReady("boot_settle".to_string()));
+                // Đã tắt tự động Preload Messenger & Zalo để khởi động nhanh tức thì và tiết kiệm 400MB RAM
+            });
+        }
         Ok(app)
+    }
+
+    /// Build auxiliary shells only after a secondary detach transaction commits.
+    /// Primary runtimes set this flag during construction; failed staging keeps it
+    /// false, so no optional WebView can be created before a live tab is moved.
+    fn ensure_optional_shells(&mut self) {
+        if !self.optional_shells_enabled {
+            return;
+        }
+        let shared_env = self.tab_shell.environment();
+        let theme = self.ui_theme.clone();
+        let background = if theme == "carrara-light" { (246, 242, 234, 255) } else { (17, 19, 24, 255) };
+
+        if self.chat_header_shell.is_none() {
+            let started = Instant::now();
+            let proxy = self.proxy.clone();
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env.clone()).with_profile_name("default".to_string())
+                .with_theme(Theme::Light).with_background_color(background).with_visible(false)
+                .with_initialization_script(SHELL_SHORTCUTS_JS)
+                .with_html(inject_ui_html(CHAT_HEADER_HTML, &theme))
+                .with_ipc_handler(move |req| Self::handle_ipc(&proxy, req.body(), None))
+                .with_bounds(Rect { position: LogicalPosition::new(1000, 0).into(), size: LogicalSize::new(RIGHT_AI_DOCK_WIDTH, FB_CHAT_HEADER_HEIGHT).into() })
+                .build_as_child(&self.window) { self.chat_header_shell = Some(wv); }
+            Self::log_perf("secondary hydrate chat header shell", started.elapsed().as_secs_f64() * 1000.0);
+        }
+        if self.ai_shell.is_none() {
+            let started = Instant::now();
+            let proxy = self.proxy.clone();
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env.clone()).with_profile_name("default".to_string())
+                .with_theme(Theme::Light).with_background_color(background).with_visible(false)
+                .with_initialization_script(SHELL_SHORTCUTS_JS)
+                .with_html(inject_ui_html(AI_PANEL_HTML, &theme))
+                .with_ipc_handler(move |req| Self::handle_ipc(&proxy, req.body(), None))
+                .with_bounds(Rect { position: LogicalPosition::new(1000, FB_CHAT_HEADER_HEIGHT as i32).into(), size: LogicalSize::new(RIGHT_AI_DOCK_WIDTH, 760).into() })
+                .build_as_child(&self.window) {
+                let _ = wv.set_memory_usage_level(MemoryUsageLevel::Normal);
+                self.ai_shell = Some(wv);
+            }
+            Self::log_perf("secondary hydrate AI shell", started.elapsed().as_secs_f64() * 1000.0);
+        }
+        if self.dock_resizer_shell.is_none() {
+            let started = Instant::now();
+            let proxy = self.proxy.clone();
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env.clone()).with_profile_name("default".to_string())
+                .with_theme(Theme::Light).with_background_color(background).with_visible(false)
+                .with_html(inject_ui_html(DOCK_RESIZER_HTML, &theme))
+                .with_ipc_handler(move |req| Self::handle_ipc(&proxy, req.body(), None))
+                .with_bounds(Rect { position: LogicalPosition::new(900, 0).into(), size: LogicalSize::new(6, 800).into() })
+                .build_as_child(&self.window) { self.dock_resizer_shell = Some(wv); }
+            Self::log_perf("secondary hydrate dock resizer shell", started.elapsed().as_secs_f64() * 1000.0);
+        }
+        if self.sidebar_resizer_shell.is_none() {
+            let started = Instant::now();
+            let proxy = self.proxy.clone();
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env.clone()).with_profile_name("default".to_string())
+                .with_theme(Theme::Light).with_background_color(background).with_visible(false)
+                .with_html(inject_ui_html(SIDEBAR_RESIZER_HTML, &theme))
+                .with_ipc_handler(move |req| Self::handle_ipc(&proxy, req.body(), None))
+                .with_bounds(Rect { position: LogicalPosition::new(225, 40).into(), size: LogicalSize::new(6, 800).into() })
+                .build_as_child(&self.window) { self.sidebar_resizer_shell = Some(wv); }
+            Self::log_perf("secondary hydrate sidebar resizer shell", started.elapsed().as_secs_f64() * 1000.0);
+        }
+        if self.settings_shell.is_none() {
+            let started = Instant::now();
+            let proxy = self.proxy.clone();
+            if let Ok(wv) = WebViewBuilder::new_with_web_context(&mut self.web_context)
+                .with_environment(shared_env).with_profile_name("default".to_string())
+                .with_transparent(true).with_theme(Theme::Light)
+                .with_html(inject_ui_html(SETTINGS_MODAL_HTML, &theme))
+                .with_ipc_handler(move |req| Self::handle_ipc(&proxy, req.body(), None))
+                .with_bounds(Rect { position: LogicalPosition::new(0, 0).into(), size: LogicalSize::new(860, 560).into() })
+                .build_as_child(&self.window) {
+                let _ = wv.set_visible(false);
+                self.settings_shell = Some(wv);
+            }
+            Self::log_perf("secondary hydrate settings shell", started.elapsed().as_secs_f64() * 1000.0);
+        }
+    }
+
+    /// Mark a committed secondary for on-demand optional-shell hydration.
+    /// Feature entrypoints call `ensure_optional_shells` immediately before use,
+    /// so the transfer commit itself never blocks on five auxiliary WebViews.
+    fn hydrate_secondary_shells(&mut self) {
+        self.optional_shells_enabled = true;
     }
 
     fn ensure_fb_shell(&mut self) {
@@ -2877,6 +3959,29 @@ impl TpBrowserApp {
     }
 
     fn normalize_url(input: &str) -> String {
+        Self::normalize_url_with_engine(input, "google")
+    }
+
+    fn looks_like_web_address(input: &str) -> bool {
+        if input.is_empty() || input.chars().any(char::is_whitespace) {
+            return false;
+        }
+        if input.contains("://") {
+            return true;
+        }
+        let host = input.split(['/', '?', '#']).next().unwrap_or("");
+        let hostname = host.split(':').next().unwrap_or("");
+        if hostname.eq_ignore_ascii_case("localhost") {
+            return true;
+        }
+        let octets: Vec<&str> = hostname.split('.').collect();
+        if octets.len() == 4 && octets.iter().all(|part| part.parse::<u8>().is_ok()) {
+            return true;
+        }
+        hostname.contains('.') && !hostname.starts_with('.') && !hostname.ends_with('.')
+    }
+
+    fn normalize_url_with_engine(input: &str, engine: &str) -> String {
         let trimmed = input.trim();
         if trimmed.is_empty()
             || trimmed.eq_ignore_ascii_case("tp://newtab")
@@ -2890,14 +3995,10 @@ impl TpBrowserApp {
         if trimmed.eq_ignore_ascii_case("tp://workspace") {
             return "tp://workspace".to_string();
         }
-        if trimmed.starts_with("http://")
-            || trimmed.starts_with("https://")
-            || trimmed.starts_with("chrome-extension://")
-            || trimmed.starts_with("edge://")
-        {
+        if trimmed.contains("://") {
             return trimmed.to_string();
         }
-        if trimmed.contains('.') && !trimmed.contains(' ') {
+        if Self::looks_like_web_address(trimmed) {
             return format!("https://{}", trimmed);
         }
         let encoded: String = trimmed
@@ -2910,7 +4011,12 @@ impl TpBrowserApp {
                 _ => format!("%{:02X}", b),
             })
             .collect();
-        format!("https://www.google.com/search?q={}", encoded)
+        match engine.to_ascii_lowercase().as_str() {
+            "duckduckgo" => format!("https://duckduckgo.com/?q={}", encoded),
+            "bing" => format!("https://www.bing.com/search?q={}", encoded),
+            "perplexity" => format!("https://www.perplexity.ai/search?q={}", encoded),
+            _ => format!("https://www.google.com/search?q={}", encoded),
+        }
     }
 
     fn title_from_url(url: &str) -> String {
@@ -2948,11 +4054,19 @@ impl TpBrowserApp {
         }
     }
 
+    fn cleanup_private_profile(&self, container_id: &str) {
+        if !container_id.starts_with("private_") {
+            return;
+        }
+        let profile_dir = self.exe_dir.join("user_data").join(Self::container_profile_name(container_id));
+        let _ = fs::remove_dir_all(profile_dir);
+    }
+
     fn visible_tab_indices(&self) -> Vec<usize> {
         self.tabs
             .iter()
             .enumerate()
-            .filter(|(_, tab)| tab.workspace_id == self.active_workspace_id)
+            .filter(|(_, tab)| tab.essential || tab.workspace_id == self.active_workspace_id)
             .map(|(idx, _)| idx)
             .collect()
     }
@@ -2961,7 +4075,7 @@ impl TpBrowserApp {
         self.tabs
             .iter()
             .enumerate()
-            .filter(|(_, tab)| tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none())
+            .filter(|(_, tab)| (tab.essential || tab.workspace_id == self.active_workspace_id) && tab.worker_kind.is_none())
             .map(|(idx, _)| idx)
             .collect()
     }
@@ -2998,7 +4112,7 @@ impl TpBrowserApp {
         self.add_tab_internal(
             raw_url,
             false,
-            true,
+            false,
             Some(worker_kind.to_string()),
             custom_title.map(|s| s.to_string()),
             false,
@@ -3006,40 +4120,53 @@ impl TpBrowserApp {
         )
     }
 
-    fn add_tab_internal(
-        &mut self,
-        raw_url: &str,
-        isolated: bool,
-        sync_now: bool,
-        worker_kind: Option<String>,
-        custom_title: Option<String>,
-        lazy: bool,
-        container_id: Option<String>,
-    ) -> Option<u64> {
-        if self.tabs.len() >= 14 {
-            return None;
-        }
-        let tab_id = NEXT_TAB_ID.fetch_add(1, Ordering::SeqCst);
-        let container_id = container_id.as_deref().map(Self::normalize_container_id).unwrap_or_else(|| "default".to_string());
-        let profile_name = if container_id != "default" {
-            Self::container_profile_name(&container_id)
-        } else if isolated {
-            self.profile_counter += 1;
-            format!("acc_{}", self.profile_counter)
+    fn cached_tab_viewport_rect(&self) -> Rect {
+        let scale = self.window.scale_factor();
+        let logical = self.window.inner_size().to_logical::<u32>(scale);
+        let sidebar_w = if self.tab_orientation == TabOrientation::VerticalLeft
+            && !self.sidebar_collapsed
+            && !self.compact_mode
+        {
+            self.sidebar_width.min(logical.width / 2)
         } else {
-            "default".to_string()
+            0
         };
+        let dock_w = if self.ai_mode == AiDisplayMode::RightDock {
+            self.ai_dock_width.min(logical.width / 2)
+        } else {
+            0
+        };
+        let top_h = self.titlebar_height();
+        Rect {
+            position: LogicalPosition::new(sidebar_w as i32, top_h as i32).into(),
+            size: LogicalSize::new(
+                logical.width.saturating_sub(sidebar_w + dock_w).max(400),
+                logical.height.saturating_sub(top_h).max(300),
+            )
+            .into(),
+        }
+    }
 
-        let url = Self::normalize_url(raw_url);
+    fn build_tab_webview(
+        &mut self,
+        tab_id: u64,
+        url: &str,
+        profile_name: &str,
+        isolated: bool,
+        is_worker: bool,
+        visible: bool,
+        should_sleep_load: bool,
+    ) -> Option<BuiltTabWebView> {
         let is_tiktok = url.to_lowercase().contains("tiktok.com");
-        let is_worker = worker_kind.is_some();
-
-        let proxy_ipc = self.proxy.clone();
-        let proxy_popup = self.proxy.clone();
-        let proxy_load = self.proxy.clone();
+        let proxy_ipc = self.proxy.for_tab(tab_id);
+        let proxy_popup = self.proxy.for_tab(tab_id);
+        let proxy_load = self.proxy.for_tab(tab_id);
+        let proxy_download = self.proxy.for_tab(tab_id);
+        let proxy_download_done = self.proxy.for_tab(tab_id);
         let shared_env = self.tab_shell.environment();
-
         let extensions_dir = self.exe_dir.join("extensions");
+        let viewport_rect = self.cached_tab_viewport_rect();
+
         let mut builder = WebViewBuilder::new_with_web_context(&mut self.web_context)
             .with_environment(shared_env)
             .with_browser_extensions_enabled(true)
@@ -3047,19 +4174,75 @@ impl TpBrowserApp {
             .with_clipboard(true)
             .with_devtools(true)
             .with_theme(Theme::Light)
-            .with_visible(sync_now && !is_worker)
+            .with_visible(visible && !is_worker)
             .with_background_color(if self.ui_theme == "carrara-light" {
                 (246, 242, 234, 255)
             } else {
                 (14, 16, 20, 255)
             })
-            .with_profile_name(profile_name.clone());
+            .with_profile_name(profile_name.to_string())
+            .with_download_started_handler(move |uri, path| {
+                let downloads = std::env::var_os("USERPROFILE")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("Downloads");
+                let _ = fs::create_dir_all(&downloads);
+                let raw_name = uri.rsplit('/').next().unwrap_or("download");
+                let name = raw_name.split('?').next().unwrap_or("download");
+                let safe_name: String = name
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                let filename = if safe_name.is_empty() {
+                    "download"
+                } else {
+                    safe_name.as_str()
+                };
+                let target = downloads.join(filename);
+                *path = target.clone();
+                let _ = proxy_download.send_event(AppCmd::DownloadStarted {
+                    uri,
+                    path: target.display().to_string(),
+                });
+                true
+            })
+            .with_download_completed_handler(move |uri, path, success| {
+                let _ = proxy_download_done.send_event(AppCmd::DownloadCompleted {
+                    uri,
+                    path: path.map(|p| p.display().to_string()).unwrap_or_default(),
+                    success,
+                });
+            });
 
         if !is_tiktok {
+            let worker_guard = if is_worker {
+                "window.__tpIsWorkerTab=true;window.alert=function(){};window.confirm=function(){return true;};window.prompt=function(){return null;};window.print=function(){};window.add_eventListener('beforeunload',function(e){e.stopImmediatePropagation();},true);\n"
+            } else {
+                ""
+            };
+            let boost_seed = if self.boosts_json.trim().is_empty() {
+                "{}".to_string()
+            } else {
+                self.boosts_json.clone()
+            };
+            let ctx_seed = if self.context_menu_prefs_json.trim().is_empty() {
+                "{}".to_string()
+            } else {
+                self.context_menu_prefs_json.clone()
+            };
             let init_js = format!(
-                "{}\n{}",
+                "{}window.__tpBoostsMap = {};\nwindow.__tpContextMenuPrefs = {};\n{}\n{}",
+                worker_guard,
+                boost_seed,
+                ctx_seed,
                 CONTENT_AGENT_JS.replace("__TAB_ID__", &tab_id.to_string()),
-                ECOM_AGENTS_JS
+                ""
             );
             builder = builder.with_initialization_script(&init_js);
         }
@@ -3073,15 +4256,9 @@ impl TpBrowserApp {
                     });
                 }
             })
-            .with_permission_handler(|kind| match kind {
-                PermissionKind::Microphone
-                | PermissionKind::Camera
-                | PermissionKind::ClipboardRead
-                | PermissionKind::Notifications
-                | PermissionKind::Autoplay
-                | PermissionKind::WindowManagement => PermissionResponse::Allow,
-                _ => PermissionResponse::Default,
-            })
+            // Let WebView2 show its native permission prompt unless the user
+            // explicitly configured a persisted policy in Settings.
+            .with_permission_handler(|kind| Self::permission_response_for_kind(kind))
             .with_new_window_req_handler(move |popup_url, features| {
                 let lower = popup_url.to_lowercase();
                 // Chặn đứng mọi cửa sổ/tab quảng cáo, cá cược, popunder tự nhảy ra
@@ -3132,37 +4309,193 @@ impl TpBrowserApp {
             .with_ipc_handler(move |req| {
                 Self::handle_ipc(&proxy_ipc, req.body(), Some(tab_id));
             })
-            .with_bounds(Rect {
-                position: LogicalPosition::new(228, 0).into(),
-                size: LogicalSize::new(800, 800).into(),
-            });
+            .with_bounds(viewport_rect);
 
         if isolated {
             builder = builder.with_extensions_path(extensions_dir);
         }
 
         let is_ext_url = url.starts_with("chrome-extension://");
-        let should_sleep_load = lazy && !is_worker && !url.starts_with("tp://");
         builder = if should_sleep_load {
             builder.with_html("<html><body style='background:#0d0f14; color:#94a3b8; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;'><div style='text-align:center;'>⚡ <span style='font-size:13px;'>Đang ngủ đông để tiết kiệm RAM... Bấm để đánh thức</span></div></body></html>")
         } else if url == "tp://newtab" {
-            builder.with_html(inject_ui_html(NEWTAB_HTML, &self.ui_theme))
+            builder.with_html(cached_newtab_html(&self.ui_theme))
         } else if url == "tp://history" {
-            builder.with_html(inject_ui_html(HISTORY_HTML, &self.ui_theme))
+            builder.with_html(cached_history_html(&self.ui_theme))
         } else if url == "tp://workspace" {
-            builder.with_html(inject_ui_html(WORKSPACE_HTML, &self.ui_theme))
+            // Legacy sessions may still contain the old workspace URL. Keep those
+            // sessions usable without loading the removed e-commerce dashboard.
+            builder.with_html(cached_newtab_html(&self.ui_theme))
         } else if is_ext_url {
             builder.with_html("<html><body style='background:#f8fafc;'></body></html>")
         } else {
-            builder.with_url(&url)
+            builder.with_url(url)
         };
 
         if let Ok(webview) = builder.build_as_child(&self.window) {
             #[cfg(target_os = "windows")]
-            let navigation_events = install_navigation_correlation(&webview, tab_id, self.proxy.clone());
-            if is_ext_url {
+            let navigation_events =
+                install_navigation_correlation(&webview, tab_id, self.proxy.for_tab(tab_id));
+            Some(BuiltTabWebView {
+                webview,
+                #[cfg(target_os = "windows")]
+                navigation_events,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn schedule_prewarm_newtab(&mut self, delay_ms: u64) {
+        if self.should_exit
+            || !self.persist_session
+            || !self.optional_shells_enabled
+            || self.tabs.len() >= 14
+            || self.warm_newtab.is_some()
+            || self.warm_newtab_pending
+        {
+            return;
+        }
+        self.warm_newtab_pending = true;
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            let _ = proxy.send_event(AppCmd::PrewarmNewTab);
+        });
+    }
+
+    fn ensure_warm_newtab(&mut self) {
+        self.warm_newtab_pending = false;
+        if self.should_exit
+            || !self.persist_session
+            || !self.optional_shells_enabled
+            || self.tabs.len() >= 14
+        {
+            return;
+        }
+        let container_id = self
+            .workspaces
+            .iter()
+            .find(|w| w.id == self.active_workspace_id)
+            .map(|w| Self::normalize_container_id(&w.container_id))
+            .unwrap_or_else(|| "default".to_string());
+        if container_id.starts_with("private_") {
+            return;
+        }
+        let profile_name = if container_id != "default" {
+            Self::container_profile_name(&container_id)
+        } else {
+            "default".to_string()
+        };
+        if self.warm_newtab.as_ref().is_some_and(|w| {
+            w.ui_theme == self.ui_theme
+                && w.container_id == container_id
+                && w.profile_name == profile_name
+        }) {
+            return;
+        }
+        self.warm_newtab = None;
+        let tab_id = NEXT_TAB_ID.fetch_add(1, Ordering::SeqCst);
+        if let Some(built) =
+            self.build_tab_webview(tab_id, "tp://newtab", &profile_name, false, false, false, false)
+        {
+            let _ = built.webview.set_visible(false);
+            let _ = built.webview.set_memory_usage_level(MemoryUsageLevel::Low);
+            self.warm_newtab = Some(WarmStandbyTab {
+                id: tab_id,
+                ui_theme: self.ui_theme.clone(),
+                container_id,
+                profile_name,
+                webview: built.webview,
+                #[cfg(target_os = "windows")]
+                navigation_events: built.navigation_events,
+            });
+        }
+    }
+
+    fn add_tab_internal(
+        &mut self,
+        raw_url: &str,
+        isolated: bool,
+        sync_now: bool,
+        worker_kind: Option<String>,
+        custom_title: Option<String>,
+        lazy: bool,
+        container_id: Option<String>,
+    ) -> Option<u64> {
+        if self.tabs.len() >= 14 {
+            return None;
+        }
+        let container_id = container_id.as_deref().map(Self::normalize_container_id).unwrap_or_else(|| {
+            if !isolated && worker_kind.is_none() {
+                self.workspaces
+                    .iter()
+                    .find(|w| w.id == self.active_workspace_id)
+                    .map(|w| Self::normalize_container_id(&w.container_id))
+                    .unwrap_or_else(|| "default".to_string())
+            } else {
+                "default".to_string()
+            }
+        });
+        let is_private = container_id.starts_with("private_");
+        let profile_name = if container_id != "default" {
+            Self::container_profile_name(&container_id)
+        } else if isolated {
+            self.profile_counter += 1;
+            format!("acc_{}", self.profile_counter)
+        } else {
+            "default".to_string()
+        };
+
+        let url = Self::normalize_url(raw_url);
+        let is_worker = worker_kind.is_some();
+        let is_ext_url = url.starts_with("chrome-extension://");
+        let should_sleep_load = lazy && !is_worker && !url.starts_with("tp://");
+
+        let warm_match = url == "tp://newtab"
+            && !isolated
+            && !is_worker
+            && !lazy
+            && sync_now
+            && self.warm_newtab.as_ref().is_some_and(|w| {
+                w.ui_theme == self.ui_theme
+                    && w.container_id == container_id
+                    && w.profile_name == profile_name
+            });
+
+        let claimed = if warm_match {
+            self.warm_newtab.take().map(|warm| {
+                (
+                    warm.id,
+                    BuiltTabWebView {
+                        webview: warm.webview,
+                        #[cfg(target_os = "windows")]
+                        navigation_events: warm.navigation_events,
+                    },
+                    true,
+                )
+            })
+        } else {
+            let tab_id = NEXT_TAB_ID.fetch_add(1, Ordering::SeqCst);
+            self.build_tab_webview(
+                tab_id,
+                &url,
+                &profile_name,
+                isolated,
+                is_worker,
+                sync_now,
+                should_sleep_load,
+            )
+            .map(|built| (tab_id, built, false))
+        };
+
+        if let Some((tab_id, built, from_warm)) = claimed {
+            let webview = built.webview;
+            #[cfg(target_os = "windows")]
+            let navigation_events = built.navigation_events;
+            if is_ext_url && !from_warm {
                 let ext_target = url.clone();
-                let proxy_delayed = self.proxy.clone();
+                let proxy_delayed = self.proxy.for_tab(tab_id);
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(650));
                     let _ = proxy_delayed.send_event(AppCmd::NavigateActive(ext_target));
@@ -3181,15 +4514,23 @@ impl TpBrowserApp {
                 container_id,
                 workspace_id: self.active_workspace_id.clone(),
                 profile_name,
-                url,
+                url: url.clone(),
                 title,
                 favicon_url: String::new(),
                 worker_kind,
+                private: is_private,
                 ecom_worker_job: None,
                 worker_status: if is_worker { "Đang chạy ngầm".to_string() } else { String::new() },
                 pinned: false,
+                essential: false,
+                pinned_origin_url: None,
                 tab_group_id: None,
                 is_loaded,
+                last_active_at: Instant::now(),
+                audible: false,
+                muted: false,
+                media_title: String::new(),
+                media_artist: String::new(),
                 webview,
                 #[cfg(target_os = "windows")]
                 navigation_events,
@@ -3199,11 +4540,25 @@ impl TpBrowserApp {
                 self.mru_tab_ids.retain(|id| *id != tab_id);
                 self.mru_tab_ids.insert(0, tab_id);
                 self.mru_cycle_ids = None;
+            } else if let Some(t) = self.tabs.last() {
+                let _ = t.webview.set_visible(true);
+                let _ = t.webview.set_bounds(Rect {
+                    position: LogicalPosition::new(-16000, -16000).into(),
+                    size: LogicalSize::new(1280, 800).into(),
+                });
+                let _ = t.webview.set_memory_usage_level(MemoryUsageLevel::Normal);
+                #[cfg(target_os = "windows")]
+                Self::send_webview_to_back(&t.webview);
             }
             if sync_now {
                 self.relayout();
                 self.sync_all_ui();
-                self.save_session();
+                if !is_worker && !is_private {
+                    self.mark_session_dirty();
+                }
+                if url == "tp://newtab" && !isolated && !is_worker {
+                    self.schedule_prewarm_newtab(260);
+                }
             }
             return Some(tab_id);
         }
@@ -3225,10 +4580,11 @@ impl TpBrowserApp {
         let scale = self.window.scale_factor();
         let logical = self.window.inner_size().to_logical::<u32>(scale);
         let top_reserved = self.titlebar_height();
+        let compact_overlay_active = self.tab_orientation == TabOrientation::VerticalLeft && self.compact_mode;
         let mut shell = compute_shell_layout(
             logical.width,
             logical.height.saturating_sub(top_reserved),
-            self.tab_orientation,
+            if compact_overlay_active { TabOrientation::HorizontalTop } else { self.tab_orientation },
             self.sidebar_collapsed,
             self.sidebar_width,
             self.ai_mode,
@@ -3240,13 +4596,36 @@ impl TpBrowserApp {
             dock.y += top_reserved as i32;
         }
 
-        if self.tab_orientation == TabOrientation::VerticalLeft {
+        let full_overlay_active = self.command_bar_open || self.mru_hud_open;
+        if full_overlay_active {
+            let _ = self.tab_shell.set_visible(true);
+            let _ = self.tab_shell.set_bounds(Rect {
+                position: LogicalPosition::new(0, 0).into(),
+                size: LogicalSize::new(logical.width.max(320), logical.height.max(240)).into(),
+            });
+            let _ = self.sidebar_resizer_shell.set_visible(false);
+        } else if self.tab_orientation == TabOrientation::VerticalLeft && self.compact_mode {
+            let show_overlay = self.compact_sidebar_hover || self.command_bar_open;
+            if show_overlay {
+                let tab_w = self.sidebar_width.clamp(180, 440);
+                let _ = self.tab_shell.set_visible(true);
+                let _ = self.tab_shell.set_bounds(Rect {
+                    position: LogicalPosition::new(0, top_reserved as i32).into(),
+                    size: LogicalSize::new(tab_w, logical.height.saturating_sub(top_reserved)).into(),
+                });
+                #[cfg(target_os = "windows")]
+                Self::bring_webview_to_front(&self.tab_shell);
+            } else {
+                let _ = self.tab_shell.set_visible(false);
+            }
+            let _ = self.sidebar_resizer_shell.set_visible(false);
+        } else if self.tab_orientation == TabOrientation::VerticalLeft {
             let _ = self.tab_shell.set_visible(true);
             let _ = self.tab_shell.set_bounds(Rect {
                 position: LogicalPosition::new(shell.tab_bar.x, shell.tab_bar.y).into(),
                 size: LogicalSize::new(shell.tab_bar.width, shell.tab_bar.height).into(),
             });
-            if !self.sidebar_collapsed && shell.tab_bar.width > 0 {
+            if !self.sidebar_collapsed && !self.command_bar_open && shell.tab_bar.width > 0 {
                 let _ = self.sidebar_resizer_shell.set_visible(true);
                 let _ = self.sidebar_resizer_shell.set_bounds(Rect {
                     position: LogicalPosition::new(
@@ -3257,7 +4636,7 @@ impl TpBrowserApp {
                     size: LogicalSize::new(6, shell.tab_bar.height.max(120)).into(),
                 });
                 #[cfg(target_os = "windows")]
-                Self::bring_webview_to_front(&self.sidebar_resizer_shell);
+                if let Some(shell) = &self.sidebar_resizer_shell { Self::bring_webview_to_front(shell); }
             } else {
                 let _ = self.sidebar_resizer_shell.set_visible(false);
             }
@@ -3294,7 +4673,7 @@ impl TpBrowserApp {
                     Self::send_webview_to_back(&active_tab.webview);
                 }
                 for (idx, tab) in self.tabs.iter().enumerate() {
-                    if tab.workspace_id != self.active_workspace_id {
+                    if !tab.essential && tab.workspace_id != self.active_workspace_id {
                         let _ = tab.webview.set_visible(false);
                         let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
                         continue;
@@ -3303,19 +4682,12 @@ impl TpBrowserApp {
                         continue;
                     }
                     if tab.worker_kind.is_some() {
-                        // Giữ Worker Tab sống ở kích thước đầy đủ lớp dưới (HWND_BOTTOM sau tab đang xem) để SPA/API chạy mượt mà không chiếm màn hình hay chuột
+                        // Đẩy Worker Tab ra ngoài màn hình (-16000, -16000) kích thước 1280x800:
+                        // SPA/API vẫn chạy full-speed không bị ngủ đông, tuyệt đối không che/cướp chuột của tab người dùng.
                         let _ = tab.webview.set_visible(true);
                         let _ = tab.webview.set_bounds(Rect {
-                            position: LogicalPosition::new(
-                                shell.content_area.x,
-                                shell.content_area.y,
-                            )
-                            .into(),
-                            size: LogicalSize::new(
-                                shell.content_area.width,
-                                shell.content_area.height,
-                            )
-                            .into(),
+                            position: LogicalPosition::new(-16000, -16000).into(),
+                            size: LogicalSize::new(1280, 800).into(),
                         });
                         let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Normal);
                         #[cfg(target_os = "windows")]
@@ -3360,7 +4732,7 @@ impl TpBrowserApp {
                         4,
                     );
                     for (idx, tab) in self.tabs.iter().enumerate() {
-                        if tab.workspace_id != self.active_workspace_id {
+                        if !tab.essential && tab.workspace_id != self.active_workspace_id {
                             let _ = tab.webview.set_visible(false);
                             let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
                             continue;
@@ -3468,7 +4840,7 @@ impl TpBrowserApp {
                     size: LogicalSize::new(hdr_r.width, hdr_r.height).into(),
                 });
                 #[cfg(target_os = "windows")]
-                Self::bring_webview_to_front(&self.chat_header_shell);
+                if let Some(shell) = &self.chat_header_shell { Self::bring_webview_to_front(shell); }
             } else {
                 let _ = self.chat_header_shell.set_visible(false);
             }
@@ -3483,7 +4855,7 @@ impl TpBrowserApp {
                     let _ = self.ai_shell.set_visible(true);
                     let _ = self.ai_shell.set_bounds(body_rect);
                     #[cfg(target_os = "windows")]
-                    Self::bring_webview_to_front(&self.ai_shell);
+                    if let Some(shell) = &self.ai_shell { Self::bring_webview_to_front(shell); }
                     if let Some(fb) = &self.fb_shell {
                         let _ = fb.set_visible(false);
                     }
@@ -3565,7 +4937,7 @@ impl TpBrowserApp {
                     size: LogicalSize::new(6, dock_r.height.max(120)).into(),
                 });
                 #[cfg(target_os = "windows")]
-                Self::bring_webview_to_front(&self.dock_resizer_shell);
+                if let Some(shell) = &self.dock_resizer_shell { Self::bring_webview_to_front(shell); }
             } else {
                 let _ = self.dock_resizer_shell.set_visible(false);
             }
@@ -3577,12 +4949,23 @@ impl TpBrowserApp {
         let titlebar_visible = self.tab_orientation == TabOrientation::HorizontalTop;
         let _ = self.titlebar_shell.set_visible(titlebar_visible);
         if titlebar_visible {
+            let effective_tb_h = if self.command_bar_open {
+                logical.height.min(460).max(tb_h)
+            } else if self.titlebar_popover_open {
+                logical.height.min(380).max(tb_h)
+            } else {
+                tb_h
+            };
             let _ = self.titlebar_shell.set_bounds(Rect {
                 position: LogicalPosition::new(0, 0).into(),
-                size: LogicalSize::new(logical.width.max(320), tb_h).into(),
+                size: LogicalSize::new(logical.width.max(320), effective_tb_h).into(),
             });
             #[cfg(target_os = "windows")]
             Self::bring_webview_to_front(&self.titlebar_shell);
+        }
+        if full_overlay_active {
+            #[cfg(target_os = "windows")]
+            Self::bring_webview_to_front(&self.tab_shell);
         }
 
         if self.settings_open {
@@ -3592,7 +4975,7 @@ impl TpBrowserApp {
                 size: LogicalSize::new(logical.width.max(320), logical.height.max(240)).into(),
             });
             #[cfg(target_os = "windows")]
-            Self::bring_webview_to_front(&self.settings_shell);
+            if let Some(shell) = &self.settings_shell { Self::bring_webview_to_front(shell); }
         } else {
             let _ = self.settings_shell.set_visible(false);
         }
@@ -3647,6 +5030,291 @@ impl TpBrowserApp {
         let dur = t0.elapsed().as_secs_f64() * 1000.0;
         if dur > 5.0 {
             Self::log_perf("relayout (bounds)", dur);
+        }
+    }
+
+    fn clean_tracking_url(raw: &str) -> String {
+        let trimmed = raw.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        if !lower.starts_with("http://") && !lower.starts_with("https://") {
+            return trimmed.to_string();
+        }
+        let (before_hash, hash) = match trimmed.find('#') {
+            Some(idx) => (&trimmed[..idx], &trimmed[idx..]),
+            None => (trimmed, ""),
+        };
+        let Some(q_idx) = before_hash.find('?') else {
+            return trimmed.to_string();
+        };
+        let base = &before_hash[..q_idx];
+        let query = &before_hash[q_idx + 1..];
+        let kept: Vec<&str> = query
+            .split('&')
+            .filter(|part| {
+                if part.is_empty() {
+                    return false;
+                }
+                let key = part.split('=').next().unwrap_or("").to_ascii_lowercase();
+                !(key.starts_with("utm_")
+                    || matches!(
+                        key.as_str(),
+                        "fbclid"
+                            | "gclid"
+                            | "dclid"
+                            | "msclkid"
+                            | "mc_cid"
+                            | "mc_eid"
+                            | "si"
+                            | "igsh"
+                            | "ref_src"
+                            | "_hsenc"
+                            | "_hsmi"
+                    ))
+            })
+            .collect();
+        if kept.is_empty() {
+            format!("{}{}", base, hash)
+        } else {
+            format!("{}?{}{}", base, kept.join("&"), hash)
+        }
+    }
+
+    fn normalize_context_menu_prefs(raw: &str) -> String {
+        let parsed = parse_json(raw).ok();
+        let flag = |key: &str, default: bool| -> bool {
+            parsed
+                .as_ref()
+                .and_then(|v| v.get(key))
+                .and_then(JsonVal::as_bool)
+                .unwrap_or(default)
+        };
+        JsonVal::obj(vec![
+            ("hide_separators", JsonVal::Bool(flag("hide_separators", true))),
+            ("clean_copy_link", JsonVal::Bool(flag("clean_copy_link", true))),
+            ("hide_mute", JsonVal::Bool(flag("hide_mute", false))),
+            ("hide_unload", JsonVal::Bool(flag("hide_unload", false))),
+            ("hide_pin_essentials", JsonVal::Bool(flag("hide_pin_essentials", false))),
+            ("hide_split", JsonVal::Bool(flag("hide_split", false))),
+            ("hide_move_space", JsonVal::Bool(flag("hide_move_space", false))),
+            ("hide_duplicate", JsonVal::Bool(flag("hide_duplicate", false))),
+            ("hide_close_others", JsonVal::Bool(flag("hide_close_others", false))),
+            ("web_menu_enabled", JsonVal::Bool(flag("web_menu_enabled", true))),
+        ])
+        .to_json()
+    }
+
+    fn normalize_bookmarks_json(raw: &str) -> Option<String> {
+        let Ok(JsonVal::Arr(arr)) = parse_json(raw.trim()) else {
+            return None;
+        };
+        let mut normalized = Vec::new();
+        for item in arr {
+            let url = item
+                .get("url")
+                .and_then(JsonVal::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if url.is_empty() {
+                continue;
+            }
+            let title = item
+                .get("title")
+                .and_then(JsonVal::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(url);
+            let folder = item
+                .get("folder")
+                .and_then(JsonVal::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            let keyword = item
+                .get("keyword")
+                .and_then(JsonVal::as_str)
+                .map(|s| s.split_whitespace().collect::<Vec<_>>().join("").to_ascii_lowercase())
+                .unwrap_or_default();
+
+            let mut tags_vec: Vec<String> = Vec::new();
+            let mut seen_tags: HashSet<String> = HashSet::new();
+            let push_tag = |raw_tag: &str, out: &mut Vec<String>, seen: &mut HashSet<String>| {
+                let cleaned = raw_tag.trim().trim_start_matches('#').trim();
+                if cleaned.is_empty() {
+                    return;
+                }
+                let lower = cleaned.to_ascii_lowercase();
+                if seen.insert(lower) {
+                    out.push(cleaned.to_string());
+                }
+            };
+            if let Some(arr_tags) = item.get("tags").and_then(JsonVal::as_arr) {
+                for t in arr_tags {
+                    if let Some(s) = t.as_str() {
+                        push_tag(s, &mut tags_vec, &mut seen_tags);
+                    }
+                }
+            } else if let Some(str_tags) = item.get("tags").and_then(JsonVal::as_str) {
+                for part in str_tags.split(',') {
+                    push_tag(part, &mut tags_vec, &mut seen_tags);
+                }
+            }
+
+            normalized.push(JsonVal::obj(vec![
+                ("title", JsonVal::Str(title.to_string())),
+                ("url", JsonVal::Str(url.to_string())),
+                ("folder", JsonVal::Str(folder.to_string())),
+                (
+                    "tags",
+                    JsonVal::Arr(tags_vec.into_iter().map(JsonVal::Str).collect()),
+                ),
+                ("keyword", JsonVal::Str(keyword)),
+            ]));
+        }
+        Some(JsonVal::Arr(normalized).to_json())
+    }
+
+    fn normalize_boost_domain(raw: &str) -> String {
+        let trimmed = raw.trim().to_ascii_lowercase();
+        let no_scheme = trimmed
+            .trim_start_matches("https://")
+            .trim_start_matches("http://");
+        let host = no_scheme
+            .split(['/', '?', '#'])
+            .next()
+            .unwrap_or("")
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .trim_start_matches("www.")
+            .trim();
+        if host.is_empty() || host.chars().any(char::is_whitespace) {
+            String::new()
+        } else {
+            host.to_string()
+        }
+    }
+
+    fn normalize_boosts_json(raw: &str) -> Option<String> {
+        let Ok(JsonVal::Obj(entries)) = parse_json(raw.trim()) else {
+            return None;
+        };
+        let mut out_pairs: Vec<(String, JsonVal)> = Vec::new();
+        for (raw_domain, val) in entries {
+            let domain = Self::normalize_boost_domain(&raw_domain);
+            if domain.is_empty() {
+                continue;
+            }
+            let css = val
+                .get("css")
+                .and_then(JsonVal::as_str)
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
+            let enabled = val
+                .get("enabled")
+                .and_then(JsonVal::as_bool)
+                .unwrap_or(true);
+            let mut zaps: Vec<String> = Vec::new();
+            let mut seen: HashSet<String> = HashSet::new();
+            if let Some(arr) = val.get("zap_selectors").and_then(JsonVal::as_arr) {
+                for item in arr {
+                    if let Some(sel) = item.as_str() {
+                        let cleaned = sel.trim();
+                        if !cleaned.is_empty() && seen.insert(cleaned.to_string()) {
+                            zaps.push(cleaned.to_string());
+                        }
+                    }
+                }
+            }
+            if css.is_empty() && zaps.is_empty() {
+                continue;
+            }
+            let entry_val = JsonVal::obj(vec![
+                ("css", JsonVal::Str(css)),
+                (
+                    "zap_selectors",
+                    JsonVal::Arr(zaps.into_iter().map(JsonVal::Str).collect()),
+                ),
+                ("enabled", JsonVal::Bool(enabled)),
+            ]);
+            if let Some(existing) = out_pairs.iter_mut().find(|(k, _)| k == &domain) {
+                existing.1 = entry_val;
+            } else {
+                out_pairs.push((domain, entry_val));
+            }
+        }
+        Some(JsonVal::Obj(out_pairs).to_json())
+    }
+
+    fn normalize_permission_policy(raw: &str) -> &'static str {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "allow" => "allow",
+            "deny" => "deny",
+            _ => "default",
+        }
+    }
+
+    fn permission_policy_code(policy: &str) -> u8 {
+        match Self::normalize_permission_policy(policy) {
+            "allow" => 1,
+            "deny" => 2,
+            _ => 0,
+        }
+    }
+
+    fn permission_response_from_code(code: u8) -> PermissionResponse {
+        match code {
+            1 => PermissionResponse::Allow,
+            2 => PermissionResponse::Deny,
+            _ => PermissionResponse::Default,
+        }
+    }
+
+    fn permission_response_for_kind(kind: wry::PermissionKind) -> PermissionResponse {
+        match kind {
+            wry::PermissionKind::Camera => {
+                Self::permission_response_from_code(PERMISSION_CAMERA.load(Ordering::Relaxed))
+            }
+            wry::PermissionKind::Microphone => {
+                Self::permission_response_from_code(PERMISSION_MICROPHONE.load(Ordering::Relaxed))
+            }
+            wry::PermissionKind::Notifications => {
+                Self::permission_response_from_code(PERMISSION_NOTIFICATIONS.load(Ordering::Relaxed))
+            }
+            wry::PermissionKind::ClipboardRead => {
+                Self::permission_response_from_code(PERMISSION_CLIPBOARD.load(Ordering::Relaxed))
+            }
+            _ => PermissionResponse::Default,
+        }
+    }
+
+    fn sync_permission_atomics(&self) {
+        PERMISSION_CAMERA.store(Self::permission_policy_code(&self.permission_camera), Ordering::Relaxed);
+        PERMISSION_MICROPHONE.store(Self::permission_policy_code(&self.permission_microphone), Ordering::Relaxed);
+        PERMISSION_NOTIFICATIONS.store(Self::permission_policy_code(&self.permission_notifications), Ordering::Relaxed);
+        PERMISSION_CLIPBOARD.store(Self::permission_policy_code(&self.permission_clipboard), Ordering::Relaxed);
+    }
+
+    fn downloads_dir() -> PathBuf {
+        std::env::var_os("USERPROFILE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("Downloads")
+    }
+
+    fn is_safe_download_path(raw_path: &str, base_dir: &std::path::Path) -> Option<PathBuf> {
+        let trimmed = raw_path.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let Ok(canon_base) = fs::canonicalize(base_dir) else {
+            return None;
+        };
+        let Ok(canon_target) = fs::canonicalize(trimmed) else {
+            return None;
+        };
+        if canon_target.starts_with(&canon_base) {
+            Some(canon_target)
+        } else {
+            None
         }
     }
 
@@ -3719,8 +5387,23 @@ impl TpBrowserApp {
         } else {
             &self.floating_orbs_json
         };
+        let boosts_raw = if self.boosts_json.trim().is_empty() {
+            "{}"
+        } else {
+            &self.boosts_json
+        };
+        let recovery_raw = if self.window_recovery_json.trim().is_empty() {
+            "{}"
+        } else {
+            &self.window_recovery_json
+        };
+        let ctx_raw = if self.context_menu_prefs_json.trim().is_empty() {
+            "{}"
+        } else {
+            &self.context_menu_prefs_json
+        };
         format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"background_mode\":{},\"startup_boost\":{},\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"google_user\":\"{}\",\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"startup_mode\":\"{}\",\"background_mode\":{},\"startup_boost\":{},\"floating_omnibox\":{},\"compact_titlebar\":{},\"sidebar_width\":{},\"tab_orientation\":\"{}\",\"sidebar_collapsed\":{},\"compact_mode\":{},\"tab_unload_minutes\":{},\"tab_unload_whitelist\":\"{}\",\"translate_target_lang\":\"{}\",\"translate_auto_prompt\":{},\"translate_never_domains\":\"{}\",\"glance_trigger\":\"{}\",\"glance_external_from_pinned\":{},\"default_search_engine\":\"{}\",\"auto_pip_on_switch\":{},\"view_mode\":\"{}\",\"ai_provider\":\"{}\",\"ai_api_key\":\"{}\",\"ai_model\":\"{}\",\"ai_base_url\":\"{}\",\"auto_minimize_on_task\":{},\"ai_mode\":\"{}\",\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"boosts\":{},\"context_menu_prefs\":{},\"window_recovery\":{},\"ai_dock_width\":{},\"adblock_enabled\":{},\"permission_camera\":\"{}\",\"permission_microphone\":\"{}\",\"permission_notifications\":\"{}\",\"permission_clipboard\":\"{}\",\"google_user\":\"{}\",\"custom_shortcuts\":{},\"chat_channel\":\"{}\",\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"open_section\":\"{}\",\"app_version\":\"{}\",\"app_commit\":\"{}\"}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             Self::escape_json(&self.startup_mode),
@@ -3731,6 +5414,16 @@ impl TpBrowserApp {
             self.sidebar_width,
             self.tab_orientation.as_str(),
             self.sidebar_collapsed,
+            self.compact_mode,
+            self.tab_unload_minutes,
+            Self::escape_json(&self.tab_unload_whitelist),
+            Self::escape_json(&self.translate_target_lang),
+            self.translate_auto_prompt,
+            Self::escape_json(&self.translate_never_domains),
+            Self::escape_json(&self.glance_trigger),
+            self.glance_external_from_pinned,
+            Self::escape_json(&self.default_search_engine),
+            self.auto_pip_on_switch,
             self.view_mode.as_str(),
             Self::escape_json(&self.ai_provider),
             Self::escape_json(&self.ai_api_key),
@@ -3741,9 +5434,17 @@ impl TpBrowserApp {
             self.show_unread_badges,
             self.always_show_floating_orbs,
             orbs_raw,
+            boosts_raw,
+            ctx_raw,
+            recovery_raw,
             self.ai_dock_width,
             self.adblock_enabled,
+            Self::escape_json(&self.permission_camera),
+            Self::escape_json(&self.permission_microphone),
+            Self::escape_json(&self.permission_notifications),
+            Self::escape_json(&self.permission_clipboard),
             Self::escape_json(&self.google_user),
+            self.custom_shortcuts_json(),
             self.chat_channel.as_str(),
             self.unread_ai,
             self.unread_fb,
@@ -3782,11 +5483,11 @@ impl TpBrowserApp {
         let t0 = Instant::now();
         let mut tabs_json = Vec::new();
         let visible_tabs: Vec<(usize, &BrowserTab)> = self.tabs.iter().enumerate()
-            .filter(|(_, t)| t.workspace_id == self.active_workspace_id)
+            .filter(|(_, t)| t.essential || t.workspace_id == self.active_workspace_id)
             .collect();
         for (native_idx, t) in &visible_tabs {
             tabs_json.push(format!(
-                "{{\"id\":{},\"native_idx\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"worker_kind\":\"{}\",\"worker_status\":\"{}\",\"pinned\":{},\"selected\":{},\"group_id\":{}}}",
+                "{{\"id\":{},\"native_idx\":{},\"url\":\"{}\",\"title\":\"{}\",\"favicon\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"worker_kind\":\"{}\",\"worker_status\":\"{}\",\"private\":{},\"pinned\":{},\"selected\":{},\"group_id\":{},\"essential\":{},\"origin_url\":\"{}\",\"sleeping\":{},\"audible\":{},\"muted\":{},\"media_title\":\"{}\",\"media_artist\":\"{}\"}}",
                 t.id,
                 native_idx,
                 Self::escape_json(&t.url),
@@ -3796,9 +5497,17 @@ impl TpBrowserApp {
                 Self::escape_json(&t.container_id),
                 Self::escape_json(t.worker_kind.as_deref().unwrap_or("")),
                 Self::escape_json(&t.worker_status),
+                t.private,
                 t.pinned,
                 self.selected_tab_ids.contains(&t.id),
-                t.tab_group_id.unwrap_or(0)
+                t.tab_group_id.unwrap_or(0),
+                t.essential,
+                Self::escape_json(t.pinned_origin_url.as_deref().unwrap_or("")),
+                !t.is_loaded,
+                t.audible,
+                t.muted,
+                Self::escape_json(&t.media_title),
+                Self::escape_json(&t.media_artist)
             ));
         }
         let tabs_arr_str = tabs_json.join(",");
@@ -3822,20 +5531,72 @@ impl TpBrowserApp {
         let tb_title = format!("TPbrowser — {}", active_title);
         let paired_tab_id_val = self.split_paired_tab_id.unwrap_or(0);
         let workspaces_json = self.workspaces.iter().map(|workspace| {
-            format!("{{\"id\":\"{}\",\"name\":\"{}\"}}", Self::escape_json(&workspace.id), Self::escape_json(&workspace.name))
+            format!(
+                "{{\"id\":\"{}\",\"name\":\"{}\",\"icon\":\"{}\",\"accent\":\"{}\",\"container_id\":\"{}\"}}",
+                Self::escape_json(&workspace.id),
+                Self::escape_json(&workspace.name),
+                Self::escape_json(&workspace.icon),
+                Self::escape_json(&workspace.accent),
+                Self::escape_json(&workspace.container_id)
+            )
         }).collect::<Vec<_>>().join(",");
+        let pinned_exts_json = format!(
+            "[{}]",
+            self.pinned_extensions
+                .iter()
+                .map(|s| format!("\"{}\"", Self::escape_json(s)))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let downloads_json = self.downloads.iter().map(|item| format!(
+            "{{\"uri\":\"{}\",\"path\":\"{}\",\"status\":\"{}\"}}",
+            Self::escape_json(&item.uri),
+            Self::escape_json(&item.path),
+            item.status
+        )).collect::<Vec<_>>().join(",");
+        let send_bookmarks = self.last_tb_bookmarks_rev.get() != self.bookmarks_rev;
+        let send_history = self.last_tb_history_rev.get() != self.history_rev;
+        let bookmarks_prop = if send_bookmarks {
+            self.last_tb_bookmarks_rev.set(self.bookmarks_rev);
+            format!(",\"bookmarks\":{}", &self.bookmarks_json)
+        } else {
+            String::new()
+        };
+        let history_prop = if send_history {
+            self.last_tb_history_rev.set(self.history_rev);
+            format!(
+                ",\"history\":{}",
+                if self.history_json.trim().is_empty() {
+                    "[]"
+                } else {
+                    &self.history_json
+                }
+            )
+        } else {
+            String::new()
+        };
+        let ctx_raw = if self.context_menu_prefs_json.trim().is_empty() {
+            "{}"
+        } else {
+            &self.context_menu_prefs_json
+        };
+        let extensions_arr = self.extensions_state_json();
         let tb_state = format!(
-            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"show_bookmarks_bar\":{},\"bookmarks\":{},\"history\":{},\"active_idx\":{},\"tabs\":[{}],\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
+            "{{\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"orientation\":\"{}\",\"show_bookmarks_bar\":{}{}{},\"downloads\":[{}],\"active_idx\":{},\"tabs\":[{}],\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"pinned_extensions\":{},\"extensions\":{},\"context_menu_prefs\":{},\"title\":\"{}\",\"active_url\":\"{}\",\"is_bookmarked\":{},\"view_mode\":\"{}\",\"paired_tab_id\":{},\"zoom_pct\":{},\"pinned\":{},\"maximized\":{}}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             self.tab_orientation.as_str(),
             self.show_bookmarks_bar,
-            &self.bookmarks_json,
-            if self.history_json.trim().is_empty() { "[]" } else { &self.history_json },
+            bookmarks_prop,
+            history_prop,
+            downloads_json,
             visible_active_idx,
             tabs_arr_str,
             Self::escape_json(&self.active_workspace_id),
             workspaces_json,
+            pinned_exts_json,
+            extensions_arr,
+            ctx_raw,
             Self::escape_json(&tb_title),
             Self::escape_json(active_url),
             is_bookmarked,
@@ -3873,21 +5634,40 @@ impl TpBrowserApp {
             "if (window.__tpSyncChatHeader) window.__tpSyncChatHeader({});",
             ch_state
         ));
-        let _ = self.dock_resizer_shell.evaluate_script(&format!(
-            "if (window.__tpSyncDockResizer) window.__tpSyncDockResizer({{\"ui_theme\":\"{}\"}});",
-            Self::escape_json(&self.ui_theme)
-        ));
-        let _ = self.sidebar_resizer_shell.evaluate_script(&format!(
-            "if (window.__tpSyncSidebarResizer) window.__tpSyncSidebarResizer({{\"ui_theme\":\"{}\"}});",
-            Self::escape_json(&self.ui_theme)
-        ));
+        if *self.last_resizer_theme.borrow() != self.ui_theme {
+            *self.last_resizer_theme.borrow_mut() = self.ui_theme.clone();
+            let _ = self.dock_resizer_shell.evaluate_script(&format!(
+                "if (window.__tpSyncDockResizer) window.__tpSyncDockResizer({{\"ui_theme\":\"{}\"}});",
+                Self::escape_json(&self.ui_theme)
+            ));
+            let _ = self.sidebar_resizer_shell.evaluate_script(&format!(
+                "if (window.__tpSyncSidebarResizer) window.__tpSyncSidebarResizer({{\"ui_theme\":\"{}\"}});",
+                Self::escape_json(&self.ui_theme)
+            ));
+        }
 
         // 1. Đồng bộ Thanh Quản Lý Tab (Dọc)
         let shell_active_idx = visible_tabs.iter().position(|(idx, _)| *idx == self.active_idx).unwrap_or(0);
+        let folders_json = self
+            .tab_folders
+            .iter()
+            .filter(|f| f.workspace_id == self.active_workspace_id)
+            .map(|f| {
+                format!(
+                    "{{\"id\":{},\"name\":\"{}\",\"collapsed\":{}}}",
+                    f.id,
+                    Self::escape_json(&f.name),
+                    f.collapsed
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
         let shell_state = format!(
-            "{{\"orientation\":\"{}\",\"sidebar_collapsed\":{},\"view_mode\":\"{}\",\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ai_working\":{},\"active_idx\":{},\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"google_user\":\"{}\",\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"adblock_enabled\":{},\"tabs\":[{}]}}",
+            "{{\"orientation\":\"{}\",\"sidebar_collapsed\":{},\"sidebar_width\":{},\"compact_mode\":{},\"view_mode\":\"{}\",\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ai_working\":{},\"active_idx\":{},\"active_workspace_id\":\"{}\",\"workspaces\":[{}],\"google_user\":\"{}\",\"ui_theme\":\"{}\",\"logo_style\":\"{}\",\"adblock_enabled\":{},\"context_menu_prefs\":{},\"downloads\":[{}],\"tabs\":[{}],\"folders\":[{}]}}",
             self.tab_orientation.as_str(),
             self.sidebar_collapsed,
+            self.sidebar_width,
+            self.compact_mode,
             self.view_mode.as_str(),
             self.ai_mode.as_str(),
             self.chat_channel.as_str(),
@@ -3899,7 +5679,10 @@ impl TpBrowserApp {
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.logo_style),
             self.adblock_enabled,
-            tabs_arr_str
+            ctx_raw,
+            downloads_json,
+            tabs_arr_str,
+            folders_json
         );
         let _ = self.tab_shell.evaluate_script(&format!(
             "if (window.__tpSyncShellState) window.__tpSyncShellState({});",
@@ -3912,6 +5695,11 @@ impl TpBrowserApp {
             "[]"
         } else {
             &self.floating_orbs_json
+        };
+        let boosts_raw = if self.boosts_json.trim().is_empty() {
+            "{}"
+        } else {
+            &self.boosts_json
         };
         for (idx, t) in self.tabs.iter().enumerate() {
             // Tối ưu độ trễ: Chỉ gửi IPC đồng bộ Bong bóng giao diện tới Tab đang hiển thị (Active hoặc Split-Visible)
@@ -3930,7 +5718,7 @@ impl TpBrowserApp {
                 self.always_show_floating_orbs
             };
             let bubble_state = format!(
-                "{{\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ui_theme\":\"{}\",\"working\":{},\"recording\":{},\"status_text\":\"{}\",\"last_reply\":\"{}\",\"show_split_ring\":{},\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"adblock_enabled\":{},\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"ai_finished_flash\":{},\"chime_seq\":{},\"chime_kind\":\"{}\"}}",
+                "{{\"ai_mode\":\"{}\",\"chat_channel\":\"{}\",\"ui_theme\":\"{}\",\"working\":{},\"recording\":{},\"status_text\":\"{}\",\"last_reply\":\"{}\",\"show_split_ring\":{},\"show_unread_badges\":{},\"always_show_floating_orbs\":{},\"floating_orbs\":{},\"boosts\":{},\"context_menu_prefs\":{},\"adblock_enabled\":{},\"unread_ai\":{},\"unread_fb\":{},\"unread_zalo\":{},\"ai_finished_flash\":{},\"chime_seq\":{},\"chime_kind\":\"{}\"}}",
                 self.ai_mode.as_str(),
                 self.chat_channel.as_str(),
                 Self::escape_json(&self.ui_theme),
@@ -3942,6 +5730,8 @@ impl TpBrowserApp {
                 self.show_unread_badges,
                 show_orbs_in_tab,
                 orbs_raw,
+                boosts_raw,
+                ctx_raw,
                 self.adblock_enabled,
                 self.unread_ai,
                 self.unread_fb,
@@ -4114,16 +5904,82 @@ impl TpBrowserApp {
         }
     }
 
+    fn can_auto_unload_tab(&self, idx: usize) -> bool {
+        let Some(tab) = self.tabs.get(idx) else { return false; };
+        if idx == self.active_idx {
+            return false;
+        }
+        if Some(tab.id) == self.split_paired_tab_id {
+            return false;
+        }
+        if !tab.is_loaded {
+            return false;
+        }
+        if tab.worker_kind.is_some() {
+            return false;
+        }
+        if tab.essential || tab.pinned {
+            return false;
+        }
+        if tab.audible {
+            return false;
+        }
+        if tab.url.starts_with("tp://") {
+            return false;
+        }
+        if self
+            .tab_unload_whitelist
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .any(|domain| tab.url.contains(domain))
+        {
+            return false;
+        }
+        true
+    }
+
+    fn unload_tab_by_id(&mut self, tab_id: u64) {
+        if Some(tab_id) == self.tabs.get(self.active_idx).map(|t| t.id) {
+            return;
+        }
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+            if tab.worker_kind.is_some() || tab.url.starts_with("tp://") || !tab.is_loaded {
+                return;
+            }
+            tab.is_loaded = false;
+            tab.audible = false;
+            tab.media_title.clear();
+            tab.media_artist.clear();
+            let _ = tab.webview.load_html(
+                "<html><body style='background:#0d0f14;color:#94a3b8;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;'><div>☾ Tab đang ngủ đông để tiết kiệm RAM</div></body></html>",
+            );
+            let _ = tab.webview.set_memory_usage_level(MemoryUsageLevel::Low);
+            let _ = tab.webview.set_visible(false);
+        }
+        self.sync_all_ui();
+    }
+
     fn check_reminders(&mut self) {
         let now_secs = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
             Ok(d) => d.as_secs(),
             Err(_) => return,
         };
-        if self.ecom_auto_scan && now_secs.saturating_sub(self.last_ecom_auto_epoch) >= 900 {
-            self.last_ecom_auto_epoch = now_secs;
-            self.execute(AppCmd::RunEcomScan {
-                scope: "all".to_string(),
-            });
+        if self.tab_unload_minutes > 0 {
+            let threshold = std::time::Duration::from_secs((self.tab_unload_minutes as u64) * 60);
+            let now = Instant::now();
+            let stale_ids: Vec<u64> = self
+                .tabs
+                .iter()
+                .enumerate()
+                .filter(|(idx, tab)| {
+                    self.can_auto_unload_tab(*idx) && now.duration_since(tab.last_active_at) >= threshold
+                })
+                .map(|(_, tab)| tab.id)
+                .collect();
+            for tid in stale_ids {
+                self.unload_tab_by_id(tid);
+            }
         }
         let tasks_raw = self.tasks_json.clone();
         if !tasks_raw.starts_with('[') || !tasks_raw.ends_with(']') {
@@ -4185,15 +6041,26 @@ impl TpBrowserApp {
             .iter()
             .map(|workspace| {
                 format!(
-                    "{{\"id\":\"{}\",\"name\":\"{}\"}}",
+                    "{{\"id\":\"{}\",\"name\":\"{}\",\"icon\":\"{}\",\"accent\":\"{}\",\"container_id\":\"{}\"}}",
                     Self::escape_json(&workspace.id),
-                    Self::escape_json(&workspace.name)
+                    Self::escape_json(&workspace.name),
+                    Self::escape_json(&workspace.icon),
+                    Self::escape_json(&workspace.accent),
+                    Self::escape_json(&workspace.container_id)
                 )
             })
             .collect::<Vec<_>>()
             .join(",");
+        let pinned_exts_json = format!(
+            "[{}]",
+            self.pinned_extensions
+                .iter()
+                .map(|s| format!("\"{}\"", Self::escape_json(s)))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
         let body = format!(
-            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"window_width\": {},\n  \"window_height\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"bookmarks\": {}\n}}",
+            "{{\n  \"ui_theme\": \"{}\",\n  \"active_workspace_id\": \"{}\",\n  \"workspaces\": [{}],\n  \"logo_style\": \"{}\",\n  \"startup_mode\": \"{}\",\n  \"background_mode\": {},\n  \"startup_boost\": {},\n  \"floating_omnibox\": {},\n  \"auto_hide_titlebar\": {},\n  \"sidebar_width\": {},\n  \"tab_orientation\": \"{}\",\n  \"sidebar_collapsed\": {},\n  \"compact_mode\": {},\n  \"tab_unload_minutes\": {},\n  \"tab_unload_whitelist\": \"{}\",\n  \"pinned_extensions\": {},\n  \"translate_target_lang\": \"{}\",\n  \"translate_auto_prompt\": {},\n  \"translate_never_domains\": \"{}\",\n  \"glance_trigger\": \"{}\",\n  \"glance_external_from_pinned\": {},\n  \"default_search_engine\": \"{}\",\n  \"auto_pip_on_switch\": {},\n  \"view_mode\": \"{}\",\n  \"ai_mode\": \"{}\",\n  \"ai_dock_width\": {},\n  \"window_width\": {},\n  \"window_height\": {},\n  \"show_unread_badges\": {},\n  \"always_show_floating_orbs\": {},\n  \"floating_orbs\": {},\n  \"adblock_enabled\": {},\n  \"permission_camera\": \"{}\",\n  \"permission_microphone\": \"{}\",\n  \"permission_notifications\": \"{}\",\n  \"permission_clipboard\": \"{}\",\n  \"ai_provider\": \"{}\",\n  \"ai_api_key\": \"{}\",\n  \"ai_model\": \"{}\",\n  \"ai_base_url\": \"{}\",\n  \"mcp_auth_token\": \"{}\",\n  \"auto_minimize_on_task\": {},\n  \"google_user\": \"{}\",\n  \"custom_shortcuts\": {},\n  \"pancake_api_key\": \"{}\",\n  \"pancake_shop_id\": \"{}\",\n  \"pancake_shop_name\": \"{}\",\n  \"tiktok_shop_name\": \"{}\",\n  \"bookmarks\": {},\n  \"boosts\": {},\n  \"context_menu_prefs\": {}\n}}",
             Self::escape_json(&self.ui_theme),
             Self::escape_json(&self.active_workspace_id),
             workspaces_json,
@@ -4206,6 +6073,17 @@ impl TpBrowserApp {
             self.sidebar_width,
             self.tab_orientation.as_str(),
             self.sidebar_collapsed,
+            self.compact_mode,
+            self.tab_unload_minutes,
+            Self::escape_json(&self.tab_unload_whitelist),
+            pinned_exts_json,
+            Self::escape_json(&self.translate_target_lang),
+            self.translate_auto_prompt,
+            Self::escape_json(&self.translate_never_domains),
+            Self::escape_json(&self.glance_trigger),
+            self.glance_external_from_pinned,
+            Self::escape_json(&self.default_search_engine),
+            self.auto_pip_on_switch,
             self.view_mode.as_str(),
             self.ai_mode.as_str(),
             self.ai_dock_width,
@@ -4215,16 +6093,36 @@ impl TpBrowserApp {
             self.always_show_floating_orbs,
             orbs_raw,
             self.adblock_enabled,
+            Self::escape_json(&self.permission_camera),
+            Self::escape_json(&self.permission_microphone),
+            Self::escape_json(&self.permission_notifications),
+            Self::escape_json(&self.permission_clipboard),
             Self::escape_json(&self.ai_provider),
             Self::escape_json(&self.ai_api_key),
             Self::escape_json(&self.ai_model),
             Self::escape_json(&self.ai_base_url),
+            Self::escape_json(&self.mcp_auth_token),
             self.auto_minimize_on_task,
             Self::escape_json(&self.google_user),
+            self.custom_shortcuts_json(),
+            Self::escape_json(&self.pancake_api_key),
+            Self::escape_json(&self.pancake_shop_id),
+            Self::escape_json(&self.pancake_shop_name),
+            Self::escape_json(&self.tiktok_shop_name),
             if self.bookmarks_json.trim().is_empty() {
                 "[]"
             } else {
                 &self.bookmarks_json
+            },
+            if self.boosts_json.trim().is_empty() {
+                "{}"
+            } else {
+                &self.boosts_json
+            },
+            if self.context_menu_prefs_json.trim().is_empty() {
+                "{}"
+            } else {
+                &self.context_menu_prefs_json
             }
         );
         let body = config_payload_with_selections(&body, &self.selected_shops);
@@ -4245,6 +6143,9 @@ impl TpBrowserApp {
                     Some(Workspace {
                         id: item.get("id")?.as_str()?.to_string(),
                         name: item.get("name")?.as_str()?.to_string(),
+                        icon: item.get("icon").and_then(JsonVal::as_str).unwrap_or("✦").to_string(),
+                        accent: item.get("accent").and_then(JsonVal::as_str).unwrap_or("").to_string(),
+                        container_id: item.get("container_id").and_then(JsonVal::as_str).unwrap_or("default").to_string(),
                     })
                 }).collect();
                 if valid_workspace_list(&loaded) { self.workspaces = loaded; }
@@ -4258,6 +6159,39 @@ impl TpBrowserApp {
         }
         if let Some(b) = Self::extract_bool(&raw, "sidebar_collapsed") {
             self.sidebar_collapsed = b;
+        }
+        if let Some(b) = Self::extract_bool(&raw, "compact_mode") {
+            self.compact_mode = b;
+            COMPACT_MODE_ENABLED.store(b, Ordering::Relaxed);
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "tab_unload_minutes") {
+            if let Ok(n) = v.trim().parse::<u32>() {
+                self.tab_unload_minutes = n.min(600);
+            }
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "tab_unload_whitelist") {
+            self.tab_unload_whitelist = v;
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "pancake_api_key") {
+            self.pancake_api_key = v.clone();
+            self.pancake_connected = !v.trim().is_empty();
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "pancake_shop_id") {
+            self.pancake_shop_id = v;
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "pancake_shop_name") {
+            self.pancake_shop_name = v;
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "tiktok_shop_name") {
+            self.tiktok_shop_name = v;
+        }
+        if let Ok(val) = parse_json(&raw) {
+            if let Some(exts) = val.get("pinned_extensions").and_then(|v| v.as_arr()) {
+                let loaded: Vec<String> = exts.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect();
+                if !loaded.is_empty() {
+                    self.pinned_extensions = loaded;
+                }
+            }
         }
         if let Some(b) = Self::extract_bool(&raw, "floating_omnibox") {
             self.floating_omnibox = b;
@@ -4287,10 +6221,44 @@ impl TpBrowserApp {
         if let Some(b) = Self::extract_bool(&raw, "always_show_floating_orbs") {
             self.always_show_floating_orbs = b;
         }
+        if let Some(v) = Self::extract_field_str(&raw, "translate_target_lang") {
+            self.translate_target_lang = v;
+        }
+        if let Some(b) = Self::extract_bool(&raw, "translate_auto_prompt") {
+            self.translate_auto_prompt = b;
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "translate_never_domains") {
+            self.translate_never_domains = v;
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "glance_trigger") {
+            self.glance_trigger = v;
+        }
+        if let Some(b) = Self::extract_bool(&raw, "glance_external_from_pinned") {
+            self.glance_external_from_pinned = b;
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "default_search_engine") {
+            self.default_search_engine = v;
+        }
+        if let Some(b) = Self::extract_bool(&raw, "auto_pip_on_switch") {
+            self.auto_pip_on_switch = b;
+        }
         if let Some(b) = Self::extract_bool(&raw, "adblock_enabled") {
             self.adblock_enabled = b;
             ADBLOCK_ENABLED.store(b, Ordering::Relaxed);
         }
+        if let Some(v) = Self::extract_field_str(&raw, "permission_camera") {
+            self.permission_camera = Self::normalize_permission_policy(&v).to_string();
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "permission_microphone") {
+            self.permission_microphone = Self::normalize_permission_policy(&v).to_string();
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "permission_notifications") {
+            self.permission_notifications = Self::normalize_permission_policy(&v).to_string();
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "permission_clipboard") {
+            self.permission_clipboard = Self::normalize_permission_policy(&v).to_string();
+        }
+        self.sync_permission_atomics();
         if let Some(v) = Self::extract_field_str(&raw, "ai_provider") {
             self.ai_provider = v;
         }
@@ -4305,6 +6273,11 @@ impl TpBrowserApp {
         if let Some(v) = Self::extract_field_str(&raw, "ai_base_url") {
             if !v.is_empty() {
                 self.ai_base_url = v;
+            }
+        }
+        if let Some(v) = Self::extract_field_str(&raw, "mcp_auth_token") {
+            if !v.trim().is_empty() {
+                self.mcp_auth_token = v.trim().to_string();
             }
         }
         if let Some(b) = Self::extract_bool(&raw, "auto_minimize_on_task") {
@@ -4337,10 +6310,21 @@ impl TpBrowserApp {
             self.startup_boost = b;
         }
         if let Ok(parsed) = parse_json(&raw) {
+            if let Some(shortcuts) = parsed.get("custom_shortcuts") {
+                self.custom_shortcuts = Self::parse_custom_shortcuts(shortcuts);
+            }
             if let Some(bm) = parsed.get("bookmarks") {
-                if matches!(bm, JsonVal::Arr(_)) {
-                    self.bookmarks_json = bm.to_json();
+                if let Some(norm) = Self::normalize_bookmarks_json(&bm.to_json()) {
+                    self.bookmarks_json = norm;
                 }
+            }
+            if let Some(boosts) = parsed.get("boosts") {
+                if let Some(norm) = Self::normalize_boosts_json(&boosts.to_json()) {
+                    self.boosts_json = norm;
+                }
+            }
+            if let Some(ctx) = parsed.get("context_menu_prefs") {
+                self.context_menu_prefs_json = Self::normalize_context_menu_prefs(&ctx.to_json());
             }
             if let Some(orbs) = parsed.get("floating_orbs") {
                 if let Some(arr) = orbs.as_arr() {
@@ -4392,6 +6376,7 @@ impl TpBrowserApp {
             items.drain(0..drop_n);
         }
         self.history_json = JsonVal::Arr(items).to_json();
+        self.history_rev = self.history_rev.wrapping_add(1);
         self.save_history();
     }
 
@@ -4471,11 +6456,75 @@ impl TpBrowserApp {
         }
     }
 
+    fn log_ecom(&mut self, level: &str, tag: &str, msg: &str) {
+        #[cfg(target_os = "windows")]
+        let ts = {
+            let mut st = SystemTimeWin32 {
+                w_year: 0, w_month: 0, w_day_of_week: 0, w_day: 0,
+                w_hour: 0, w_minute: 0, w_second: 0, w_milliseconds: 0,
+            };
+            unsafe { GetLocalTime(&mut st) };
+            format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                st.w_year, st.w_month, st.w_day, st.w_hour, st.w_minute, st.w_second
+            )
+        };
+        #[cfg(not(target_os = "windows"))]
+        let ts = {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+            format!("{}", now)
+        };
+
+        let log_line = format!("[{}] [{}] [{}] {}\n", ts, level, tag, msg);
+
+        let logs_dir = self.exe_dir.join("user_data").join("logs");
+        let log_line_bg = log_line.clone();
+        std::thread::spawn(move || {
+            let _ = fs::create_dir_all(&logs_dir);
+            let log_file = logs_dir.join("ecom_scanner.log");
+            if let Ok(meta) = fs::metadata(&log_file) {
+                if meta.len() > 3 * 1024 * 1024 {
+                    let old_file = logs_dir.join("ecom_scanner.log.old");
+                    let _ = fs::rename(&log_file, &old_file);
+                }
+            }
+            use std::io::Write;
+            if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&log_file) {
+                let _ = f.write_all(log_line_bg.as_bytes());
+            }
+        });
+
+        let formatted_log = format!("[{}] [{}] [{}] {}", ts, level, tag, msg);
+        self.push_ecom_log(&formatted_log);
+
+        let js = format!(
+            "if (typeof window.onScanLogAppend === 'function') window.onScanLogAppend({{\"ts\":\"{}\",\"level\":\"{}\",\"tag\":\"{}\",\"msg\":\"{}\"}});",
+            ts, level, tag, Self::escape_json(msg)
+        );
+        for t in &self.tabs {
+            if t.url == "tp://workspace" {
+                let _ = t.webview.evaluate_script(&js);
+            }
+        }
+    }
+
     fn push_ecom_log(&mut self, msg: &str) {
-        self.ecom_logs.push(format!("• {}", msg));
-        if self.ecom_logs.len() > 60 {
-            let drop_n = self.ecom_logs.len() - 60;
+        self.ecom_logs.push(msg.to_string());
+        if self.ecom_logs.len() > 150 {
+            let drop_n = self.ecom_logs.len() - 150;
             self.ecom_logs.drain(0..drop_n);
+        }
+    }
+
+    fn sync_workspace_progress(&self, active: bool, step: usize, total: usize, percent: u32, label: &str, status: &str) {
+        let js = format!(
+            "if (typeof window.onWorkspaceProgress === 'function') window.onWorkspaceProgress({{\"active\":{},\"step\":{},\"total\":{},\"percent\":{},\"label\":\"{}\",\"status\":\"{}\"}});",
+            active, step, total, percent, Self::escape_json(label), Self::escape_json(status)
+        );
+        for t in &self.tabs {
+            if t.url == "tp://workspace" {
+                let _ = t.webview.evaluate_script(&js);
+            }
         }
     }
 
@@ -4578,6 +6627,789 @@ impl TpBrowserApp {
             JsonVal::Arr(logs_arr).to_json()
         );
         let js = format!("if (window.__tpSyncWorkspace) window.__tpSyncWorkspace({});", payload);
+        for t in &self.tabs {
+            if t.url == "tp://workspace" {
+                let _ = t.webview.evaluate_script(&js);
+            }
+        }
+        self.sync_workspace_command_center();
+    }
+
+    fn current_date_str(&self) -> String {
+        #[cfg(target_os = "windows")]
+        {
+            let mut st = SystemTimeWin32 {
+                w_year: 0, w_month: 0, w_day_of_week: 0, w_day: 0,
+                w_hour: 0, w_minute: 0, w_second: 0, w_milliseconds: 0,
+            };
+            unsafe { GetLocalTime(&mut st) };
+            format!("{:04}-{:02}-{:02}", st.w_year, st.w_month, st.w_day)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            "2026-11-20".to_string()
+        }
+    }
+
+    fn format_vnd_amount(amount: f64) -> String {
+        let mut num = amount.abs().round() as i64;
+        if num == 0 {
+            return "0 ₫".to_string();
+        }
+        let mut parts = Vec::new();
+        while num > 0 {
+            let rem = num % 1000;
+            num /= 1000;
+            if num > 0 {
+                parts.push(format!("{:03}", rem));
+            } else {
+                parts.push(format!("{}", rem));
+            }
+        }
+        parts.reverse();
+        let prefix = if amount < 0.0 { "-" } else { "" };
+        format!("{}{}{}", prefix, parts.join("."), " ₫")
+    }
+
+    fn get_shop_display_name(&self, shop_id: &str) -> String {
+        if shop_id.starts_with("tt_") || shop_id == "tiktok" {
+            if !self.tiktok_shop_name.is_empty() {
+                return self.tiktok_shop_name.clone();
+            }
+            return "TikTok Shop VN".to_string();
+        }
+        if shop_id.starts_with("pk_") || shop_id == "pancake" {
+            if !self.pancake_shop_name.is_empty() {
+                return format!("Pancake {}", self.pancake_shop_name);
+            }
+            return "Pancake POS".to_string();
+        }
+        if let Ok(disc) = parse_json(&self.shopee_discovery_json) {
+            if let Some(shops) = disc.get("shops").and_then(JsonVal::as_arr) {
+                for s in shops {
+                    if s.get("shop_id").and_then(JsonVal::as_str) == Some(shop_id) {
+                        if let Some(name) = s.get("display_name").or_else(|| s.get("name")).and_then(JsonVal::as_str) {
+                            return name.to_string();
+                        }
+                    }
+                }
+            }
+        }
+        shop_id.to_string()
+    }
+
+    fn start_multi_shop_queue(&mut self, shop_ids: Vec<String>) {
+        let mut target_shops = shop_ids;
+        if target_shops.is_empty() {
+            target_shops = self.selected_shops.iter().map(|s| s.shop_id.clone()).collect();
+        }
+        if target_shops.is_empty() {
+            if let Ok(disc) = parse_json(&self.shopee_discovery_json) {
+                if let Some(shops) = disc.get("shops").and_then(JsonVal::as_arr) {
+                    for s in shops {
+                        if let Some(id) = s.get("shop_id").and_then(JsonVal::as_str) {
+                            if !id.is_empty() { target_shops.push(id.to_string()); }
+                        }
+                    }
+                }
+            }
+        }
+        if target_shops.is_empty() {
+            target_shops = vec!["sp_01".to_string(), "tt_01".to_string()];
+        }
+
+        self.multi_shop_queue = target_shops;
+        self.multi_shop_idx = 0;
+        self.multi_shop_step = String::new();
+        self.multi_shop_data.clear();
+        self.multi_shop_stale_shops.clear();
+        self.multi_shop_auth_pending = false;
+
+        self.tiktok_json.clear();
+        self.tiktok_ads_json.clear();
+        self.tiktok_products_json.clear();
+        self.tiktok_health_json.clear();
+        self.shopee_orders_json.clear();
+        self.shopee_pas_json.clear();
+        self.shopee_health_json.clear();
+
+        self.log_ecom("INFO", "QUEUE", &format!("Bắt đầu hàng đợi đa shop với {} shop", self.multi_shop_queue.len()));
+        self.sync_workspace_progress(true, 5, 100, 5, "Khởi tạo hàng đợi quét đa shop...", "running");
+
+        let is_pancake_selected = self.multi_shop_queue.iter().any(|id| id.starts_with("pk_") || id == "pancake");
+        if self.pancake_connected && !self.pancake_api_key.trim().is_empty() && is_pancake_selected {
+            let key = self.pancake_api_key.clone();
+            let s_id = self.pancake_shop_id.clone();
+            let proxy = self.proxy.clone();
+            std::thread::spawn(move || {
+                let url = if !s_id.is_empty() {
+                    format!("https://pos.pages.fm/api/v1/shops/{}/orders?api_key={}&limit=50", s_id, key)
+                } else {
+                    format!("https://pos.pages.fm/api/v1/shops/me/orders?api_key={}&limit=50", key)
+                };
+                let mut cmd = std::process::Command::new("curl.exe");
+                cmd.args(["-s", "--max-time", "8", &url]);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x08000000);
+                }
+                let mut total_money = 0.0;
+                let mut order_count = 0;
+                if let Ok(output) = cmd.output() {
+                    let body = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(val) = parse_json(&body) {
+                        if let Some(orders) = val.get("data").and_then(JsonVal::as_arr) {
+                            order_count = orders.len();
+                            for o in orders {
+                                let money = o.get("money_to_collect")
+                                    .and_then(JsonVal::as_f64)
+                                    .or_else(|| o.get("total_price").and_then(JsonVal::as_f64))
+                                    .unwrap_or(0.0);
+                                total_money += money;
+                            }
+                        }
+                    }
+                }
+                let rev_million = (total_money / 1_000_000.0 * 10.0).round() / 10.0;
+                let _ = proxy.send_event(AppCmd::PancakeScanResult { rev: rev_million, orders: order_count });
+            });
+        }
+
+        self.start_next_shop_in_multi_queue();
+    }
+
+    fn start_next_shop_in_multi_queue(&mut self) {
+        if self.multi_shop_idx >= self.multi_shop_queue.len() {
+            self.finish_multi_shop_queue();
+            return;
+        }
+        let s_id = self.multi_shop_queue[self.multi_shop_idx].clone();
+        let name = self.get_shop_display_name(&s_id);
+        let total = self.multi_shop_queue.len();
+        let curr = self.multi_shop_idx + 1;
+
+        if s_id.starts_with("pk_") || s_id == "pancake" {
+            self.multi_shop_idx += 1;
+            self.start_next_shop_in_multi_queue();
+            return;
+        }
+
+        if s_id.starts_with("tt_") || s_id == "tiktok" {
+            self.multi_shop_step = "tiktok_homepage".to_string();
+            let pct = ((curr - 1) * 100 + 10) / total;
+            self.sync_workspace_progress(true, pct as usize, 100, pct as u32, &format!("[Shop {}/{} - {}] Bước 1/4: Đang quét Doanh thu & Đơn hàng...", curr, total, name), "running");
+            self.log_ecom("INFO", "TIKTOK", &format!("Bắt đầu quét shop [{}/{}] {} - Bước 1/4: Doanh thu & Đơn hàng", curr, total, name));
+
+            if let Some(old_id) = self.multi_shop_tab_id.take() {
+                self.execute(AppCmd::CloseTabById(old_id));
+            }
+            let url = "https://seller-vn.tiktok.com/homepage";
+            if let Some(tid) = self.add_worker_tab(url, "bot", Some(&format!("TikTok: {}", name))) {
+                self.multi_shop_tab_id = Some(tid);
+                self.trigger_worker_scan_by_id(tid, url);
+            }
+            return;
+        }
+
+        self.multi_shop_step = "opening_shop".to_string();
+        let pct = ((curr - 1) * 100 + 10) / total;
+        self.sync_workspace_progress(true, pct as usize, 100, pct as u32, &format!("[Shop {}/{} - {}] Bước 1/3: Đang mở /portal/shop chọn shop...", curr, total, name), "running");
+        self.log_ecom("INFO", "SHOPEE", &format!("Bắt đầu quét shop [{}/{}] {} ({}) - Mở /portal/shop để chọn shop", curr, total, name, s_id));
+
+        let index_url = "https://banhang.shopee.vn/portal/shop";
+        let reuse_tid = self.multi_shop_tab_id.filter(|tid| {
+            self.tabs.iter().any(|t| t.id == *tid && t.url.contains("banhang.shopee.vn"))
+        });
+        if let Some(tid) = reuse_tid {
+            if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tid) {
+                t.title = format!("Shopee: {}", name);
+                t.worker_status = "Đang chuyển shop".to_string();
+                let _ = t.webview.load_url(index_url);
+            }
+            self.shopee_shop_scan_tab_id = Some(tid);
+            self.shopee_shop_scan_phase = "opening_shop".to_string();
+            self.shopee_shop_scan_current = Some((s_id.clone(), name.clone()));
+        } else {
+            if let Some(old_id) = self.multi_shop_tab_id.take() {
+                self.execute(AppCmd::CloseTabById(old_id));
+            }
+            if let Some(tid) = self.add_worker_tab(index_url, "bot", Some(&format!("Shopee: {}", name))) {
+                self.multi_shop_tab_id = Some(tid);
+                self.shopee_shop_scan_tab_id = Some(tid);
+                self.shopee_shop_scan_phase = "opening_shop".to_string();
+                self.shopee_shop_scan_current = Some((s_id.clone(), name.clone()));
+            }
+        }
+    }
+
+    fn finish_multi_shop_queue(&mut self) {
+        if let Some(tid) = self.multi_shop_tab_id.take() {
+            self.execute(AppCmd::CloseTabById(tid));
+        }
+        self.multi_shop_step = String::new();
+        self.multi_shop_auth_pending = false;
+
+        let date_str = self.current_date_str();
+        let snap_daily = format!("snap_{}", date_str);
+        self.save_workspace_snapshot(&snap_daily);
+        self.save_workspace_snapshot("snap_latest");
+
+        self.sync_workspace_progress(true, 100, 100, 100, "Đã hoàn tất quét tất cả các gian hàng!", "done");
+        self.sync_workspace_command_center_with_key("snap_latest");
+        self.log_ecom("SUCCESS", "QUEUE", "Đã hoàn thành toàn bộ hàng đợi quét đa shop.");
+    }
+
+    fn save_workspace_snapshot(&mut self, snapshot_key: &str) {
+        let snapshots_dir = self.exe_dir.join("user_data").join("snapshots");
+        let _ = fs::create_dir_all(&snapshots_dir);
+        let now_str = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| format!("Phiên #{}", d.as_secs()))
+            .unwrap_or_else(|_| "Realtime".to_string());
+
+        let pk_rev = if self.pancake_connected {
+            if self.pancake_rev > 0.0 { self.pancake_rev } else { 0.0 }
+        } else {
+            0.0
+        };
+        let pk_orders = if self.pancake_connected {
+            self.pancake_orders
+        } else {
+            0
+        };
+        let pk_label = if self.pancake_connected {
+            if !self.pancake_shop_name.is_empty() {
+                format!("Pancake POS ({})", self.pancake_shop_name)
+            } else {
+                "Pancake POS".to_string()
+            }
+        } else {
+            "Pancake POS (Chưa kết nối)".to_string()
+        };
+
+        let mut shopee_rev_vnd = 0.0;
+        let mut shopee_orders = 0usize;
+        let mut shopee_to_ship = 0usize;
+        let mut shopee_express = 0usize;
+        let mut price_anomalies_list = Vec::new();
+        let mut bad_reviews_list = Vec::new();
+        let mut live_sessions_list = Vec::new();
+        let mut promos_list = Vec::new();
+        let mut shop_health_list = Vec::new();
+        let mut shopee_ads_cost_vnd = 0.0;
+        let mut shopee_ads_sales_vnd = 0.0;
+        let mut ads_alerts_list = Vec::new();
+
+        let mut shopee_sources: Vec<(String, String, String, String)> = Vec::new();
+        if !self.multi_shop_data.is_empty() {
+            for (s_id, (ord, pas, health)) in &self.multi_shop_data {
+                if !s_id.starts_with("tt_") && s_id != "tiktok" && !s_id.starts_with("pk_") && s_id != "pancake" {
+                    shopee_sources.push((s_id.clone(), ord.clone(), pas.clone(), health.clone()));
+                }
+            }
+        }
+        if shopee_sources.is_empty() && (!self.shopee_orders_json.is_empty() || !self.shopee_pas_json.is_empty()) {
+            shopee_sources.push(("sp_01".to_string(), self.shopee_orders_json.clone(), self.shopee_pas_json.clone(), self.shopee_health_json.clone()));
+        }
+
+        for (s_id, ord_str, pas_str, health_str) in &shopee_sources {
+            let shop_name = self.get_shop_display_name(s_id);
+            if let Ok(ord_val) = parse_json(ord_str) {
+                if let Some(today) = ord_val.get("today_stats") {
+                    shopee_rev_vnd += today.get("revenue_vnd").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                    shopee_orders += today.get("order_count").and_then(JsonVal::as_u64).unwrap_or(0) as usize;
+                } else if let Some(orders_arr) = ord_val.get("orders").and_then(JsonVal::as_arr) {
+                    shopee_orders += orders_arr.len();
+                    for o in orders_arr {
+                        shopee_rev_vnd += o.get("order_total").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                    }
+                }
+                shopee_to_ship += ord_val.get("to_ship").and_then(JsonVal::as_u64).unwrap_or(0) as usize;
+                shopee_express += ord_val.get("express_orders").and_then(JsonVal::as_u64).unwrap_or(0) as usize;
+
+                if let Some(anoms) = ord_val.get("anomalies").and_then(JsonVal::as_arr) {
+                    for a in anoms {
+                        let order_sn = a.get("order_sn").and_then(JsonVal::as_str).unwrap_or("");
+                        let item_name = a.get("item_name").and_then(JsonVal::as_str).unwrap_or("");
+                        let eff_price = a.get("effective_price").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                        let med_price = a.get("median_price").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                        let reason = a.get("reasons").and_then(JsonVal::as_arr)
+                            .and_then(|r| r.first())
+                            .and_then(JsonVal::as_str)
+                            .unwrap_or("Lệch giá bất thường");
+                        let url = a.get("url").and_then(JsonVal::as_str).unwrap_or("https://banhang.shopee.vn/portal/sale/order");
+                        price_anomalies_list.push(format!(
+                            "{{\"shopId\":\"{}\",\"orderId\":\"{}\",\"platform\":\"shopee\",\"shop\":\"{}\",\"sku\":\"{}\",\"soldPrice\":\"{} đ\",\"basePrice\":\"{} đ\",\"reason\":\"{}\",\"url\":\"{}\"}}",
+                            Self::escape_json(s_id), Self::escape_json(order_sn), Self::escape_json(&shop_name),
+                            Self::escape_json(item_name), eff_price as i64, med_price as i64, Self::escape_json(reason), Self::escape_json(url)
+                        ));
+                    }
+                }
+
+                if let Some(revs) = ord_val.get("bad_reviews").and_then(JsonVal::as_arr) {
+                    for r in revs {
+                        let stars = r.get("rating_star").and_then(JsonVal::as_u64).unwrap_or(1);
+                        let buyer = r.get("buyer_name").and_then(JsonVal::as_str).unwrap_or("Khách hàng");
+                        let comment = r.get("comment").and_then(JsonVal::as_str).unwrap_or("Đánh giá xấu");
+                        let order_sn = r.get("order_sn").and_then(JsonVal::as_str).unwrap_or("");
+                        let url = r.get("url").and_then(JsonVal::as_str).unwrap_or("https://banhang.shopee.vn/portal/settings/shop/rating");
+                        bad_reviews_list.push(format!(
+                            "{{\"shopId\":\"{}\",\"platform\":\"shopee\",\"shop\":\"{}\",\"stars\":{},\"customer\":\"{}\",\"content\":\"{}\",\"orderId\":\"{}\",\"url\":\"{}\"}}",
+                            Self::escape_json(s_id), Self::escape_json(&shop_name), stars, Self::escape_json(buyer),
+                            Self::escape_json(comment), Self::escape_json(order_sn), Self::escape_json(url)
+                        ));
+                    }
+                }
+
+                if let Some(live) = ord_val.get("live") {
+                    if live.get("is_live").and_then(JsonVal::as_bool) == Some(true) {
+                        let title = live.get("title").and_then(JsonVal::as_str).unwrap_or("Phiên Live Shopee");
+                        let rev = live.get("revenue").and_then(JsonVal::as_f64).unwrap_or(0.0) / 1_000_000.0;
+                        let viewers = live.get("viewers").and_then(JsonVal::as_u64).unwrap_or(0);
+                        let orders = live.get("orders").and_then(JsonVal::as_u64).unwrap_or(0);
+                        live_sessions_list.push(format!(
+                            "{{\"shopId\":\"{}\",\"platform\":\"shopee\",\"shop\":\"{}\",\"title\":\"{}\",\"status\":\"LIVE\",\"rev\":{:.1},\"sharePct\":\"--\",\"viewers\":{},\"orders\":{},\"url\":\"https://banhang.shopee.vn/portal/live\"}}",
+                            Self::escape_json(s_id), Self::escape_json(&shop_name), Self::escape_json(title), rev, viewers, orders
+                        ));
+                    }
+                }
+
+                if let Some(fs_arr) = ord_val.get("flash_sales").and_then(JsonVal::as_arr) {
+                    for f in fs_arr {
+                        let raw_name = f.get("name").or_else(|| f.get("flash_sale_id")).and_then(JsonVal::as_str).unwrap_or("Flash Sale");
+                        let clean_name = if raw_name.chars().all(|c| c.is_ascii_digit()) {
+                            format!("Shop Flash Sale #{}", raw_name)
+                        } else {
+                            raw_name.to_string()
+                        };
+                        let items = f.get("item_count").and_then(JsonVal::as_u64).unwrap_or(0);
+                        let url = f.get("url").and_then(JsonVal::as_str).unwrap_or("https://banhang.shopee.vn/portal/marketing/shop-flash-sale");
+                        promos_list.push(format!(
+                            "{{\"shopId\":\"{}\",\"platform\":\"shopee\",\"shop\":\"{}\",\"type\":\"Shop Flash Sale\",\"name\":\"{}\",\"usage\":\"{} sản phẩm\",\"url\":\"{}\"}}",
+                            Self::escape_json(s_id), Self::escape_json(&shop_name), Self::escape_json(&clean_name), items, Self::escape_json(url)
+                        ));
+                    }
+                }
+            }
+
+            if let Ok(pas_val) = parse_json(pas_str) {
+                let cost = pas_val.get("cost_ads").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                let sales = pas_val.get("sales_ads").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                shopee_ads_cost_vnd += cost;
+                shopee_ads_sales_vnd += sales;
+                if let Some(camps) = pas_val.get("campaigns").and_then(JsonVal::as_arr) {
+                    for c in camps {
+                        let c_name = c.get("campaign").and_then(JsonVal::as_str).unwrap_or("Chiến dịch");
+                        let budget = c.get("dailyBudgetVnd").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                        let spent = c.get("spentVnd").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                        let cir_num = c.get("cirNumeric").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                        let cir_str = c.get("cir").and_then(JsonVal::as_str).unwrap_or("0%");
+                        let status = c.get("status").and_then(JsonVal::as_str).unwrap_or("ĐANG CHẠY");
+                        let badge = c.get("badge").and_then(JsonVal::as_str).unwrap_or("pill-success");
+                        let url = c.get("url").and_then(JsonVal::as_str).unwrap_or("https://banhang.shopee.vn/portal/marketing/pas/index");
+                        ads_alerts_list.push(format!(
+                            "{{\"shopId\":\"{}\",\"campaignId\":\"\",\"platform\":\"shopee\",\"shop\":\"{}\",\"campaign\":\"{}\",\"dailyBudgetVnd\":{},\"spentVnd\":{},\"budgetPct\":\"--\",\"cirNumeric\":{:.1},\"cir\":\"{}\",\"status\":\"{}\",\"badge\":\"{}\",\"url\":\"{}\"}}",
+                            Self::escape_json(s_id), Self::escape_json(&shop_name), Self::escape_json(c_name), budget as i64, spent as i64, cir_num, Self::escape_json(cir_str), Self::escape_json(status), Self::escape_json(badge), Self::escape_json(url)
+                        ));
+                    }
+                }
+            }
+
+            if let Ok(health_val) = parse_json(health_str) {
+                let points = health_val.get("penalty_points").and_then(JsonVal::as_u64).unwrap_or(0);
+                let note = health_val.get("note").and_then(JsonVal::as_str).unwrap_or("Vận hành bình thường");
+                shop_health_list.push(format!(
+                    "{{\"shopId\":\"{}\",\"platform\":\"shopee\",\"shop\":\"{}\",\"points\":\"{}/12 Sao Quả Tạ\",\"status\":\"healthy\",\"note\":\"{}\",\"expressOnTime\":\"99%\",\"url\":\"https://banhang.shopee.vn/portal/settings/shop/health\"}}",
+                    Self::escape_json(s_id), Self::escape_json(&shop_name), points, Self::escape_json(note)
+                ));
+            }
+        }
+
+        let mut tiktok_rev_vnd = 0.0;
+        let mut tiktok_orders = 0usize;
+        let mut tiktok_cost_vnd = 0.0;
+        let mut _tiktok_roi = 0.0;
+        if let Ok(tt_val) = parse_json(&self.tiktok_json) {
+            tiktok_rev_vnd = tt_val.get("gmv").or_else(|| tt_val.get("revenue_vnd")).and_then(JsonVal::as_f64).unwrap_or(0.0);
+            tiktok_orders = tt_val.get("orders").or_else(|| tt_val.get("order_count")).and_then(JsonVal::as_u64).unwrap_or(0) as usize;
+        }
+
+        let mut tiktok_ads_sales_vnd = 0.0;
+        if let Ok(ads_val) = parse_json(&self.tiktok_ads_json) {
+            tiktok_cost_vnd = ads_val.get("cost_ads")
+                .and_then(JsonVal::as_f64)
+                .or_else(|| ads_val.get("metrics").and_then(|m| m.get("cost")).and_then(|c| c.get("value")).and_then(JsonVal::as_f64))
+                .unwrap_or(0.0);
+            tiktok_ads_sales_vnd = ads_val.get("sales_ads")
+                .and_then(JsonVal::as_f64)
+                .or_else(|| ads_val.get("metrics").and_then(|m| m.get("sales")).and_then(|s| s.get("value")).and_then(JsonVal::as_f64))
+                .unwrap_or(0.0);
+            _tiktok_roi = ads_val.get("roas_ads")
+                .and_then(JsonVal::as_f64)
+                .or_else(|| ads_val.get("metrics").and_then(|m| m.get("roas")).and_then(|r| r.get("value")).and_then(JsonVal::as_f64))
+                .unwrap_or(0.0);
+            let ads_orders = ads_val.get("orders_ads")
+                .and_then(JsonVal::as_u64)
+                .or_else(|| ads_val.get("metrics").and_then(|m| m.get("orders")).and_then(|o| o.get("value")).and_then(JsonVal::as_u64))
+                .unwrap_or(0) as usize;
+            if tiktok_orders == 0 {
+                tiktok_orders = ads_orders;
+            }
+            // Fallback from campaigns table if overview card was 0/null
+            if tiktok_cost_vnd == 0.0 {
+                if let Some(camps) = ads_val.get("campaigns").and_then(JsonVal::as_arr) {
+                    let sum_cost: f64 = camps.iter().filter_map(|c| c.get("cost").and_then(JsonVal::as_f64)).sum();
+                    if sum_cost > 0.0 {
+                        tiktok_cost_vnd = sum_cost;
+                    }
+                }
+            }
+            if tiktok_ads_sales_vnd < 1000.0 {
+                if let Some(camps) = ads_val.get("campaigns").and_then(JsonVal::as_arr) {
+                    let sum_sales: f64 = camps.iter().filter_map(|c| c.get("sales").and_then(JsonVal::as_f64)).sum();
+                    if sum_sales >= 1000.0 {
+                        tiktok_ads_sales_vnd = sum_sales;
+                    } else {
+                        tiktok_ads_sales_vnd = 0.0;
+                    }
+                } else {
+                    tiktok_ads_sales_vnd = 0.0;
+                }
+            }
+            if tiktok_rev_vnd < 1000.0 && tiktok_ads_sales_vnd >= 1000.0 {
+                tiktok_rev_vnd = tiktok_ads_sales_vnd;
+            }
+        }
+
+        let tiktok_name = if !self.tiktok_shop_name.is_empty() {
+            self.tiktok_shop_name.clone()
+        } else {
+            "TikTok Shop VN".to_string()
+        };
+
+        if let Ok(ads_val) = parse_json(&self.tiktok_ads_json) {
+            let mut added_camp = false;
+            if let Some(camps) = ads_val.get("campaigns").and_then(JsonVal::as_arr) {
+                for c in camps {
+                    let c_name = c.get("name").or_else(|| c.get("campaign_name")).and_then(JsonVal::as_str).unwrap_or("Chiến dịch TikTok");
+                    let spent = c.get("cost").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                    let sales = c.get("sales").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                    let cir_num = if sales > 0.0 { (spent / sales) * 100.0 } else { 0.0 };
+                    let cir_str = format!("{:.1}%", cir_num);
+                    ads_alerts_list.push(format!(
+                        "{{\"shopId\":\"tiktok_main\",\"campaignId\":\"\",\"platform\":\"tiktok\",\"shop\":\"{}\",\"campaign\":\"{}\",\"dailyBudgetVnd\":0,\"spentVnd\":{},\"budgetPct\":\"--\",\"cirNumeric\":{:.1},\"cir\":\"{}\",\"status\":\"ĐANG CHẠY\",\"badge\":\"pill-success\",\"url\":\"https://seller-vn.tiktok.com/homepage\"}}",
+                        Self::escape_json(&tiktok_name), Self::escape_json(c_name), spent as i64, cir_num, Self::escape_json(&cir_str)
+                    ));
+                    added_camp = true;
+                }
+            }
+            if !added_camp && tiktok_cost_vnd > 0.0 {
+                let cir_num = if tiktok_ads_sales_vnd > 0.0 { (tiktok_cost_vnd / tiktok_ads_sales_vnd) * 100.0 } else { 0.0 };
+                let cir_str = format!("{:.1}%", cir_num);
+                ads_alerts_list.push(format!(
+                    "{{\"shopId\":\"tiktok_main\",\"campaignId\":\"\",\"platform\":\"tiktok\",\"shop\":\"{}\",\"campaign\":\"Chiến dịch GMV Max / Shop Ads\",\"dailyBudgetVnd\":0,\"spentVnd\":{},\"budgetPct\":\"--\",\"cirNumeric\":{:.1},\"cir\":\"{}\",\"status\":\"ĐANG CHẠY\",\"badge\":\"pill-success\",\"url\":\"https://seller-vn.tiktok.com/homepage\"}}",
+                    Self::escape_json(&tiktok_name), tiktok_cost_vnd as i64, cir_num, Self::escape_json(&cir_str)
+                ));
+            }
+        }
+
+        if let Ok(tt_h) = parse_json(&self.tiktok_health_json) {
+            let score = tt_h.get("score").and_then(JsonVal::as_str).unwrap_or("Tốt (Chuẩn sàn)");
+            let note = tt_h.get("status_note").and_then(JsonVal::as_str).unwrap_or("Vận hành ổn định (0 vi phạm)");
+            shop_health_list.push(format!(
+                "{{\"shopId\":\"tiktok_main\",\"platform\":\"tiktok\",\"shop\":\"{}\",\"points\":\"{}\",\"status\":\"healthy\",\"note\":\"{}\",\"expressOnTime\":\"99%\",\"url\":\"https://seller-vn.tiktok.com/health-center\"}}",
+                Self::escape_json(&tiktok_name), Self::escape_json(score), Self::escape_json(note)
+            ));
+        }
+
+        if !self.tiktok_json.is_empty() || !self.tiktok_ads_json.is_empty() {
+            promos_list.push(format!(
+                "{{\"shopId\":\"tiktok_main\",\"platform\":\"tiktok\",\"shop\":\"{}\",\"type\":\"Voucher & Flash Sale\",\"name\":\"Ưu đãi & Phiếu giảm giá TikTok\",\"usage\":\"Đang chạy\",\"url\":\"https://seller-vn.tiktok.com/promotion\"}}",
+                Self::escape_json(&tiktok_name)
+            ));
+        }
+
+        let mut cross_sku_list = Vec::new();
+        let mut tt_products_map: HashMap<String, (String, usize)> = HashMap::new();
+        if let Ok(p_val) = parse_json(&self.tiktok_products_json) {
+            if let Some(prods) = p_val.get("products").and_then(JsonVal::as_arr) {
+                for p in prods {
+                    let sku = p.get("sku").and_then(JsonVal::as_str).unwrap_or("");
+                    let name = p.get("name").and_then(JsonVal::as_str).unwrap_or("");
+                    let stock = p.get("stock").and_then(JsonVal::as_u64).unwrap_or(0) as usize;
+                    let price = p.get("price").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                    let is_anom = p.get("is_anomalous_price").and_then(JsonVal::as_bool).unwrap_or(false);
+                    if is_anom || (price > 0.0 && price < 15000.0) {
+                        price_anomalies_list.push(format!(
+                            "{{\"shopId\":\"tiktok_main\",\"orderId\":\"Cảnh báo giá thấp\",\"platform\":\"tiktok\",\"shop\":\"{}\",\"sku\":\"{}\",\"soldPrice\":\"{} đ\",\"basePrice\":\"15,000 đ\",\"reason\":\"Giá bán dưới ngưỡng an toàn (< 15.000 đ)\",\"url\":\"https://seller-vn.tiktok.com/product/manage\"}}",
+                            Self::escape_json(&tiktok_name),
+                            Self::escape_json(if !name.is_empty() { name } else { sku }),
+                            price as i64
+                        ));
+                    }
+                    let sku_clean = sku.trim();
+                    if !sku_clean.is_empty() && sku_clean.len() >= 2 && !matches!(sku_clean.to_lowercase().as_str(), "s" | "m" | "l" | "xl" | "2xl" | "3xl") {
+                        tt_products_map.insert(sku_clean.to_string(), (name.to_string(), stock));
+                    }
+                }
+            }
+        }
+
+        let mut sp_products_map: HashMap<String, (String, usize)> = HashMap::new();
+        for (_, ord_str, _, _) in &shopee_sources {
+            if let Ok(ord_val) = parse_json(ord_str) {
+                if let Some(items) = ord_val.get("items").or_else(|| ord_val.get("products")).and_then(JsonVal::as_arr) {
+                    for it in items {
+                        let sku = it.get("item_sku").or_else(|| it.get("model_sku")).and_then(JsonVal::as_str).unwrap_or("");
+                        let name = it.get("item_name").and_then(JsonVal::as_str).unwrap_or("");
+                        let stock = it.get("stock").or_else(|| it.get("current_stock")).and_then(JsonVal::as_u64).unwrap_or(0) as usize;
+                        if !sku.is_empty() {
+                            sp_products_map.insert(sku.to_string(), (name.to_string(), stock));
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut all_skus: HashSet<String> = sp_products_map.keys().cloned().collect();
+        for k in tt_products_map.keys() {
+            all_skus.insert(k.clone());
+        }
+
+        let both_scanned = !shopee_sources.is_empty() && !tt_products_map.is_empty();
+        for k in &all_skus {
+            let sku_trimmed = k.trim();
+            if sku_trimmed.is_empty() || sku_trimmed.len() < 2 || matches!(sku_trimmed.to_lowercase().as_str(), "s" | "m" | "l" | "xl" | "2xl" | "3xl") {
+                continue;
+            }
+            let (sp_name, sp_stock) = sp_products_map.get(k).cloned().unwrap_or((String::new(), 0));
+            let (tt_name, tt_stock) = tt_products_map.get(k).cloned().unwrap_or((String::new(), 0));
+            let display_name = if !sp_name.is_empty() { sp_name } else { tt_name };
+            let mismatch = if both_scanned {
+                (sp_stock == 0 && tt_stock > 0) || (tt_stock == 0 && sp_stock > 0) || (sp_stock < 3 && tt_stock < 3)
+            } else {
+                false
+            };
+            let note = if both_scanned && sp_stock == 0 && tt_stock > 0 {
+                "Shopee HẾT HÀNG nhưng TikTok còn hàng — Mở lại tồn Shopee ngay"
+            } else if both_scanned && tt_stock == 0 && sp_stock > 0 {
+                "TikTok HẾT HÀNG trong khi Shopee còn hàng — Bổ sung tồn TikTok"
+            } else if both_scanned && sp_stock < 3 && tt_stock < 3 {
+                "Tồn kho chạm đáy toàn hệ thống — Cần khóa Hỏa tốc nếu dưới 3 cái"
+            } else {
+                "Đồng bộ tốt giữa các sàn"
+            };
+
+            cross_sku_list.push(format!(
+                "{{\"sku\":\"{}\",\"name\":\"{}\",\"shopee\":{},\"tiktok\":{},\"pancake\":0,\"mismatch\":{},\"note\":\"{}\",\"url\":\"https://banhang.shopee.vn/portal/product/list/all\"}}",
+                Self::escape_json(sku_trimmed),
+                Self::escape_json(&display_name),
+                sp_stock,
+                tt_stock,
+                mismatch,
+                Self::escape_json(note)
+            ));
+        }
+
+        let shopee_rev_m = (shopee_rev_vnd / 1_000_000.0 * 10.0).round() / 10.0;
+        let tiktok_rev_m = (tiktok_rev_vnd / 1_000_000.0 * 10.0).round() / 10.0;
+        let net_rev_m = ((shopee_rev_m + tiktok_rev_m + pk_rev) * 10.0).round() / 10.0;
+        let total_orders = shopee_orders + tiktok_orders + pk_orders;
+
+        let shopee_cir_str = if shopee_ads_sales_vnd > 0.0 {
+            format!("{:.1}%", (shopee_ads_cost_vnd / shopee_ads_sales_vnd) * 100.0)
+        } else {
+            "--".to_string()
+        };
+        let tiktok_cir_str = if tiktok_rev_vnd >= 1000.0 && tiktok_cost_vnd > 0.0 {
+            format!("{:.1}%", (tiktok_cost_vnd / tiktok_rev_vnd) * 100.0)
+        } else {
+            "--".to_string()
+        };
+
+        let total_ads_spend_m = ((shopee_ads_cost_vnd + tiktok_cost_vnd) / 1_000_000.0 * 100.0).round() / 100.0;
+        let total_rev_vnd = shopee_rev_vnd + tiktok_rev_vnd;
+        let total_cir_str = if total_rev_vnd >= 1000.0 && (shopee_ads_cost_vnd + tiktok_cost_vnd) > 0.0 {
+            format!("{:.1}%", ((shopee_ads_cost_vnd + tiktok_cost_vnd) / total_rev_vnd) * 100.0)
+        } else {
+            "--".to_string()
+        };
+
+        let aov_str = if total_orders > 0 {
+            let aov = ((shopee_rev_vnd + tiktok_rev_vnd + pk_rev * 1_000_000.0) / total_orders as f64) as i64;
+            format!("{} đ", aov)
+        } else {
+            "0 đ".to_string()
+        };
+
+        let shopee_shop_count = shopee_sources.len();
+        let shopee_label = format!("Shopee ({} shop)", if shopee_shop_count > 0 { shopee_shop_count } else { 1 });
+
+        let body = format!(
+            "{{\"timestamp\":\"{}\",\"platforms\":[{{\"key\":\"shopee\",\"name\":\"{}\",\"rev\":{},\"orders\":{},\"cir\":\"{}\",\"liveRev\":0.0,\"expressPct\":\"--\",\"color\":\"#EE4D2D\"}},{{\"key\":\"tiktok\",\"name\":\"{}\",\"rev\":{},\"orders\":{},\"cir\":\"{}\",\"liveRev\":0.0,\"expressPct\":\"--\",\"color\":\"#161823\"}},{{\"key\":\"pancake\",\"name\":\"{}\",\"rev\":{},\"orders\":{},\"cir\":\"--\",\"liveRev\":0.0,\"expressPct\":\"--\",\"color\":\"#2563EB\"}}],\"kpis\":{{\"netRev\":{},\"revNote\":\"Quét realtime\",\"netProfit\":0.0,\"marginPct\":\"--\",\"adsSpend\":{},\"cir\":\"{}\",\"roas\":\"--\",\"totalOrders\":{},\"aov\":\"{}\",\"expressPct\":\"--\",\"expressUrgent\":\"{} đơn Hỏa tốc\",\"cancelRate\":\"--\",\"toShipCount\":{}}},\"hours\":[\"00h\",\"04h\",\"08h\",\"12h\",\"16h\",\"20h\",\"Hiện tại\"],\"revSeries\":[0,0,0,0,0,0,{}],\"profitSeries\":[0,0,0,0,0,0,0],\"shopHealth\":[{}],\"liveSessions\":[{}],\"priceAnomalies\":[{}],\"badReviews\":[{}],\"crossSku\":[{}],\"adsAlerts\":[{}],\"promos\":[{}]}}",
+            now_str,
+            Self::escape_json(&shopee_label),
+            shopee_rev_m,
+            shopee_orders,
+            shopee_cir_str,
+            Self::escape_json(&tiktok_name),
+            tiktok_rev_m,
+            tiktok_orders,
+            tiktok_cir_str,
+            Self::escape_json(&pk_label),
+            pk_rev,
+            pk_orders,
+            net_rev_m,
+            total_ads_spend_m,
+            total_cir_str,
+            total_orders,
+            Self::escape_json(&aov_str),
+            shopee_express,
+            shopee_to_ship,
+            net_rev_m,
+            shop_health_list.join(","),
+            live_sessions_list.join(","),
+            price_anomalies_list.join(","),
+            bad_reviews_list.join(","),
+            cross_sku_list.join(","),
+            ads_alerts_list.join(","),
+            promos_list.join(",")
+        );
+
+        let date_str = self.current_date_str();
+        let _ = fs::write(snapshots_dir.join(format!("{}.json", snapshot_key)), &body);
+        let _ = fs::write(snapshots_dir.join(format!("snap_{}.json", date_str)), &body);
+        let _ = fs::write(snapshots_dir.join("snap_latest.json"), &body);
+
+        if snapshot_key == "snap_latest" {
+            let mismatch_count = cross_sku_list.iter().filter(|s| s.contains("\"mismatch\":true")).count();
+            self.log_ecom("DATA", "SNAPSHOT", &format!(
+                "=== TỔNG KẾT PHIÊN QUÉT === Tổng Doanh Thu: {} tr VNĐ | Tổng Đơn: {} | Shopee: {} tr ({} đơn) | TikTok: {} tr ({} đơn) | Pancake: {} tr ({} đơn) | Tồn kho lệch: {} SKU",
+                net_rev_m, total_orders, shopee_rev_m, shopee_orders, tiktok_rev_m, tiktok_orders, pk_rev, pk_orders, mismatch_count
+            ));
+
+            for item in cross_sku_list.iter().filter(|s| s.contains("\"mismatch\":true")).take(5) {
+                if let Ok(it) = parse_json(item) {
+                    let sku = it.get("sku").and_then(JsonVal::as_str).unwrap_or("");
+                    let sp = it.get("shopee").and_then(JsonVal::as_u64).unwrap_or(0);
+                    let tt = it.get("tiktok").and_then(JsonVal::as_u64).unwrap_or(0);
+                    let note = it.get("note").and_then(JsonVal::as_str).unwrap_or("");
+                    self.log_ecom("WARN", "CROSS-SKU", &format!("Cảnh báo tồn kho: SKU [{}] -> Shopee: {} cái | TikTok: {} cái | {}", sku, sp, tt, note));
+                }
+            }
+        }
+    }
+
+    fn sync_workspace_command_center(&self) {
+        self.sync_workspace_command_center_with_key("snap_latest");
+    }
+
+    fn sync_workspace_command_center_with_key(&self, snapshot_key: &str) {
+        let mut shops = Vec::new();
+        let is_selected = |plat: &str, sid: &str| -> bool {
+            self.selected_shops.iter().any(|sel| sel.platform == plat && sel.shop_id == sid)
+        };
+        if let Ok(disc) = parse_json(&self.shopee_discovery_json) {
+            if let Some(shop_arr) = disc.get("shops").and_then(JsonVal::as_arr) {
+                for s in shop_arr {
+                    let id = s.get("shop_id").and_then(JsonVal::as_str).unwrap_or("");
+                    let name = s.get("name").or_else(|| s.get("display_name")).and_then(JsonVal::as_str).unwrap_or(id);
+                    if !id.is_empty() {
+                        let selected = is_selected("shopee", id);
+                        shops.push(format!("{{\"id\":\"{}\",\"platform\":\"shopee\",\"name\":\"{}\",\"selected\":{}}}",
+                            Self::escape_json(id), Self::escape_json(name), selected));
+                    }
+                }
+            }
+        }
+        if shops.is_empty() {
+            for (id, name) in [
+                ("sp_1556409510", "PetsCare Sài Gòn"),
+                ("sp_1328141534", "PetMallVN"),
+                ("sp_1072275019", "Tui Tiến Pet VN"),
+                ("sp_1053694388", "MasterCare Việt Nam"),
+                ("sp_366273305", "Master Care for Pet"),
+            ] {
+                shops.push(format!("{{\"id\":\"{}\",\"platform\":\"shopee\",\"name\":\"{}\",\"selected\":{}}}",
+                    id, name, is_selected("shopee", id)));
+            }
+        }
+        let tt_name = if !self.tiktok_shop_name.is_empty() {
+            self.tiktok_shop_name.clone()
+        } else {
+            "TikTok Shop VN".to_string()
+        };
+        shops.push(format!("{{\"id\":\"tt_01\",\"platform\":\"tiktok\",\"name\":\"{}\",\"selected\":{}}}",
+            Self::escape_json(&tt_name), is_selected("tiktok", "tt_01")));
+        let pk_name = if !self.pancake_shop_name.is_empty() {
+            format!("Pancake {}", self.pancake_shop_name)
+        } else {
+            "Pancake Kho Tổng".to_string()
+        };
+        shops.push(format!("{{\"id\":\"pk_01\",\"platform\":\"pancake\",\"name\":\"{}\",\"selected\":{}}}",
+            Self::escape_json(&pk_name), is_selected("pancake", "pk_01")));
+
+        let pancake_connected = self.pancake_connected;
+        let pancake_label = if pancake_connected {
+            if !self.pancake_shop_name.is_empty() {
+                format!("Đã kết nối ({})", self.pancake_shop_name)
+            } else {
+                "Đã kết nối (1 kho)".to_string()
+            }
+        } else {
+            "Chưa kết nối".to_string()
+        };
+
+        let snapshots_dir = self.exe_dir.join("user_data").join("snapshots");
+        let mut available_snapshots = Vec::new();
+        available_snapshots.push("{\"key\":\"snap_latest\",\"label\":\"🕒 Phiên mới nhất (Realtime)\"}".to_string());
+        if let Ok(entries) = fs::read_dir(&snapshots_dir) {
+            let mut list: Vec<String> = entries.filter_map(|e| {
+                let p = e.ok()?.path();
+                if p.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                    p.file_stem().and_then(|s| s.to_str()).map(String::from)
+                } else {
+                    None
+                }
+            }).collect();
+            list.sort_by(|a, b| b.cmp(a));
+            for k in list {
+                if k != "snap_latest" {
+                    available_snapshots.push(format!("{{\"key\":\"{}\",\"label\":\"📁 Phiên lưu: {}\"}}", Self::escape_json(&k), Self::escape_json(&k)));
+                }
+            }
+        }
+        let available_snapshots_json = available_snapshots.join(",");
+
+        let snap_file = snapshots_dir.join(format!("{}.json", snapshot_key));
+        let snapshot_data_body = if snap_file.exists() {
+            fs::read_to_string(&snap_file).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let snapshot_data_body = if !snapshot_data_body.trim().is_empty() {
+            snapshot_data_body
+        } else {
+            format!(
+                "{{\"timestamp\":\"Chưa có phiên quét\",\"platforms\":[{{\"key\":\"shopee\",\"name\":\"Shopee\",\"rev\":0,\"orders\":0,\"cir\":\"0%\",\"liveRev\":0,\"expressPct\":\"0%\",\"color\":\"#EE4D2D\"}},{{\"key\":\"tiktok\",\"name\":\"TikTok Shop\",\"rev\":0,\"orders\":0,\"cir\":\"0%\",\"liveRev\":0,\"expressPct\":\"0%\",\"color\":\"#161823\"}},{{\"key\":\"pancake\",\"name\":\"Pancake POS ({})\",\"rev\":0,\"orders\":0,\"cir\":\"0%\",\"liveRev\":0,\"expressPct\":\"0%\",\"color\":\"#2563EB\"}}],\"kpis\":{{\"netRev\":0,\"revNote\":\"Chưa có dữ liệu phiên mới\",\"netProfit\":0,\"marginPct\":\"0%\",\"adsSpend\":0,\"cir\":\"0%\",\"roas\":\"0x\",\"totalOrders\":0,\"aov\":\"0 đ\",\"expressPct\":\"0%\",\"expressUrgent\":\"0 đơn Hỏa tốc\",\"cancelRate\":\"0%\",\"toShipCount\":0}},\"hours\":[],\"revSeries\":[],\"profitSeries\":[],\"shopHealth\":[],\"liveSessions\":[],\"priceAnomalies\":[],\"badReviews\":[],\"crossSku\":[],\"adsAlerts\":[],\"promos\":[]}}",
+                pancake_label
+            )
+        };
+
+        let shops_json = shops.join(",");
+        let payload = format!(
+            "{{\"snapshotKey\":\"{}\",\"availableSnapshots\":[{}],\"pancakeStatus\":{{\"connected\":{},\"shopsCount\":{},\"label\":\"{}\"}},\"shops\":[{}],\"snapshotData\":{}}}",
+            Self::escape_json(snapshot_key),
+            available_snapshots_json,
+            pancake_connected,
+            if pancake_connected { 1 } else { 0 },
+            pancake_label,
+            shops_json,
+            snapshot_data_body
+        );
+
+        let js = format!("if (typeof window.onWorkspaceData === 'function') window.onWorkspaceData({});", payload);
         for t in &self.tabs {
             if t.url == "tp://workspace" {
                 let _ = t.webview.evaluate_script(&js);
@@ -4732,6 +7564,58 @@ impl TpBrowserApp {
             if tab.ecom_worker_job.as_deref() == Some("shopee_discovery") {
                 return;
             }
+            if url.contains("accounts.shopee.vn") || url.contains("/seller/login") {
+                if !self.multi_shop_queue.is_empty() && self.multi_shop_tab_id == Some(tab_id) && !self.multi_shop_auth_pending {
+                    let s_id = self.multi_shop_queue.get(self.multi_shop_idx).cloned().unwrap_or_default();
+                    self.execute(AppCmd::ScanNeedAuth {
+                        reason: "login".to_string(),
+                        shop_id: s_id,
+                    });
+                }
+                return;
+            }
+            if url.contains("banhang.shopee.vn") {
+                if !self.multi_shop_queue.is_empty() && self.multi_shop_tab_id == Some(tab_id) {
+                    if self.multi_shop_step == "opening_shop" {
+                        if url.contains("/portal/shop") {
+                            if let Some((s_id, name)) = self.shopee_shop_scan_current.clone() {
+                                let js = format!(
+                                    "window.__tpShopTarget={{shop_id:{:?},display_name:{:?}}}; setTimeout(function(){{ {} }}, 800);",
+                                    s_id, name, SHOPEE_OPEN_SHOP_JS
+                                );
+                                let _ = tab.webview.evaluate_script(&js);
+                            }
+                        } else if self.shopee_shop_scan_phase == "shop_orders" {
+                            // Shopee đã chuyển về trang chủ shop sau khi click Chi tiết -> điều hướng sang Đơn hàng
+                            self.multi_shop_step = "orders".to_string();
+                            let _ = tab.webview.load_url("https://banhang.shopee.vn/portal/sale/order");
+                        } else {
+                            // Nếu Shopee tự redirect khỏi /portal/shop trước khi kịp chọn shop -> nạp lại /portal/shop
+                            let _ = tab.webview.load_url("https://banhang.shopee.vn/portal/shop");
+                        }
+                    } else if self.multi_shop_step == "orders" {
+                        if url.contains("/portal/sale/order") {
+                            let _ = tab.webview.evaluate_script(
+                                "setTimeout(function(){ window.__tpCurrentScanModule = 'orders'; if (window.__tpRunShopeeScan) { window.__tpRunShopeeScan('orders'); } else if (window.ipc && window.ipc.postMessage) { window.ipc.postMessage(JSON.stringify({ cmd: 'ecom_log_debug', msg: 'LỖI: window.__tpRunShopeeScan chưa nạp trên /portal/sale/order' })); } }, 1500);",
+                            );
+                            self.log_ecom("INFO", "SHOPEE", "Đã vào /portal/sale/order, bắt đầu kéo đơn trong ngày...");
+                        } else if !url.contains("/portal/shop") && !url.contains("login") && !url.contains("signin") && !url.contains("captcha") {
+                            // Đợi 2s cho Shopee hoàn tất ghi cookie/phiên shop mới rồi mới sang Đơn hàng
+                            let _ = tab.webview.evaluate_script(
+                                "if (!window.__tpOrderNavScheduled) { window.__tpOrderNavScheduled = true; setTimeout(function(){ window.location.href = 'https://banhang.shopee.vn/portal/sale/order'; }, 2000); }"
+                            );
+                        }
+                    } else if self.multi_shop_step == "pas" && url.contains("/portal/marketing/pas") {
+                        let _ = tab.webview.evaluate_script(
+                            "setTimeout(function(){ window.__tpCurrentScanModule = 'pas'; if (window.__tpRunShopeeScan) window.__tpRunShopeeScan('pas'); }, 2500);",
+                        );
+                    } else if self.multi_shop_step == "health" && url.contains("/portal/accounthealth") {
+                        let js = format!("setTimeout(function(){{ window.__tpCurrentScanModule = 'health'; {} }}, 2200);", SHOPEE_HEALTH_SCAN_JS);
+                        let _ = tab.webview.evaluate_script(&js);
+                    }
+                    return;
+                }
+            }
             if url.contains("banhang.shopee.vn/portal/shop") && !self.shopee_shop_scan_phase.is_empty() {
                 let js = format!("setTimeout(function(){{ {} }}, 1600);", SHOPEE_SHOP_INDEX_SCAN_JS);
                 let _ = tab.webview.evaluate_script(&js);
@@ -4747,17 +7631,53 @@ impl TpBrowserApp {
                     "setTimeout(function(){ if (window.__tpRunShopeeScan) window.__tpRunShopeeScan('orders'); }, 1000);",
                 );
             } else if url.contains("seller-vn.tiktok.com") {
-                let collector = if url.contains("health-center") {
+                let collector = if url.contains("health-center") || self.multi_shop_step == "tiktok_health" {
                     TIKTOK_HEALTH_SCAN_JS
-                } else {
+                } else if url.contains("/product/manage") || self.multi_shop_step == "tiktok_products" {
+                    TIKTOK_PRODUCTS_SCAN_JS
+                } else if url.contains("ads-creation/dashboard") || self.multi_shop_step == "tiktok_ads" {
                     TIKTOK_PASSIVE_SCAN_JS
+                } else if self.tiktok_scan_phase == "identity" {
+                    TIKTOK_IDENTITY_JS
+                } else {
+                    TIKTOK_HOMEPAGE_SCAN_JS
                 };
-                let js = format!("setTimeout(function(){{ {} }}, 2200);", collector);
+                let js = if url.contains("ads-creation/dashboard") || self.multi_shop_step == "tiktok_ads" {
+                    format!(
+                        r#"setTimeout(function(){{
+                            function tryClickToday() {{
+                                var btns = document.querySelectorAll("button, li, span, div, [role='option'], [class*='preset'], [class*='quick'], [class*='date']");
+                                for (var i = 0; i < btns.length; i++) {{
+                                    var el = btns[i];
+                                    if (el.children.length > 2) continue;
+                                    var t = (el.innerText || "").trim().toLowerCase().replace(/\s+/g," ");
+                                    if (t === "hôm nay" || t === "today" || t === "\u4eca\u5929" || t === "h\u00f4m nay") {{
+                                        el.click();
+                                        return true;
+                                    }}
+                                }}
+                                return false;
+                            }}
+                            if (!tryClickToday()) {{
+                                var dp = document.querySelector("[class*='date-picker'], [class*='range-picker'], [class*='datePicker'], input[placeholder*='ngày'], input[value*='-']");
+                                if (dp) {{
+                                    dp.click();
+                                    setTimeout(tryClickToday, 400);
+                                }}
+                            }}
+                        }}, 1500);
+                        setTimeout(function(){{ {} }}, 4800);"#,
+                        TIKTOK_PASSIVE_SCAN_JS
+                    )
+                } else {
+                    format!("setTimeout(function(){{ {} }}, 2200);", collector)
+                };
                 let _ = tab.webview.evaluate_script(&js);
             }
         }
     }
 
+    #[allow(dead_code)]
     fn queue_discovered_shopee_shops(&mut self, selected_only: bool) -> usize {
         let Ok(discovery) = parse_json(&self.shopee_discovery_json) else { return 0; };
         if discovery.get("status").and_then(JsonVal::as_str) != Some("ok") || discovery.get("logged_in").and_then(JsonVal::as_bool) != Some(true) { return 0; }
@@ -4772,6 +7692,7 @@ impl TpBrowserApp {
         self.shopee_shop_scan_queue.len()
     }
 
+    #[allow(dead_code)]
     fn start_shopee_shop_sequence(&mut self) {
         if self.shopee_shop_scan_in_flight() {
             return;
@@ -4792,11 +7713,15 @@ impl TpBrowserApp {
             self.shopee_shop_scan_current = None;
             self.ecom_status_text = "Đã quét xong các Shop Shopee.".to_string();
             self.push_ecom_log(&self.ecom_status_text.clone());
+            self.log_ecom("SUCCESS", "SHOPEE", "Đã quét xong toàn bộ các Shop Shopee.");
+            self.sync_workspace_progress(true, 85, 100, 85, "Shopee: Đã xong tất cả shop con", "running");
             self.sync_workspace_view();
             return;
         };
         self.shopee_shop_scan_current = Some((shop_id.clone(), display_name.clone()));
         self.shopee_shop_scan_phase = "opening_shop".to_string();
+        self.log_ecom("INFO", "SHOPEE", &format!("Bắt đầu quét shop: {} ({})", display_name, shop_id));
+        self.sync_workspace_progress(true, 40, 100, 40, &format!("Shopee: Đang quét shop {}", display_name), "running");
         if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
             let js = format!("window.__tpShopTarget={{shop_id:{:?},display_name:{:?}}}; setTimeout(function(){{ {} }}, 700);", shop_id, display_name, SHOPEE_OPEN_SHOP_JS);
             let _ = tab.webview.evaluate_script(&js);
@@ -4825,7 +7750,7 @@ impl TpBrowserApp {
     }
 
     fn store_shopee_shop_orders(&mut self, data_json: &str) {
-        let Some((shop_id, _)) = self.shopee_shop_scan_current.clone() else { return; };
+        let Some((shop_id, display_name)) = self.shopee_shop_scan_current.clone() else { return; };
         let Ok(value) = parse_json(data_json) else { return; };
         let mut fields = match parse_json(&self.shopee_shop_orders_json) {
             Ok(JsonVal::Obj(existing)) => existing,
@@ -4835,17 +7760,45 @@ impl TpBrowserApp {
         else { fields.push((shop_id, value)); }
         self.shopee_shop_orders_json = JsonVal::Obj(fields).to_json();
         self.save_export_file("shopee_shop_orders_latest.json", &self.shopee_shop_orders_json);
+        self.log_ecom("SUCCESS", "SHOPEE", &format!("Đã cập nhật đơn hàng thành công cho shop: {}", display_name));
     }
 
     fn handle_shopee_shop_opening(&mut self, data_json: &str) {
         let status = parse_json(data_json).ok().and_then(|v| v.get("status").and_then(JsonVal::as_str).map(str::to_string)).unwrap_or_default();
-        let Some(tab_id) = self.shopee_shop_scan_tab_id else { return; };
+        let tab_id = self.shopee_shop_scan_tab_id.or(self.multi_shop_tab_id);
+        let Some(tab_id) = tab_id else { return; };
+        if status == "needs_login" || status == "captcha" {
+            self.log_ecom("WARN", "SHOPEE", &format!("Shopee yêu cầu {} khi mở shop, tạm dừng chờ người dùng xử lý.", status));
+            let s_id = self.shopee_shop_scan_current.as_ref().map(|(id, _)| id.clone()).unwrap_or_default();
+            self.execute(AppCmd::ScanNeedAuth {
+                reason: if status == "captcha" { "captcha".to_string() } else { "login".to_string() },
+                shop_id: s_id,
+            });
+            return;
+        }
         if status == "clicked" {
             self.shopee_shop_scan_phase = "shop_orders".to_string();
-            if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) { let _ = tab.webview.evaluate_script("setTimeout(function(){ window.location.href='https://banhang.shopee.vn/portal/sale/order'; }, 1400);"); }
+            if !self.multi_shop_queue.is_empty() {
+                self.multi_shop_step = "orders".to_string();
+            }
+            if let Some((_, display_name)) = &self.shopee_shop_scan_current {
+                self.log_ecom("INFO", "SHOPEE", &format!("Đã click chọn shop {}, đợi Shopee chuyển phiên rồi sang Đơn hàng...", display_name));
+            }
+            if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+                let _ = tab.webview.evaluate_script(
+                    "setTimeout(function(){ if (String(window.location.pathname || '').indexOf('/portal/sale/order') < 0) { window.location.href='https://banhang.shopee.vn/portal/sale/order'; } }, 3500);"
+                );
+            }
         } else {
-            self.shopee_shop_scan_phase = "returning_index".to_string();
-            if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) { let _ = tab.webview.load_url("https://banhang.shopee.vn/portal/shop"); }
+            let (s_id, disp) = self.shopee_shop_scan_current.clone().unwrap_or_default();
+            self.log_ecom("WARN", "SHOPEE", &format!(
+                "Không tìm thấy hoặc không click được shop {} ({}) trên /portal/shop — tạm dừng để tránh quét nhầm shop khác!",
+                disp, s_id
+            ));
+            self.execute(AppCmd::ScanNeedAuth {
+                reason: "shop_not_found".to_string(),
+                shop_id: s_id,
+            });
         }
     }
 
@@ -4855,6 +7808,7 @@ impl TpBrowserApp {
         self.add_tab("https://banhang.shopee.vn/portal/shop", false);
     }
 
+    #[allow(dead_code)]
     fn start_tiktok_sequence(&mut self) {
         let ads_url = "https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&mpa=1&type=product&shop_region=VN";
         let Some(tab_id) = self.ensure_ecom_worker("tiktok_seller", ads_url, "TikTok Seller") else { return; };
@@ -4875,26 +7829,83 @@ impl TpBrowserApp {
         self.trigger_worker_scan_by_id(tab_id, next);
     }
 
-    fn serialize_session_tab(url: &str, profile: &str, container_id: &str, workspace_id: &str, pinned: bool, tab_group_id: Option<u64>) -> String {
+    fn sync_tab_folders(&mut self) {
+        let active_group_ids: HashSet<u64> = self.tabs.iter().filter_map(|t| t.tab_group_id).collect();
+        self.tab_folders.retain(|f| active_group_ids.contains(&f.id));
+        for gid in active_group_ids {
+            if !self.tab_folders.iter().any(|f| f.id == gid) {
+                let ws_id = self
+                    .tabs
+                    .iter()
+                    .find(|t| t.tab_group_id == Some(gid))
+                    .map(|t| t.workspace_id.clone())
+                    .unwrap_or_else(|| self.active_workspace_id.clone());
+                self.tab_folders.push(TabFolder {
+                    id: gid,
+                    name: format!("Thư mục {}", gid),
+                    workspace_id: ws_id,
+                    collapsed: false,
+                });
+            }
+        }
+    }
+
+    fn serialize_session_tab(
+        url: &str,
+        profile: &str,
+        container_id: &str,
+        workspace_id: &str,
+        pinned: bool,
+        tab_group_id: Option<u64>,
+        essential: bool,
+        pinned_origin_url: Option<&str>,
+    ) -> String {
         format!(
-            "{{\"url\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"workspace_id\":\"{}\",\"pinned\":{},\"tab_group_id\":{}}}",
+            "{{\"url\":\"{}\",\"profile\":\"{}\",\"container_id\":\"{}\",\"workspace_id\":\"{}\",\"pinned\":{},\"tab_group_id\":{},\"essential\":{},\"pinned_origin_url\":\"{}\"}}",
             Self::escape_json(url),
             Self::escape_json(profile),
             Self::escape_json(container_id),
             Self::escape_json(workspace_id),
             pinned,
-            tab_group_id.unwrap_or(0)
+            tab_group_id.unwrap_or(0),
+            essential,
+            Self::escape_json(pinned_origin_url.unwrap_or(""))
         )
     }
 
+    fn mark_session_dirty(&self) {
+        if self.persist_session && self.session_dirty_since.get().is_none() {
+            self.session_dirty_since.set(Some(Instant::now()));
+        }
+    }
+
+    fn session_due(&self) -> bool {
+        self.session_dirty_since
+            .get()
+            .is_some_and(|t| t.elapsed() >= std::time::Duration::from_millis(450))
+    }
+
+    fn session_deadline(&self) -> Option<Instant> {
+        self.session_dirty_since
+            .get()
+            .map(|t| t + std::time::Duration::from_millis(450))
+    }
+
     fn save_session(&self) {
+        // Multi-window persistence is deliberately out of scope for this
+        // foundation. Secondary runtimes must not overwrite the primary's
+        // flat single-window session.json.
+        if !self.persist_session {
+            return;
+        }
+        self.session_dirty_since.set(None);
         let t0 = Instant::now();
         let session_path = self.exe_dir.join("session.json");
         let mut tabs_arr = Vec::new();
         let mut saved_active_idx = 0usize;
         let mut user_idx = 0usize;
         for (idx, t) in self.tabs.iter().enumerate() {
-            if t.worker_kind.is_some() {
+            if t.worker_kind.is_some() || t.private {
                 continue;
             }
             if idx == self.active_idx {
@@ -4907,6 +7918,8 @@ impl TpBrowserApp {
                 &t.workspace_id,
                 t.pinned,
                 t.tab_group_id,
+                t.essential,
+                t.pinned_origin_url.as_deref(),
             ));
             user_idx += 1;
         }
@@ -4918,21 +7931,36 @@ impl TpBrowserApp {
                 &self.active_workspace_id,
                 false,
                 None,
+                false,
+                None,
             ));
         }
+        let folders_json = self
+            .tab_folders
+            .iter()
+            .map(|f| {
+                format!(
+                    "{{\"id\":{},\"name\":\"{}\",\"workspace_id\":\"{}\",\"collapsed\":{}}}",
+                    f.id,
+                    Self::escape_json(&f.name),
+                    Self::escape_json(&f.workspace_id),
+                    f.collapsed
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
         let body = format!(
-            "{{\n  \"view_mode\": \"{}\",\n  \"active_idx\": {},\n  \"active_workspace_id\": \"{}\",\n  \"tabs\": [\n    {}\n  ]\n}}",
+            "{{\n  \"view_mode\": \"{}\",\n  \"active_idx\": {},\n  \"active_workspace_id\": \"{}\",\n  \"tabs\": [\n    {}\n  ],\n  \"tab_folders\": [{}]\n}}",
             self.view_mode.as_str(),
             saved_active_idx,
             Self::escape_json(&self.active_workspace_id),
-            tabs_arr.join(",\n    ")
+            tabs_arr.join(",\n    "),
+            folders_json
         );
-        std::thread::spawn(move || {
-            let _ = fs::write(session_path, body);
-        });
+        let _ = fs::write(session_path, body);
         let dur = t0.elapsed().as_secs_f64() * 1000.0;
         if dur > 5.0 {
-            Self::log_perf("save_session (spawn thread)", dur);
+            Self::log_perf("save_session (serialized write)", dur);
         }
     }
 
@@ -4978,6 +8006,13 @@ impl TpBrowserApp {
                                     workspace_id.to_string()
                                 } else { DEFAULT_WORKSPACE_ID.to_string() };
                                 tab.pinned = item.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false);
+                                tab.essential = item.get("essential").and_then(|v| v.as_bool()).unwrap_or(false);
+                                tab.pinned_origin_url = item
+                                    .get("pinned_origin_url")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.is_empty())
+                                    .map(|s| s.to_string())
+                                    .or_else(|| if tab.pinned || tab.essential { Some(tab.url.clone()) } else { None });
                                 tab.tab_group_id = item.get("tab_group_id")
                                     .and_then(JsonVal::as_u64)
                                     .filter(|id| *id > 0 && *id <= 9_007_199_254_740_991);
@@ -4985,6 +8020,24 @@ impl TpBrowserApp {
                                     self.next_tab_group_id = self.next_tab_group_id.max(group_id.saturating_add(1));
                                 }
                             }
+                        }
+                    }
+                }
+                if let Some(folders_arr) = val.get("tab_folders").and_then(|v| v.as_arr()) {
+                    for item in folders_arr {
+                        if let (Some(id), Some(name), Some(ws_id)) = (
+                            item.get("id").and_then(JsonVal::as_u64),
+                            item.get("name").and_then(|v| v.as_str()),
+                            item.get("workspace_id").and_then(|v| v.as_str()),
+                        ) {
+                            let collapsed = item.get("collapsed").and_then(|v| v.as_bool()).unwrap_or(false);
+                            self.tab_folders.push(TabFolder {
+                                id,
+                                name: name.to_string(),
+                                workspace_id: ws_id.to_string(),
+                                collapsed,
+                            });
+                            self.next_tab_group_id = self.next_tab_group_id.max(id.saturating_add(1));
                         }
                     }
                 }
@@ -5027,6 +8080,140 @@ impl TpBrowserApp {
         self.relayout();
         self.sync_all_ui();
         self.save_session();
+    }
+
+    fn shortcut_from_key_input(key: KeyCode, modifiers: ModifiersState) -> Option<String> {
+        let debug = format!("{:?}", key);
+        let primary = if let Some(letter) = debug.strip_prefix("Key") {
+            (letter.len() == 1 && letter.as_bytes()[0].is_ascii_alphabetic()).then(|| letter.to_ascii_uppercase())
+        } else if let Some(digit) = debug.strip_prefix("Digit") {
+            (digit.len() == 1 && digit.as_bytes()[0].is_ascii_digit()).then(|| digit.to_string())
+        } else {
+            match debug.as_str() {
+                "Comma" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" => Some(debug),
+                _ => None,
+            }
+        }?;
+        let mut parts = Vec::new();
+        if modifiers.control_key() { parts.push("Ctrl"); }
+        if modifiers.alt_key() { parts.push("Alt"); }
+        if modifiers.shift_key() { parts.push("Shift"); }
+        if parts.is_empty() { return None; }
+        parts.push(&primary);
+        Some(parts.join("+"))
+    }
+
+    fn default_custom_shortcuts() -> BTreeMap<String, String> {
+        CUSTOM_SHORTCUT_DEFAULTS.iter().map(|(id, shortcut)| ((*id).to_string(), (*shortcut).to_string())).collect()
+    }
+
+    fn custom_shortcuts_json(&self) -> String {
+        let entries = self.custom_shortcuts.iter()
+            .map(|(id, shortcut)| format!("\"{}\":\"{}\"", Self::escape_json(id), Self::escape_json(shortcut)))
+            .collect::<Vec<_>>().join(",");
+        format!("{{{}}}", entries)
+    }
+
+    fn normalize_custom_shortcut(raw: &str) -> Option<String> {
+        let mut ctrl = false;
+        let mut alt = false;
+        let mut shift = false;
+        let mut primary = None;
+        for part in raw.split('+').map(str::trim).filter(|part| !part.is_empty()) {
+            match part.to_ascii_lowercase().as_str() {
+                "ctrl" | "control" => ctrl = true,
+                "alt" => alt = true,
+                "shift" => shift = true,
+                key if primary.is_none() => primary = Some(match key {
+                    "comma" | "," => "Comma".to_string(),
+                    "arrowleft" | "left" => "ArrowLeft".to_string(),
+                    "arrowright" | "right" => "ArrowRight".to_string(),
+                    "arrowup" | "up" => "ArrowUp".to_string(),
+                    "arrowdown" | "down" => "ArrowDown".to_string(),
+                    value if value.len() == 1 && value.as_bytes()[0].is_ascii_alphanumeric() => value.to_ascii_uppercase(),
+                    _ => return None,
+                }),
+                _ => return None,
+            }
+        }
+        let key = primary?;
+        if !ctrl && !alt && !shift { return None; }
+        let mut parts = Vec::new();
+        if ctrl { parts.push("Ctrl"); }
+        if alt { parts.push("Alt"); }
+        if shift { parts.push("Shift"); }
+        parts.push(&key);
+        Some(parts.join("+"))
+    }
+
+    fn reserved_browser_shortcut(shortcut: &str) -> bool {
+        matches!(shortcut,
+            "Ctrl+T" | "Ctrl+W" | "Ctrl+F4" | "Ctrl+Shift+T" | "Ctrl+Tab" | "Ctrl+Shift+Tab" |
+            "Ctrl+R" | "Ctrl+Shift+R" | "Ctrl+L" | "Ctrl+D" | "Ctrl+F" | "Ctrl+H" | "Ctrl+P" |
+            "Ctrl+Equal" | "Ctrl+Minus" | "Ctrl+0" | "Alt+ArrowLeft" | "Alt+ArrowRight" | "Alt+D")
+    }
+
+    fn shortcut_command_for(&self, shortcut: &str) -> Option<CustomShortcutCommand> {
+        Self::shortcut_command_for_map(&self.custom_shortcuts, shortcut)
+    }
+
+    fn shortcut_command_for_map(shortcuts: &BTreeMap<String, String>, shortcut: &str) -> Option<CustomShortcutCommand> {
+        let mut matches = Vec::new();
+        for (id, value) in shortcuts {
+            let Some(value) = Self::normalize_custom_shortcut(value) else { continue; };
+            if Self::reserved_browser_shortcut(&value) || value != shortcut { continue; }
+            let command = match id.as_str() {
+                "compact_mode" => CustomShortcutCommand::CompactMode,
+                "command_bar" => CustomShortcutCommand::CommandBar,
+                "settings" => CustomShortcutCommand::Settings,
+                "glance" => CustomShortcutCommand::Glance,
+                "split_view" => CustomShortcutCommand::SplitView,
+                "prev_workspace" => CustomShortcutCommand::PrevWorkspace,
+                "next_workspace" => CustomShortcutCommand::NextWorkspace,
+                "copy_url" => CustomShortcutCommand::CopyUrl,
+                "ai_panel" => CustomShortcutCommand::AiPanel,
+                "sidebar_collapse" => CustomShortcutCommand::SidebarCollapse,
+                _ => continue,
+            };
+            matches.push(command);
+        }
+        if matches.len() == 1 { matches.pop() } else { None }
+    }
+
+    fn run_custom_shortcut(&mut self, command: CustomShortcutCommand) {
+        match command {
+            CustomShortcutCommand::CompactMode => self.execute(AppCmd::ToggleCompactMode),
+            CustomShortcutCommand::CommandBar => self.execute(AppCmd::OpenCommandBar),
+            CustomShortcutCommand::Settings => self.execute(AppCmd::ToggleSettingsModal),
+            CustomShortcutCommand::Glance => {
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    self.execute(AppCmd::OpenGlance { url: tab.url.clone(), title: tab.title.clone() });
+                }
+            }
+            CustomShortcutCommand::SplitView => self.execute(AppCmd::CycleViewMode),
+            CustomShortcutCommand::PrevWorkspace => self.execute(AppCmd::PrevWorkspace),
+            CustomShortcutCommand::NextWorkspace => self.execute(AppCmd::NextWorkspace),
+            CustomShortcutCommand::CopyUrl => self.execute(AppCmd::CopyActiveUrl),
+            CustomShortcutCommand::AiPanel => self.execute(AppCmd::ToggleChatChannel(ChatChannel::Ai)),
+            CustomShortcutCommand::SidebarCollapse => self.execute(AppCmd::ToggleSidebarCollapse),
+        }
+    }
+
+    fn parse_custom_shortcuts(value: &JsonVal) -> BTreeMap<String, String> {
+        let mut shortcuts = Self::default_custom_shortcuts();
+        let JsonVal::Obj(items) = value else { return shortcuts; };
+        for (id, raw) in items {
+            if !CUSTOM_SHORTCUT_DEFAULTS.iter().any(|(allowed, _)| *allowed == id) { continue; }
+            let Some(raw) = raw.as_str() else { continue; };
+            if raw.trim().is_empty() {
+                shortcuts.insert(id.clone(), String::new());
+                continue;
+            }
+            let Some(value) = Self::normalize_custom_shortcut(raw) else { continue; };
+            if Self::reserved_browser_shortcut(&value) { continue; }
+            shortcuts.insert(id.clone(), value);
+        }
+        shortcuts
     }
 
     fn escape_json(s: &str) -> String {
@@ -5135,7 +8322,7 @@ impl TpBrowserApp {
         (1..=9_007_199_254_740_991).contains(&tab_id)
     }
 
-    fn handle_ipc(proxy: &EventLoopProxy<AppCmd>, body: &str, sender_tab_id: Option<u64>) {
+    fn handle_ipc(proxy: &WindowProxy, body: &str, sender_tab_id: Option<u64>) {
         if body.contains("\"cmd\":\"mcp_callback\"") {
             if let Ok(val) = parse_json(body) {
                 if val.get("cmd").and_then(|v| v.as_str()) == Some("mcp_callback") {
@@ -5161,7 +8348,38 @@ impl TpBrowserApp {
             }
         }
         let tab_id = Self::extract_u64(body, "\"tab_id\":").unwrap_or(0);
-        if body.contains("\"cmd\":\"toggle_bookmarks_bar\"") {
+        if body.contains("\"cmd\":\"new_window\"") {
+            proxy.send_event(AppCmd::NewWindow);
+        } else if body.contains("\"cmd\":\"detach_tab_to_new_window\"") {
+            if let Some(tab_id) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let intent = if parse_json(body).ok().and_then(|value| value.get("intent").and_then(JsonVal::as_str).map(str::to_owned)).as_deref() == Some("drag_out") {
+                    TabDetachIntent::DragOut
+                } else {
+                    // The menu never supplies coordinates, so its explicit request
+                    // remains valid even when the pointer is over source content.
+                    TabDetachIntent::ContextMenu
+                };
+                // Screen coordinates from the WebView are advisory only: browser
+                // drag events can be DPI-transformed. Prefer native physical pixels.
+                #[cfg(target_os = "windows")]
+                let native_cursor = unsafe {
+                    let mut point = WinPoint { x: 0, y: 0 };
+                    (GetCursorPos(&mut point) != 0).then_some(point)
+                };
+                #[cfg(not(target_os = "windows"))]
+                let native_cursor = None;
+                let js_cursor = parse_json(body).ok().and_then(|value| {
+                    let x = value.get("screen_x")?.as_i64()?.try_into().ok()?;
+                    let y = value.get("screen_y")?.as_i64()?.try_into().ok()?;
+                    Some(WinPoint { x, y })
+                });
+                proxy.send_event(AppCmd::DetachTabToNewWindow {
+                    tab_id,
+                    intent,
+                    fallback_cursor: native_cursor.or(js_cursor),
+                });
+            }
+        } else if body.contains("\"cmd\":\"toggle_bookmarks_bar\"") {
             let _ = proxy.send_event(AppCmd::ToggleBookmarksBar);
         } else if body.contains("\"cmd\":\"toggle_tab_pinned\"") {
             let _ = proxy.send_event(AppCmd::ToggleTabPinned);
@@ -5228,6 +8446,151 @@ impl TpBrowserApp {
             if let Some(text) = Self::extract_field_str(body, "text") {
                 let _ = proxy.send_event(AppCmd::CopyToClipboard(text));
             }
+        } else if body.contains("\"cmd\":\"unload_tab\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let _ = proxy.send_event(AppCmd::UnloadTab(tid));
+            }
+        } else if body.contains("\"cmd\":\"glance_open_in_split\"") {
+            let _ = proxy.send_event(AppCmd::GlanceOpenInSplit);
+        } else if body.contains("\"cmd\":\"glance_nav_back\"") {
+            let _ = proxy.send_event(AppCmd::GlanceNavBack);
+        } else if body.contains("\"cmd\":\"glance_nav_forward\"") {
+            let _ = proxy.send_event(AppCmd::GlanceNavForward);
+        } else if body.contains("\"cmd\":\"glance_reload\"") {
+            let _ = proxy.send_event(AppCmd::GlanceReload);
+        } else if body.contains("\"cmd\":\"glance_copy_url\"") {
+            let _ = proxy.send_event(AppCmd::GlanceCopyUrl);
+        } else if body.contains("\"cmd\":\"tab_media_state\"") {
+            if let Ok(val) = parse_json(body) {
+                let playing = val.get("playing").and_then(JsonVal::as_bool).unwrap_or(false);
+                let muted = val.get("muted").and_then(JsonVal::as_bool).unwrap_or(false);
+                let title = val.get("title").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                let artist = val.get("artist").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                let bound_tab_id = sender_tab_id.unwrap_or(0);
+                if Self::valid_tab_id(bound_tab_id) {
+                    let _ = proxy.send_event(AppCmd::UpdateTabMedia { tab_id: bound_tab_id, playing, muted, title, artist });
+                }
+            }
+        } else if body.contains("\"cmd\":\"toggle_tab_mute\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let _ = proxy.send_event(AppCmd::ToggleTabMute(tid));
+            }
+        } else if body.contains("\"cmd\":\"media_control\"") {
+            if let Ok(val) = parse_json(body) {
+                if let (Some(tab_id), Some(action)) = (
+                    val.get("tab_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)),
+                    val.get("action").and_then(JsonVal::as_str),
+                ) {
+                    let _ = proxy.send_event(AppCmd::MediaControl { tab_id, action: action.to_string() });
+                }
+            }
+        } else if body.contains("\"cmd\":\"open_command_bar\"") {
+            let _ = proxy.send_event(AppCmd::OpenCommandBar);
+        } else if body.contains("\"cmd\":\"close_command_bar\"") {
+            let _ = proxy.send_event(AppCmd::CloseCommandBar);
+        } else if body.contains("\"cmd\":\"copy_active_url\"") {
+            let _ = proxy.send_event(AppCmd::CopyActiveUrl);
+        } else if body.contains("\"cmd\":\"duplicate_tab\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let _ = proxy.send_event(AppCmd::DuplicateTab(tid));
+            }
+        } else if body.contains("\"cmd\":\"pin_tab_by_id\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let _ = proxy.send_event(AppCmd::PinTabById(tid));
+            }
+        } else if body.contains("\"cmd\":\"close_other_tabs\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let _ = proxy.send_event(AppCmd::CloseOtherTabs(tid));
+            }
+        } else if body.contains("\"cmd\":\"move_tab_to_workspace\"") {
+            if let Ok(val) = parse_json(body) {
+                if let (Some(tab_id), Some(ws_id)) = (
+                    val.get("tab_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)),
+                    val.get("workspace_id").and_then(JsonVal::as_str),
+                ) {
+                    let _ = proxy.send_event(AppCmd::MoveTabToWorkspace {
+                        tab_id,
+                        workspace_id: ws_id.to_string(),
+                    });
+                }
+            }
+        } else if body.contains("\"cmd\":\"reorder_tab\"") {
+            if let Ok(val) = parse_json(body) {
+                if let (Some(source_id), Some(target_id)) = (
+                    val.get("source_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)),
+                    val.get("target_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)),
+                ) {
+                    let after = val.get("after").and_then(JsonVal::as_bool).unwrap_or(false);
+                    let _ = proxy.send_event(AppCmd::ReorderTab { source_id, target_id, after });
+                }
+            }
+        } else if body.contains("\"cmd\":\"open_in_split\"") {
+            if let Some(url) = Self::extract_field_str(body, "url") {
+                if !url.trim().is_empty() {
+                    let _ = proxy.send_event(AppCmd::OpenInSplit(url));
+                }
+            }
+        } else if body.contains("\"cmd\":\"adjust_split_ratio\"") {
+            if let Ok(val) = parse_json(body) {
+                if let Some(JsonVal::Num(delta)) = val.get("delta") {
+                    let _ = proxy.send_event(AppCmd::AdjustSplitRatio(*delta as f32));
+                }
+            }
+        } else if body.contains("\"cmd\":\"reset_split_ratio\"") {
+            let _ = proxy.send_event(AppCmd::ResetSplitRatio);
+        } else if body.contains("\"cmd\":\"toggle_compact_mode\"") {
+            let _ = proxy.send_event(AppCmd::ToggleCompactMode);
+        } else if body.contains("\"cmd\":\"set_compact_sidebar_hover\"") {
+            let hover = body.contains("\"hover\":true");
+            let _ = proxy.send_event(AppCmd::SetCompactSidebarHover(hover));
+        } else if body.contains("\"cmd\":\"toggle_tab_essential\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let _ = proxy.send_event(AppCmd::ToggleTabEssential(tid));
+            }
+        } else if body.contains("\"cmd\":\"reset_pinned_tab\"") {
+            if let Some(tid) = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id)) {
+                let _ = proxy.send_event(AppCmd::ResetPinnedTab(tid));
+            }
+        } else if body.contains("\"cmd\":\"toggle_tab_folder_collapsed\"") {
+            if let Some(fid) = Self::extract_u64(body, "\"folder_id\":") {
+                let _ = proxy.send_event(AppCmd::ToggleTabFolderCollapsed(fid));
+            }
+        } else if body.contains("\"cmd\":\"rename_tab_folder\"") {
+            if let Ok(val) = parse_json(body) {
+                if let (Some(folder_id), Some(name)) = (
+                    val.get("folder_id").and_then(JsonVal::as_u64),
+                    val.get("name").and_then(JsonVal::as_str),
+                ) {
+                    let _ = proxy.send_event(AppCmd::RenameTabFolder { folder_id, name: name.to_string() });
+                }
+            }
+        } else if body.contains("\"cmd\":\"add_tab_to_folder\"") {
+            if let Ok(val) = parse_json(body) {
+                if let (Some(tab_id), Some(folder_id)) = (
+                    val.get("tab_id").and_then(JsonVal::as_u64).filter(|id| Self::valid_tab_id(*id)),
+                    val.get("folder_id").and_then(JsonVal::as_u64),
+                ) {
+                    let _ = proxy.send_event(AppCmd::AddTabToFolder { tab_id, folder_id });
+                }
+            }
+        } else if body.contains("\"cmd\":\"update_workspace_style\"") {
+            if let Ok(val) = parse_json(body) {
+                if let Some(id) = val.get("id").and_then(JsonVal::as_str) {
+                    let icon = val.get("icon").and_then(JsonVal::as_str).unwrap_or("✦").to_string();
+                    let accent = val.get("accent").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                    let container_id = val.get("container_id").and_then(JsonVal::as_str).unwrap_or("default").to_string();
+                    let _ = proxy.send_event(AppCmd::UpdateWorkspaceStyle {
+                        id: id.to_string(),
+                        icon,
+                        accent,
+                        container_id,
+                    });
+                }
+            }
+        } else if body.contains("\"cmd\":\"next_workspace\"") {
+            let _ = proxy.send_event(AppCmd::NextWorkspace);
+        } else if body.contains("\"cmd\":\"prev_workspace\"") {
+            let _ = proxy.send_event(AppCmd::PrevWorkspace);
         } else if body.contains("\"cmd\":\"toggle_ai_mode\"") {
             let _ = proxy.send_event(AppCmd::ToggleAiMode);
         } else if body.contains("\"cmd\":\"set_ai_mode\"") {
@@ -5347,6 +8710,15 @@ impl TpBrowserApp {
             let isolated = body.contains("\"isolated\":true");
             let container_id = Self::extract_string(body, "\"container_id\":\"");
             let _ = proxy.send_event(AppCmd::NewTab { url, isolated, container_id });
+        } else if body.contains("\"cmd\":\"new_private_tab\"") {
+            let url = Self::extract_string(body, "\"url\":\"").unwrap_or_else(|| "tp://newtab".to_string());
+            let _ = proxy.send_event(AppCmd::NewPrivateTab(url));
+        } else if body.contains("\"cmd\":\"print_active\"") {
+            let _ = proxy.send_event(AppCmd::PrintActive);
+        } else if body.contains("\"cmd\":\"open_devtools\"") {
+            let _ = proxy.send_event(AppCmd::OpenDevTools);
+        } else if body.contains("\"cmd\":\"reader_mode\"") {
+            let _ = proxy.send_event(AppCmd::ToggleReaderMode);
         } else if body.contains("\"cmd\":\"focus_visible_index\"") {
             if let Some(idx) = Self::extract_u64(body, "\"index\":") {
                 let _ = proxy.send_event(AppCmd::FocusVisibleIndex(idx as usize));
@@ -5362,7 +8734,7 @@ impl TpBrowserApp {
         } else if body.contains("\"cmd\":\"prev_tab\"") {
             let _ = proxy.send_event(AppCmd::PrevTab);
         } else if body.contains("\"cmd\":\"focus_this_tab\"") {
-            let _ = proxy.send_event(AppCmd::FocusTabById(tab_id));
+            let _ = proxy.send_event(AppCmd::FocusContentTab(tab_id));
         } else if body.contains("\"cmd\":\"focus_tab_by_id\"") {
             if let Some(tid) = Self::extract_u64(body, "\"tab_id\":") {
                 let _ = proxy.send_event(AppCmd::FocusTabById(tid));
@@ -5403,6 +8775,8 @@ impl TpBrowserApp {
             let _ = proxy.send_event(AppCmd::GetHistory);
         } else if body.contains("\"cmd\":\"clear_history\"") {
             let _ = proxy.send_event(AppCmd::ClearHistory);
+        } else if body.contains("\"cmd\":\"clear_site_data\"") {
+            let _ = proxy.send_event(AppCmd::ClearSiteData);
         } else if body.contains("\"cmd\":\"set_active_workspace\"") {
             if let Ok(val) = parse_json(body) {
                 if let Some(id) = val.get("workspace_id").and_then(|v| v.as_str()) {
@@ -5430,48 +8804,11 @@ impl TpBrowserApp {
                     let _ = proxy.send_event(AppCmd::DeleteWorkspace(id.to_string()));
                 }
             }
-        } else if body.contains("\"cmd\":\"open_workspace\"") {
-            let _ = proxy.send_event(AppCmd::OpenWorkspace);
-        } else if body.contains("\"cmd\":\"discover_shopee_shops\"") {
-            if let Ok(tab_id) = parse_workspace_discovery_tab_id(body) {
-                let _ = proxy.send_event(AppCmd::DiscoverShopeeShops { tab_id });
-            } else {
-                let _ = proxy.send_event(AppCmd::ShopeeDiscoveryUnavailable);
+
+        } else if body.contains("\"cmd\":\"copy_report\"") {
+            if let Some(text) = Self::extract_field_str(body, "text") {
+                let _ = proxy.send_event(AppCmd::CopyToClipboard(text));
             }
-        } else if body.contains("\"cmd\":\"set_shopee_shop_selection\"") {
-            if let Ok(val) = parse_json(body) {
-                let platform = val.get("platform").and_then(JsonVal::as_str).unwrap_or("");
-                let shop_id = val.get("shop_id").and_then(JsonVal::as_str).unwrap_or("");
-                if let Some(selected) = val.get("selected").and_then(JsonVal::as_bool) {
-                    if valid_shop_selection(platform, shop_id) {
-                        let _ = proxy.send_event(AppCmd::SetShopeeShopSelection {
-                            platform: platform.to_string(),
-                            shop_id: shop_id.to_string(),
-                            selected,
-                        });
-                    }
-                }
-            }
-        } else if body.contains("\"cmd\":\"open_shopee_shop\"") {
-            if let Some(shop_id) = Self::extract_string(body, "\"shop_id\":\"") {
-                let _ = proxy.send_event(AppCmd::OpenShopeeShop(shop_id));
-            }
-        } else if body.contains("\"cmd\":\"run_ecom_scan\"") {
-            let scope = Self::extract_field_str(body, "scope").unwrap_or_else(|| "all".to_string());
-            let _ = proxy.send_event(AppCmd::RunEcomScan { scope });
-        } else if body.contains("\"cmd\":\"set_ecom_auto_scan\"") {
-            let enabled = body.contains("\"enabled\":true");
-            let _ = proxy.send_event(AppCmd::SetEcomAutoScan(enabled));
-        } else if body.contains("\"cmd\":\"update_platform_data\"") {
-            if let Ok(val) = parse_json(body) {
-                let platform = val.get("platform").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let data_json = val.get("data_json").and_then(|v| v.as_str()).unwrap_or("{}").to_string();
-                if !platform.is_empty() {
-                    let _ = proxy.send_event(AppCmd::UpdatePlatformData { platform, data_json });
-                }
-            }
-        } else if body.contains("\"cmd\":\"export_shopee_csv\"") {
-            let _ = proxy.send_event(AppCmd::ExportShopeeCsv);
         } else if body.contains("\"cmd\":\"reopen_closed_tab\"") {
             let _ = proxy.send_event(AppCmd::ReopenClosedTab);
         } else if body.contains("\"cmd\":\"zoom_step\"") {
@@ -5499,7 +8836,15 @@ impl TpBrowserApp {
         } else if body.contains("\"cmd\":\"bookmark_active\"") {
             let _ = proxy.send_event(AppCmd::BookmarkActive);
         } else if body.contains("\"cmd\":\"save_bookmarks\"") {
-            if let Some(bm) = Self::extract_string(body, "\"bookmarks_json\":\"") {
+            if let Ok(val) = parse_json(body) {
+                if let Some(bm_val) = val.get("bookmarks_json") {
+                    if let Some(bm_str) = bm_val.as_str() {
+                        let _ = proxy.send_event(AppCmd::SaveBookmarks(bm_str.to_string()));
+                    } else if matches!(bm_val, JsonVal::Arr(_)) {
+                        let _ = proxy.send_event(AppCmd::SaveBookmarks(bm_val.to_json()));
+                    }
+                }
+            } else if let Some(bm) = Self::extract_string(body, "\"bookmarks_json\":\"") {
                 let _ = proxy.send_event(AppCmd::SaveBookmarks(bm));
             }
         } else if body.contains("\"cmd\":\"save_ai_config\"") {
@@ -5618,6 +8963,99 @@ impl TpBrowserApp {
                 status_text,
                 last_reply,
             });
+        } else if body.contains("\"cmd\":\"open_titlebar_popover\"") {
+            let _ = proxy.send_event(AppCmd::OpenTitlebarPopover);
+        } else if body.contains("\"cmd\":\"close_titlebar_popover\"") {
+            let _ = proxy.send_event(AppCmd::CloseTitlebarPopover);
+        } else if body.contains("\"cmd\":\"translate_req\"") {
+            if let Ok(val) = parse_json(body) {
+                let req_id = val.get("req_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                let target_lang = val.get("target_lang").and_then(|v| v.as_str()).unwrap_or("vi").to_string();
+                let texts: Vec<String> = val.get("texts").and_then(|v| v.as_arr()).map(|arr| {
+                    arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()
+                }).unwrap_or_default();
+                let _ = proxy.send_event(AppCmd::TranslateReq {
+                    tab_id: sender_tab_id.unwrap_or(0),
+                    req_id,
+                    target_lang,
+                    texts,
+                });
+            }
+        } else if body.contains("\"cmd\":\"translate_res\"") {
+            if let Ok(val) = parse_json(body) {
+                let tab_id = val.get("tab_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                let req_id = val.get("req_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                let translations: Vec<String> = val.get("translations").and_then(|v| v.as_arr()).map(|arr| {
+                    arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()
+                }).unwrap_or_default();
+                let _ = proxy.send_event(AppCmd::TranslateRes {
+                    tab_id,
+                    req_id,
+                    translations,
+                });
+            }
+        } else if body.contains("\"cmd\":\"save_domain_boost\"") {
+            if let Ok(val) = parse_json(body) {
+                let domain = val.get("domain").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                let css = val.get("css").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                let enabled = val.get("enabled").and_then(JsonVal::as_bool).unwrap_or(true);
+                let zap_selectors: Vec<String> = val
+                    .get("zap_selectors")
+                    .and_then(JsonVal::as_arr)
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|x| x.as_str().map(ToString::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let _ = proxy.send_event(AppCmd::SaveDomainBoost {
+                    domain,
+                    css,
+                    zap_selectors,
+                    enabled,
+                });
+            }
+        } else if body.contains("\"cmd\":\"reset_domain_boost\"") {
+            if let Ok(val) = parse_json(body) {
+                let domain = val.get("domain").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                let _ = proxy.send_event(AppCmd::ResetDomainBoost(domain));
+            }
+        } else if body.contains("\"cmd\":\"open_boosts_panel\"") {
+            let _ = proxy.send_event(AppCmd::OpenBoostsPanel);
+        } else if body.contains("\"cmd\":\"start_zap_mode\"") {
+            let _ = proxy.send_event(AppCmd::StartZapMode);
+        } else if body.contains("\"cmd\":\"open_downloaded_file\"") {
+            if let Ok(val) = parse_json(body) {
+                let path = val.get("path").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                let _ = proxy.send_event(AppCmd::OpenDownloadedFile(path));
+            }
+        } else if body.contains("\"cmd\":\"open_download_folder\"") {
+            if let Ok(val) = parse_json(body) {
+                let path = val.get("path").and_then(JsonVal::as_str).unwrap_or("").to_string();
+                let _ = proxy.send_event(AppCmd::OpenDownloadFolder(path));
+            }
+        } else if body.contains("\"cmd\":\"recover_windows\"") {
+            let _ = proxy.send_event(AppCmd::RecoverWindows);
+        } else if body.contains("\"cmd\":\"dismiss_window_recovery\"") {
+            let _ = proxy.send_event(AppCmd::DismissWindowRecovery);
+        } else if body.contains("\"cmd\":\"sync_window_geometry\"") {
+            let _ = proxy.send_event(AppCmd::SyncWindowGeometry);
+        } else if body.contains("\"cmd\":\"step_mru_tab\"") {
+            let delta = parse_json(body)
+                .ok()
+                .and_then(|v| v.get("delta").and_then(JsonVal::as_i64))
+                .map(|n| if n < 0 { -1 } else { 1 })
+                .unwrap_or(1);
+            let _ = proxy.send_event(AppCmd::StepMruTab(delta));
+        } else if body.contains("\"cmd\":\"commit_mru_tab\"") {
+            let tid = Self::extract_u64(body, "\"tab_id\":").filter(|id| Self::valid_tab_id(*id));
+            let _ = proxy.send_event(AppCmd::CommitMruTab(tid));
+        } else if body.contains("\"cmd\":\"cancel_mru_tab\"") {
+            let _ = proxy.send_event(AppCmd::CancelMruTab);
+        } else if body.contains("\"cmd\":\"open_extension\"") {
+            let id = Self::extract_field_str(body, "id").unwrap_or_else(|| "ublock".to_string());
+            let page = Self::extract_field_str(body, "page").filter(|s| !s.trim().is_empty());
+            let _ = proxy.send_event(AppCmd::OpenExtensionPopup { id, page });
         }
     }
 
@@ -5640,13 +9078,28 @@ impl TpBrowserApp {
                 if let Some(tab) = self.tabs.get_mut(self.active_idx) {
                     if tab.worker_kind.is_none() {
                         tab.pinned = !tab.pinned;
+                        if tab.pinned {
+                            tab.essential = false;
+                            tab.pinned_origin_url = Some(tab.url.clone());
+                        }
                         self.sync_all_ui();
                         self.save_session();
                     }
                 }
             }
             AppCmd::OpenCommandBar => {
-                let _ = self.titlebar_shell.evaluate_script(
+                if self.mru_hud_open {
+                    self.mru_hud_open = false;
+                    self.mru_cycle_ids = None;
+                    let _ = self.tab_shell.evaluate_script(
+                        "if (window.__tpCloseMruSwitcher) window.__tpCloseMruSwitcher();",
+                    );
+                }
+                self.command_bar_open = true;
+                self.relayout();
+                self.sync_all_ui();
+                let _ = self.tab_shell.focus();
+                let _ = self.tab_shell.evaluate_script(
                     "if (window.__tpOpenCommandBar) window.__tpOpenCommandBar();",
                 );
             }
@@ -5659,6 +9112,9 @@ impl TpBrowserApp {
             }
             AppCmd::ToggleTabOrientation => {
                 self.tab_orientation = self.tab_orientation.toggle();
+                self.command_bar_open = false;
+                self.mru_hud_open = false;
+                self.mru_cycle_ids = None;
                 self.relayout();
                 self.sync_all_ui();
                 self.save_config();
@@ -5708,6 +9164,8 @@ impl TpBrowserApp {
                     self.should_exit = true;
                 }
             }
+            // Window creation and detach are consumed by the managed registry in the event loop.
+            AppCmd::NewWindow | AppCmd::DetachTabToNewWindow { .. } => {}
             AppCmd::QuitApp => {
                 self.save_config();
                 self.save_skills();
@@ -5855,6 +9313,7 @@ impl TpBrowserApp {
                         }
                     }
                     self.selected_tab_ids = ids;
+                    self.sync_tab_folders();
                     self.sync_all_ui();
                     self.save_session();
                 }
@@ -5876,25 +9335,18 @@ impl TpBrowserApp {
                     }
                 }
                 self.selected_tab_ids = ids;
+                self.sync_tab_folders();
                 self.sync_all_ui();
                 self.save_session();
             }
             AppCmd::ScanSelectedTabs => {
-                self.prune_tab_selection();
-                let selected_ids = self.selected_active_user_tab_ids();
-                let mut scan_shopee = false;
-                let mut scan_tiktok = false;
-                for tab in self.tabs.iter().filter(|tab| selected_ids.contains(&tab.id)) {
-                    scan_shopee |= tab.url.contains("banhang.shopee.vn");
-                    scan_tiktok |= tab.url.contains("seller-vn.tiktok.com");
-                }
-                if scan_shopee { self.execute(AppCmd::RunEcomScan { scope: "shopee_orders".to_string() }); }
-                if scan_tiktok { self.execute(AppCmd::RunEcomScan { scope: "tiktok".to_string() }); }
+                self.sync_all_ui();
             }
             AppCmd::CopyToClipboard(text) => {
                 Self::copy_text_to_clipboard(&text);
             }
             AppCmd::ToggleAiMode => {
+                self.ensure_optional_shells();
                 self.ai_mode = match self.ai_mode {
                     AiDisplayMode::RightDock | AiDisplayMode::FbPopup => {
                         AiDisplayMode::BubbleMinimized
@@ -5913,6 +9365,7 @@ impl TpBrowserApp {
                 self.broadcast_config_changed();
             }
             AppCmd::SetAiMode(mode) => {
+                self.ensure_optional_shells();
                 self.ai_mode = mode;
                 if self.ai_mode != AiDisplayMode::BubbleMinimized && self.chat_channel == ChatChannel::Ai {
                     self.unread_ai = 0;
@@ -5924,6 +9377,7 @@ impl TpBrowserApp {
                 self.broadcast_config_changed();
             }
             AppCmd::OpenChatChannel(ch) => {
+                self.ensure_optional_shells();
                 self.chat_channel = ch;
                 match ch {
                     ChatChannel::Messenger => self.ensure_fb_shell(),
@@ -5943,6 +9397,7 @@ impl TpBrowserApp {
                 self.broadcast_config_changed();
             }
             AppCmd::ToggleChatChannel(ch) => {
+                self.ensure_optional_shells();
                 if self.ai_mode != AiDisplayMode::BubbleMinimized && self.chat_channel == ch {
                     self.ai_mode = AiDisplayMode::BubbleMinimized;
                 } else {
@@ -5966,6 +9421,7 @@ impl TpBrowserApp {
                 self.broadcast_config_changed();
             }
             AppCmd::ToggleChatDockStyle => {
+                self.ensure_optional_shells();
                 self.ai_mode = match self.ai_mode {
                     AiDisplayMode::RightDock => AiDisplayMode::FbPopup,
                     AiDisplayMode::FbPopup | AiDisplayMode::BubbleMinimized => {
@@ -5978,6 +9434,7 @@ impl TpBrowserApp {
                 self.broadcast_config_changed();
             }
             AppCmd::StartDockResize => {
+                self.ensure_optional_shells();
                 #[cfg(target_os = "windows")]
                 {
                     let hwnd = self.window.hwnd();
@@ -6029,6 +9486,7 @@ impl TpBrowserApp {
                 self.broadcast_config_changed();
             }
             AppCmd::StartSidebarResize => {
+                self.ensure_optional_shells();
                 #[cfg(target_os = "windows")]
                 {
                     let hwnd = self.window.hwnd();
@@ -6050,6 +9508,10 @@ impl TpBrowserApp {
                                     let dpi = GetDpiForWindow(hwnd);
                                     let s = if dpi == 0 { scale } else { dpi as f64 / 96.0 };
                                     let cur_x = ((pt.x - origin.x) as f64 / s).round() as i32;
+                                    if cur_x < SIDEBAR_COLLAPSE_THRESHOLD {
+                                        let _ = proxy.send_event(AppCmd::ToggleCompactMode);
+                                        break;
+                                    }
                                     let new_w = cur_x.clamp(140, max_w as i32) as u32;
                                     if new_w != last_w {
                                         last_w = new_w;
@@ -6065,6 +9527,7 @@ impl TpBrowserApp {
             }
             AppCmd::SetSidebarWidth(w) => {
                 self.sidebar_width = w.clamp(140, 440);
+                COMPACT_SIDEBAR_WIDTH.store(self.sidebar_width as u64, Ordering::Relaxed);
                 self.relayout();
             }
             AppCmd::ResetSidebarWidth => {
@@ -6175,6 +9638,8 @@ impl TpBrowserApp {
                 } else if shell == "boot_settle" {
                     self.relayout();
                     self.sync_all_ui();
+                    self.schedule_prewarm_newtab(250);
+                    self.refresh_browser_extensions();
                 }
             }
             AppCmd::SetSettingsSection(sec) => {
@@ -6188,6 +9653,7 @@ impl TpBrowserApp {
                 }
             }
             AppCmd::OpenSettingsModal(section) => {
+                self.ensure_optional_shells();
                 let target_sec = if section.trim().is_empty() {
                     "look_feel".to_string()
                 } else {
@@ -6292,6 +9758,8 @@ impl TpBrowserApp {
                         self.ui_theme = Self::normalize_theme(&value);
                         self.sync_window_titlebar_theme();
                         self.sync_window_icon();
+                        self.warm_newtab = None;
+                        self.schedule_prewarm_newtab(220);
                     }
                     "logo_style" => {
                         self.logo_style = Self::normalize_logo_style(&value);
@@ -6321,6 +9789,66 @@ impl TpBrowserApp {
                     }
                     "sidebar_collapsed" => {
                         self.sidebar_collapsed = Self::parse_bool_str(&value, false);
+                    }
+                    "compact_mode" => {
+                        self.compact_mode = Self::parse_bool_str(&value, false);
+                        COMPACT_MODE_ENABLED.store(self.compact_mode, Ordering::Relaxed);
+                        self.compact_sidebar_hover = false;
+                        self.relayout();
+                    }
+                    "tab_unload_minutes" => {
+                        if let Ok(m) = value.trim().parse::<u32>() {
+                            self.tab_unload_minutes = m.min(600);
+                        }
+                    }
+                    "tab_unload_whitelist" => {
+                        self.tab_unload_whitelist = value.trim().to_string();
+                    }
+                    "pinned_extensions" => {
+                        if let Ok(JsonVal::Arr(arr)) = parse_json(&value) {
+                            let loaded: Vec<String> = arr.into_iter().filter_map(|v| match v {
+                                JsonVal::Str(s) => Some(s),
+                                _ => None,
+                            }).collect();
+                            if !loaded.is_empty() {
+                                self.pinned_extensions = loaded;
+                            }
+                        } else {
+                            let loaded: Vec<String> = value.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+                            if !loaded.is_empty() {
+                                self.pinned_extensions = loaded;
+                            }
+                        }
+                        self.sync_all_ui();
+                        self.save_config();
+                    }
+                    "translate_target_lang" => {
+                        self.translate_target_lang = value.trim().to_string();
+                        self.save_config();
+                    }
+                    "translate_auto_prompt" => {
+                        self.translate_auto_prompt = Self::parse_bool_str(&value, true);
+                        self.save_config();
+                    }
+                    "translate_never_domains" => {
+                        self.translate_never_domains = value.trim().to_string();
+                        self.save_config();
+                    }
+                    "glance_trigger" => {
+                        self.glance_trigger = if value.contains("shift") { "shift_click".to_string() } else { "alt_click".to_string() };
+                        self.save_config();
+                    }
+                    "glance_external_from_pinned" => {
+                        self.glance_external_from_pinned = Self::parse_bool_str(&value, true);
+                        self.save_config();
+                    }
+                    "default_search_engine" => {
+                        self.default_search_engine = value.trim().to_string();
+                        self.save_config();
+                    }
+                    "auto_pip_on_switch" => {
+                        self.auto_pip_on_switch = Self::parse_bool_str(&value, true);
+                        self.save_config();
                     }
                     "show_bookmarks_bar" => {
                         self.show_bookmarks_bar = Self::parse_bool_str(&value, true);
@@ -6367,6 +9895,10 @@ impl TpBrowserApp {
                             self.unread_ai = 0;
                         }
                     }
+                    "context_menu_prefs" => {
+                        self.context_menu_prefs_json = Self::normalize_context_menu_prefs(&value);
+                        self.save_config();
+                    }
                     "show_unread_badges" => {
                         self.show_unread_badges = Self::parse_bool_str(&value, true);
                     }
@@ -6383,6 +9915,27 @@ impl TpBrowserApp {
                         self.adblock_enabled = b;
                         ADBLOCK_ENABLED.store(b, Ordering::Relaxed);
                     }
+                    "permission_camera" => {
+                        self.permission_camera = Self::normalize_permission_policy(&value).to_string();
+                        self.sync_permission_atomics();
+                    }
+                    "permission_microphone" => {
+                        self.permission_microphone = Self::normalize_permission_policy(&value).to_string();
+                        self.sync_permission_atomics();
+                    }
+                    "permission_notifications" => {
+                        self.permission_notifications = Self::normalize_permission_policy(&value).to_string();
+                        self.sync_permission_atomics();
+                    }
+                    "permission_clipboard" => {
+                        self.permission_clipboard = Self::normalize_permission_policy(&value).to_string();
+                        self.sync_permission_atomics();
+                    }
+                    "custom_shortcuts" => {
+                        if let Ok(parsed) = parse_json(&value) {
+                            self.custom_shortcuts = Self::parse_custom_shortcuts(&parsed);
+                        }
+                    }
                     "google_user" => {
                         self.google_user = value;
                     }
@@ -6398,6 +9951,7 @@ impl TpBrowserApp {
                 self.execute(AppCmd::OpenSettingsModal("ai_cowork".to_string()));
             }
             AppCmd::FocusAiPanel => {
+                self.ensure_optional_shells();
                 self.chat_channel = ChatChannel::Ai;
                 if self.ai_mode == AiDisplayMode::BubbleMinimized {
                     self.ai_mode = AiDisplayMode::FbPopup;
@@ -6434,33 +9988,63 @@ impl TpBrowserApp {
                 let id = container_id.as_deref().map(Self::normalize_container_id);
                 self.add_tab_internal(&url, isolated, true, None, None, false, id);
             }
+            AppCmd::NewPrivateTab(url) => {
+                self.profile_counter = self.profile_counter.saturating_add(1);
+                let container = format!("private_{}", self.profile_counter);
+                self.add_tab_internal(&url, true, true, None, None, false, Some(container));
+            }
+            AppCmd::PrintActive => {
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    let _ = tab.webview.evaluate_script("try { window.print(); } catch (_) {}");
+                }
+            }
+            AppCmd::OpenDevTools => {
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    tab.webview.open_devtools();
+                }
+            }
+            AppCmd::ToggleReaderMode => {
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    let _ = tab.webview.evaluate_script(r#"(() => {
+                        const id = 'tp-reader-mode-style';
+                        const old = document.getElementById(id);
+                        if (old) { old.remove(); document.documentElement.removeAttribute('data-tp-reader'); return; }
+                        const style = document.createElement('style');
+                        style.id = id;
+                        style.textContent = `html[data-tp-reader="on"] body { background:#f7f3ea !important; color:#292524 !important; }
+                            html[data-tp-reader="on"] body { max-width:760px !important; margin:0 auto !important; padding:40px 28px !important; font-family:Georgia, serif !important; font-size:19px !important; line-height:1.75 !important; }
+                            html[data-tp-reader="on"] nav, html[data-tp-reader="on"] header, html[data-tp-reader="on"] aside, html[data-tp-reader="on"] footer, html[data-tp-reader="on"] video, html[data-tp-reader="on"] iframe { display:none !important; }
+                            html[data-tp-reader="on"] img { max-width:100% !important; height:auto !important; }`;
+                        document.head.appendChild(style);
+                        document.documentElement.setAttribute('data-tp-reader', 'on');
+                    })()"#);
+                }
+            }
+            AppCmd::DownloadStarted { uri, path } => {
+                self.downloads.push(DownloadEntry { uri: uri.clone(), path: path.clone(), status: "downloading".to_string() });
+                if self.downloads.len() > 20 { self.downloads.remove(0); }
+                self.ai_status_text = format!("Đang tải xuống: {}", path);
+                self.sync_all_ui();
+            }
+            AppCmd::DownloadCompleted { uri, path, success } => {
+                if let Some(item) = self.downloads.iter_mut().rev().find(|item| item.uri == uri) {
+                    item.path = if path.is_empty() { item.path.clone() } else { path.clone() };
+                    item.status = if success { "complete".to_string() } else { "failed".to_string() };
+                }
+                self.ai_status_text = if success {
+                    format!("Đã tải xong: {}", if path.is_empty() { uri } else { path })
+                } else {
+                    format!("Tải xuống thất bại: {}", uri)
+                };
+                self.sync_all_ui();
+            }
+            AppCmd::PermissionDecision { origin, kind, allow } => {
+                self.ai_status_text = format!("Quyền {} cho {}: {}", kind, origin, if allow { "cho phép" } else { "từ chối" });
+                self.sync_all_ui();
+            }
             AppCmd::FocusVisibleIndex(visible_idx) => {
                 if let Some(native_idx) = self.visible_tab_indices().get(visible_idx).copied() {
                     self.execute(AppCmd::FocusIndex(native_idx));
-                }
-            }
-            AppCmd::NextMruTab => {
-                let active_id = self.tabs.get(self.active_idx).map(|tab| tab.id);
-                if self.mru_cycle_ids.is_none() {
-                    let mut candidates: Vec<u64> = self.mru_tab_ids.iter().copied().filter(|id| {
-                        Some(*id) != active_id && self.tabs.iter().any(|tab| tab.id == *id && tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none())
-                    }).collect();
-                    if candidates.is_empty() {
-                        candidates = self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none() && Some(tab.id) != active_id).map(|tab| tab.id).collect();
-                    }
-                    self.mru_cycle_ids = Some(candidates);
-                    self.mru_cycle_pos = 0;
-                }
-                if let Some(ids) = self.mru_cycle_ids.as_ref() {
-                    if !ids.is_empty() {
-                        let id = ids[self.mru_cycle_pos % ids.len()];
-                        self.mru_cycle_pos = (self.mru_cycle_pos + 1) % ids.len();
-                        if let Some(index) = self.tabs.iter().position(|tab| tab.id == id && tab.workspace_id == self.active_workspace_id && tab.worker_kind.is_none()) {
-                            self.mru_focus_in_progress = true;
-                            self.execute(AppCmd::FocusIndex(index));
-                            self.mru_focus_in_progress = false;
-                        }
-                    }
                 }
             }
             AppCmd::FocusIndex(idx) => {
@@ -6473,9 +10057,23 @@ impl TpBrowserApp {
                     if !self.mru_focus_in_progress {
                         self.mru_cycle_ids = None;
                     }
+                    if let Some(prev) = self.tabs.get_mut(self.active_idx) {
+                        prev.last_active_at = Instant::now();
+                    }
+                    if self.auto_pip_on_switch && self.active_idx != idx {
+                        if let Some(old_t) = self.tabs.get(self.active_idx) {
+                            let _ = old_t.webview.evaluate_script("if (window.__tpAutoPip) window.__tpAutoPip(true);");
+                        }
+                    }
                     self.active_idx = idx;
+                    if self.auto_pip_on_switch {
+                        if let Some(new_t) = self.tabs.get(self.active_idx) {
+                            let _ = new_t.webview.evaluate_script("if (window.__tpAutoPip) window.__tpAutoPip(false);");
+                        }
+                    }
                     // Đánh thức tab nếu đang ở trạng thái ngủ đông (Lazy Loading)
                     if let Some(t) = self.tabs.get_mut(self.active_idx) {
+                        t.last_active_at = Instant::now();
                         if !t.is_loaded {
                             t.is_loaded = true;
                             let target_url = t.url.clone();
@@ -6523,7 +10121,31 @@ impl TpBrowserApp {
             }
             AppCmd::FocusTabById(tab_id) => {
                 if let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id) {
-                    self.execute(AppCmd::FocusIndex(pos));
+                    if pos != self.active_idx {
+                        self.execute(AppCmd::FocusIndex(pos));
+                    } else if let Some(t) = self.tabs.get(pos) {
+                        let _ = t.webview.focus();
+                    }
+                }
+            }
+            AppCmd::FocusContentTab(tab_id) => {
+                let mut needs_relayout = false;
+                if self.titlebar_popover_open {
+                    self.titlebar_popover_open = false;
+                    needs_relayout = true;
+                }
+                if self.command_bar_open {
+                    self.execute(AppCmd::CloseCommandBar);
+                    needs_relayout = false;
+                }
+                if let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id) {
+                    if pos != self.active_idx {
+                        self.execute(AppCmd::FocusIndex(pos));
+                        needs_relayout = false;
+                    }
+                }
+                if needs_relayout {
+                    self.relayout();
                 }
             }
             AppCmd::CloseTabById(tab_id) => {
@@ -6533,7 +10155,39 @@ impl TpBrowserApp {
                 }
             }
             AppCmd::CloseIndex(idx) => {
-                let ws_tabs_count = self.tabs.iter().filter(|tab| tab.workspace_id == self.active_workspace_id).count();
+                if idx < self.tabs.len() && self.tabs[idx].worker_kind.is_some() {
+                    let removed_id = self.tabs[idx].id;
+                    self.tabs[idx].navigation_readiness.close();
+                    #[cfg(target_os = "windows")]
+                    self.tabs[idx].navigation_events.teardown();
+                    let requests: Vec<u64> = self.shopee_pending.iter().filter_map(|(id, (tab, _, _, _))| (*tab == removed_id).then_some(*id)).collect();
+                    for id in &requests {
+                        self.shopee_workspace_pending.remove(id);
+                        if let Some((_, _, _, reply)) = self.shopee_pending.remove(id) { let _ = reply.send(Ok(shopee_discovery::unavailable())); }
+                    }
+                    if !requests.is_empty() {
+                        self.shopee_discovery_json = shopee_discovery::unavailable();
+                        self.sync_workspace_view();
+                    }
+                    if self.ai_worker_tab_id == Some(removed_id) {
+                        self.ai_worker_tab_id = None;
+                    }
+                    self.selected_tab_ids.remove(&removed_id);
+                    if self.tab_selection_anchor_id == Some(removed_id) {
+                        self.tab_selection_anchor_id = None;
+                    }
+                    self.tabs.remove(idx);
+                    if idx < self.active_idx {
+                        self.active_idx = self.active_idx.saturating_sub(1);
+                    } else if self.active_idx >= self.tabs.len() {
+                        self.active_idx = self.tabs.len().saturating_sub(1);
+                    }
+                    self.sync_tab_folders();
+                    self.relayout();
+                    self.sync_all_ui();
+                    return;
+                }
+                let ws_tabs_count = self.tabs.iter().filter(|tab| tab.worker_kind.is_none() && tab.workspace_id == self.active_workspace_id).count();
                 if ws_tabs_count > 1
                     && idx < self.tabs.len()
                     && self.tabs[idx].workspace_id == self.active_workspace_id
@@ -6559,18 +10213,25 @@ impl TpBrowserApp {
                         self.tab_selection_anchor_id = None;
                     }
                     let closed_url = self.tabs[idx].url.clone();
-                    if closed_url.starts_with("http://") || closed_url.starts_with("https://") {
+                    let private_container_id = self.tabs[idx]
+                        .private
+                        .then(|| self.tabs[idx].container_id.clone());
+                    if !self.tabs[idx].private && (closed_url.starts_with("http://") || closed_url.starts_with("https://")) {
                         self.closed_tabs.push(closed_url);
                         if self.closed_tabs.len() > 25 {
                             self.closed_tabs.remove(0);
                         }
                     }
                     self.tabs.remove(idx);
+                    if let Some(container_id) = private_container_id {
+                        self.cleanup_private_profile(&container_id);
+                    }
                     if idx < self.active_idx {
                         self.active_idx = self.active_idx.saturating_sub(1);
                     } else if self.active_idx >= self.tabs.len() {
                         self.active_idx = self.tabs.len() - 1;
                     }
+                    self.sync_tab_folders();
                     self.relayout();
                     self.sync_all_ui();
                     self.save_session();
@@ -6585,33 +10246,65 @@ impl TpBrowserApp {
             }
             AppCmd::CloseActiveTab => {
                 let idx = self.active_idx;
+                if let Some(tab) = self.tabs.get(idx) {
+                    if (tab.pinned || tab.essential) && tab.worker_kind.is_none() {
+                        let origin = tab.pinned_origin_url.clone();
+                        let tab_id = tab.id;
+                        let cur_url = tab.url.clone();
+                        if let Some(origin_url) = origin {
+                            if origin_url != cur_url {
+                                self.execute(AppCmd::ResetPinnedTab(tab_id));
+                                if let Some(t) = self.tabs.iter().find(|t| t.id == tab_id) {
+                                    let _ = t.webview.evaluate_script(
+                                        "if (window.__tpShowToast) window.__tpShowToast(\"↺ Đã quay về trang gốc của Tab Ghim\");",
+                                    );
+                                }
+                                return;
+                            }
+                        }
+                        let ws_id = self.active_workspace_id.clone();
+                        if let Some(next_idx) = self.tabs.iter().position(|t| {
+                            t.id != tab_id
+                                && t.worker_kind.is_none()
+                                && !t.pinned
+                                && !t.essential
+                                && (t.workspace_id == ws_id || t.essential)
+                        }) {
+                            self.active_idx = next_idx;
+                            self.relayout();
+                            self.sync_all_ui();
+                        }
+                        return;
+                    }
+                }
                 self.execute(AppCmd::CloseIndex(idx));
             }
             AppCmd::NavigateActive(raw_url) => {
-                let normalized = Self::normalize_url(&raw_url);
+                let normalized = Self::normalize_url_with_engine(&raw_url, &self.default_search_engine);
                 if let Some(tab) = self.tabs.get_mut(self.active_idx) {
                     tab.url = normalized.clone();
                     tab.title = Self::title_from_url(&normalized);
                     if normalized == "tp://newtab" {
-                        let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_newtab_html(&self.ui_theme));
                     } else if normalized == "tp://history" {
-                        let _ = tab.webview.load_html(&inject_ui_html(HISTORY_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_history_html(&self.ui_theme));
                     } else if normalized == "tp://workspace" {
-                        let _ = tab.webview.load_html(&inject_ui_html(WORKSPACE_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_newtab_html(&self.ui_theme));
                     } else {
                         let _ = tab.webview.load_url(&normalized);
                     }
                 }
-                if normalized.starts_with("http://") || normalized.starts_with("https://") {
+                let is_private = self.tabs.get(self.active_idx).is_some_and(|tab| tab.private);
+                if !is_private && (normalized.starts_with("http://") || normalized.starts_with("https://")) {
                     let t = Self::title_from_url(&normalized);
                     self.record_history(&t, &normalized);
                 } else if normalized == "tp://history" {
                     self.sync_history_view();
-                } else if normalized == "tp://workspace" {
-                    self.sync_workspace_view();
                 }
                 self.sync_all_ui();
-                self.save_session();
+                if !is_private {
+                    self.save_session();
+                }
             }
             AppCmd::NavBack => {
                 if let Some(tab) = self.tabs.get(self.active_idx) {
@@ -6626,11 +10319,11 @@ impl TpBrowserApp {
             AppCmd::ReloadActive => {
                 if let Some(tab) = self.tabs.get(self.active_idx) {
                     if tab.url == "tp://newtab" {
-                        let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_newtab_html(&self.ui_theme));
                     } else if tab.url == "tp://history" {
-                        let _ = tab.webview.load_html(&inject_ui_html(HISTORY_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_history_html(&self.ui_theme));
                     } else if tab.url == "tp://workspace" {
-                        let _ = tab.webview.load_html(&inject_ui_html(WORKSPACE_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_newtab_html(&self.ui_theme));
                     } else {
                         let _ = tab.webview.reload();
                     }
@@ -6639,11 +10332,11 @@ impl TpBrowserApp {
             AppCmd::HardReloadActive => {
                 if let Some(tab) = self.tabs.get(self.active_idx) {
                     if tab.url == "tp://newtab" {
-                        let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_newtab_html(&self.ui_theme));
                     } else if tab.url == "tp://history" {
-                        let _ = tab.webview.load_html(&inject_ui_html(HISTORY_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_history_html(&self.ui_theme));
                     } else if tab.url == "tp://workspace" {
-                        let _ = tab.webview.load_html(&inject_ui_html(WORKSPACE_HTML, &self.ui_theme));
+                        let _ = tab.webview.load_html(cached_newtab_html(&self.ui_theme));
                     } else {
                         let _ = tab.webview.evaluate_script(
                             "try { if (window.caches) caches.keys().then(function(ks){ ks.forEach(function(k){ caches.delete(k); }); }); fetch(location.href, { cache: 'reload', credentials: 'same-origin' }).catch(function(){}).finally(function(){ location.reload(); }); } catch(_) { location.reload(); }",
@@ -6655,21 +10348,33 @@ impl TpBrowserApp {
                 self.execute(AppCmd::NavigateActive("tp://newtab".to_string()));
             }
             AppCmd::FocusUrlBar => {
-                if !self.titlebar_pinned && !self.titlebar_hover {
-                    self.titlebar_hover = true;
-                    self.relayout();
+                if self.tab_orientation == TabOrientation::VerticalLeft {
+                    if self.sidebar_collapsed {
+                        self.execute(AppCmd::OpenCommandBar);
+                    } else {
+                        let _ = self.tab_shell.focus();
+                        let _ = self.tab_shell.evaluate_script(
+                            "if (window.__tpFocusVerticalUrl) window.__tpFocusVerticalUrl();",
+                        );
+                    }
+                } else {
+                    if !self.titlebar_pinned && !self.titlebar_hover {
+                        self.titlebar_hover = true;
+                        self.relayout();
+                    }
+                    let _ = self.titlebar_shell.focus();
+                    let _ = self.titlebar_shell.evaluate_script(
+                        "if (window.__tpFocusTitlebarUrl) window.__tpFocusTitlebarUrl();",
+                    );
                 }
-                let _ = self.titlebar_shell.focus();
-                let _ = self.titlebar_shell.evaluate_script(
-                    "if (window.__tpFocusTitlebarUrl) window.__tpFocusTitlebarUrl();",
-                );
             }
             AppCmd::ToggleFindBar => {
                 if let Some(tab) = self.tabs.get(self.active_idx) {
                     let _ = tab.webview.focus();
-                    let _ = tab.webview.evaluate_script(
-                        "if (window.__tpToggleFindBar) window.__tpToggleFindBar();",
-                    );
+                    let _ = tab.webview.evaluate_script(&format!(
+                        "if (window.__tpToggleFindBar) window.__tpToggleFindBar(undefined, \"{}\");",
+                        Self::escape_json(&self.ui_theme)
+                    ));
                 }
             }
             AppCmd::ToggleCollectionsDrawer => {
@@ -6701,8 +10406,17 @@ impl TpBrowserApp {
             }
             AppCmd::ClearHistory => {
                 self.history_json = "[]".to_string();
+                self.history_rev = self.history_rev.wrapping_add(1);
                 self.save_history();
                 self.sync_history_view();
+            }
+            AppCmd::ClearSiteData => {
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    let _ = tab.webview.clear_all_browsing_data();
+                    let _ = tab.webview.evaluate_script(
+                        "if (window.__tpShowToast) window.__tpShowToast('Đã xóa dữ liệu website hiện tại');",
+                    );
+                }
             }
             AppCmd::CreateWorkspace(name) => {
                 let name = name.trim();
@@ -6710,7 +10424,13 @@ impl TpBrowserApp {
                     let id = format!("workspace-{}", std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
                     if !self.workspaces.iter().any(|workspace| workspace.id == id) {
-                        self.workspaces.push(Workspace { id: id.clone(), name: name.to_string() });
+                        self.workspaces.push(Workspace {
+                            id: id.clone(),
+                            name: name.to_string(),
+                            icon: "✦".to_string(),
+                            accent: String::new(),
+                            container_id: Self::normalize_container_id(&id),
+                        });
                         self.active_workspace_id = id;
                         self.selected_tab_ids.clear();
                         self.tab_selection_anchor_id = None;
@@ -6776,12 +10496,11 @@ impl TpBrowserApp {
                 }
             }
             AppCmd::OpenWorkspace => {
-                if let Some(pos) = self.tabs.iter().position(|t| t.url == "tp://workspace") {
+                if let Some(pos) = self.tabs.iter().position(|t| t.url == "tp://newtab") {
                     self.execute(AppCmd::FocusIndex(pos));
                 } else {
-                    self.add_tab("tp://workspace", false);
+                    self.add_tab("tp://newtab", false);
                 }
-                self.sync_workspace_view();
             }
             AppCmd::OpenGlance { url, title } => {
                 let norm_url = Self::normalize_url(&url);
@@ -6815,67 +10534,8 @@ impl TpBrowserApp {
                 self.open_shopee_shop_in_user_tab(&shop_id);
             }
             AppCmd::RunEcomScan { scope } => {
-                let s = scope.to_lowercase();
-                let run_selected_shopee_shops = s == "shopee_shops_selected";
-                let run_all_shopee_shops = s == "all" || s == "shopee_shops" || s == "shopee_shops_all";
-                let run_shopee_shops = run_selected_shopee_shops || run_all_shopee_shops;
-                let run_orders = s == "shopee_orders" || (s == "all" && !run_shopee_shops);
-                let run_pas = s == "all" || s == "shopee_pas";
-                let run_health = s == "all" || s == "shopee_health";
-                let run_tiktok = s == "tiktok";
-                if run_shopee_shops && self.shopee_shop_scan_in_flight() {
-                    self.ecom_status_text = "⏳ Quét Shop Shopee đang chạy — bỏ qua yêu cầu trùng lặp.".to_string();
-                    self.push_ecom_log(&self.ecom_status_text.clone());
-                    self.sync_workspace_view();
-                    return;
-                }
-                if run_shopee_shops && self.queue_discovered_shopee_shops(run_selected_shopee_shops) == 0 {
-                    self.ecom_status_text = if run_selected_shopee_shops {
-                        "Chọn ít nhất một shop trước khi quét.".to_string()
-                    } else {
-                        "Chưa có danh sách shop Shopee đã xác minh — hãy Đồng bộ từ tab Shopee đang đăng nhập.".to_string()
-                    };
-                    self.push_ecom_log(&self.ecom_status_text.clone());
-                    self.sync_workspace_view();
-                    return;
-                }
-                self.ecom_status_text = format!("⏳ Đang mở Tab ngầm để quét ({})...", scope);
-                self.push_ecom_log(&format!("Khởi chạy quét ngầm [{}] — giữ nguyên Tab đang xem.", scope));
-
-                if run_orders {
-                    if let Some(tid) = self.ensure_ecom_worker(
-                        "shopee_orders",
-                        "https://banhang.shopee.vn/portal/sale/order",
-                        "Shopee Đơn Hàng",
-                    ) {
-                        self.trigger_worker_scan_by_id(tid, "https://banhang.shopee.vn/portal/sale/order");
-                    }
-                }
-                if run_pas {
-                    if let Some(tid) = self.ensure_ecom_worker(
-                        "shopee_pas",
-                        "https://banhang.shopee.vn/portal/marketing/pas/index?source_page_id=1&type=new_cpc_homepage&group=today",
-                        "Shopee PAS",
-                    ) {
-                        self.trigger_worker_scan_by_id(tid, "https://banhang.shopee.vn/portal/marketing/pas/index");
-                    }
-                }
-                if run_health {
-                    if let Some(tid) = self.ensure_ecom_worker(
-                        "shopee_health",
-                        "https://banhang.shopee.vn/portal/accounthealth/home",
-                        "Shopee Hiệu Quả Hoạt Động",
-                    ) {
-                        self.trigger_worker_scan_by_id(tid, "https://banhang.shopee.vn/portal/accounthealth/home");
-                    }
-                }
-                if run_shopee_shops {
-                    self.start_shopee_shop_sequence();
-                }
-                if run_tiktok {
-                    self.start_tiktok_sequence();
-                }
-                self.sync_workspace_view();
+                let _ = scope;
+                self.ecom_status_text = "Tính năng quét dữ liệu đã được tắt trong chế độ trình duyệt.".to_string();
             }
             AppCmd::SetEcomAutoScan(enabled) => {
                 self.ecom_auto_scan = enabled;
@@ -6894,11 +10554,45 @@ impl TpBrowserApp {
             AppCmd::UpdatePlatformData { platform, data_json } => {
                 match platform.as_str() {
                     "shopee_orders" => {
+                        let is_passive = parse_json(&data_json)
+                            .ok()
+                            .and_then(|v| v.get("scan_source").and_then(JsonVal::as_str).map(|s| s == "passive"))
+                            .unwrap_or(false);
+                        if is_passive && !self.multi_shop_queue.is_empty() && self.multi_shop_step == "orders" {
+                            // Bỏ qua cập nhật thụ động giữa chừng để chờ fetchShopeeOrdersViaApi() quét đủ tất cả tab đơn hàng
+                            return;
+                        }
                         self.shopee_orders_json = data_json.clone();
                         self.save_export_file("shopee_orders_latest.json", &data_json);
                         if self.shopee_shop_scan_phase == "shop_orders" { self.store_shopee_shop_orders(&data_json); }
-                        self.ecom_status_text = "✅ Đã cập nhật Đơn hàng, Đánh giá 1–3★, Live & Khuyến mãi Shopee.".to_string();
-                        self.push_ecom_log("Shopee Tổng hợp: đã cập nhật 200 đơn, đánh giá 1-3★, Live & Khuyến mãi.");
+                        self.ecom_status_text = "✅ Đã cập nhật Đơn hàng Shopee.".to_string();
+
+                        let s_id = if self.multi_shop_idx < self.multi_shop_queue.len() {
+                            self.multi_shop_queue[self.multi_shop_idx].clone()
+                        } else {
+                            "sp_01".to_string()
+                        };
+                        let name = self.get_shop_display_name(&s_id);
+
+                        if let Ok(val) = parse_json(&data_json) {
+                            let mut rev = 0.0;
+                            let mut orders_today = 0u64;
+                            let mut cancelled = 0u64;
+                            if let Some(today) = val.get("today_stats") {
+                                rev = today.get("revenue_vnd").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                                orders_today = today.get("order_count").and_then(JsonVal::as_u64).unwrap_or(0);
+                                cancelled = today.get("cancelled_count").and_then(JsonVal::as_u64).unwrap_or(0);
+                            }
+                            let to_ship = val.get("to_ship").and_then(JsonVal::as_u64).unwrap_or(0);
+                            let express = val.get("express_orders").and_then(JsonVal::as_u64).unwrap_or(0);
+                            let anom_count = val.get("anomalies").and_then(JsonVal::as_arr).map(|a| a.len()).unwrap_or(0);
+                            let bad_rev_count = val.get("bad_reviews").and_then(JsonVal::as_arr).map(|a| a.len()).unwrap_or(0);
+
+                            self.log_ecom("DATA", "SHOPEE", &format!(
+                                "[{}] Doanh thu hôm nay: {} | {} đơn hôm nay (hủy {}) | Chờ giao: {} | Hỏa tốc: {} | Đánh giá xấu 1-3★: {} | Đơn lệch giá: {}",
+                                name, Self::format_vnd_amount(rev), orders_today, cancelled, to_ship, express, bad_rev_count, anom_count
+                            ));
+                        }
                         for t in &mut self.tabs {
                             if t.worker_kind.as_deref() == Some("bot") && t.url.contains("banhang.shopee.vn/portal/sale") {
                                 t.worker_status = if data_json.contains("\"need_login\":true") {
@@ -6908,18 +10602,56 @@ impl TpBrowserApp {
                                 };
                             }
                         }
-                        if self.shopee_shop_scan_phase == "shop_orders" {
+                        if self.multi_shop_queue.is_empty() && self.shopee_shop_scan_phase == "shop_orders" {
                             self.shopee_shop_scan_phase = "returning_index".to_string();
                             if let Some(tab_id) = self.shopee_shop_scan_tab_id {
                                 if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) { let _ = tab.webview.load_url("https://banhang.shopee.vn/portal/shop"); }
+                            }
+                        }
+                        if self.multi_shop_step == "orders" && self.multi_shop_idx < self.multi_shop_queue.len() {
+                            let s_id = self.multi_shop_queue[self.multi_shop_idx].clone();
+                            let name = self.get_shop_display_name(&s_id);
+                            let entry = self.multi_shop_data.entry(s_id.clone()).or_insert_with(|| (String::new(), String::new(), String::new()));
+                            entry.0 = data_json.clone();
+
+                            let total = self.multi_shop_queue.len();
+                            let curr = self.multi_shop_idx + 1;
+                            self.multi_shop_step = "pas".to_string();
+                            let pct = ((curr - 1) * 100 + 40) / total;
+                            self.sync_workspace_progress(true, pct as usize, 100, pct as u32, &format!("[Shop {}/{} - {}] Bước 2/3: Đang quét Shopee Ads...", curr, total, name), "running");
+                            self.log_ecom("INFO", "SHOPEE", &format!("[Shop {}/{}] {} - Chuyển sang Bước 2/3: Shopee Ads", curr, total, name));
+
+                            if let Some(tid) = self.multi_shop_tab_id {
+                                if let Some(t) = self.tabs.iter().find(|t| t.id == tid) {
+                                    let pas_url = "https://banhang.shopee.vn/portal/marketing/pas/index?source_page_id=1&type=new_cpc_homepage&group=today";
+                                    let _ = t.webview.load_url(pas_url);
+                                }
                             }
                         }
                     }
                     "shopee_pas" => {
                         self.shopee_pas_json = data_json.clone();
                         self.save_export_file("shopee_pas_latest.json", &data_json);
-                        self.ecom_status_text = "✅ Đã cập nhật dữ liệu Quảng cáo Shopee PAS (Tab ngầm).".to_string();
-                        self.push_ecom_log("Shopee PAS: đã cập nhật danh sách chiến dịch & ROAS/ACOS.");
+                        self.ecom_status_text = "✅ Đã cập nhật dữ liệu Quảng cáo Shopee PAS.".to_string();
+
+                        let s_id = if self.multi_shop_idx < self.multi_shop_queue.len() {
+                            self.multi_shop_queue[self.multi_shop_idx].clone()
+                        } else {
+                            "sp_01".to_string()
+                        };
+                        let name = self.get_shop_display_name(&s_id);
+
+                        if let Ok(val) = parse_json(&data_json) {
+                            let cost = val.get("cost_ads").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                            let sales = val.get("sales_ads").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                            let roas = val.get("roas_ads").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                            let camps = val.get("campaigns").and_then(JsonVal::as_arr).map(|a| a.len()).unwrap_or(0);
+                            let cir = if sales > 0.0 { (cost / sales) * 100.0 } else { 0.0 };
+                            self.log_ecom("DATA", "SHOPEE", &format!(
+                                "[{}] Shopee Ads: Chi phí: {} | Doanh thu Ads: {} | ROAS: {:.2}x | CIR: {:.1}% | {} chiến dịch",
+                                name, Self::format_vnd_amount(cost), Self::format_vnd_amount(sales), roas, cir, camps
+                            ));
+                        }
                         for t in &mut self.tabs {
                             if t.worker_kind.as_deref() == Some("bot") && t.url.contains("/portal/marketing/pas") {
                                 t.worker_status = if data_json.contains("\"need_login\":true") {
@@ -6929,12 +10661,48 @@ impl TpBrowserApp {
                                 };
                             }
                         }
+                        if self.multi_shop_step == "pas" && self.multi_shop_idx < self.multi_shop_queue.len() {
+                            let s_id = self.multi_shop_queue[self.multi_shop_idx].clone();
+                            let name = self.get_shop_display_name(&s_id);
+                            let entry = self.multi_shop_data.entry(s_id.clone()).or_insert_with(|| (String::new(), String::new(), String::new()));
+                            entry.1 = data_json.clone();
+
+                            let total = self.multi_shop_queue.len();
+                            let curr = self.multi_shop_idx + 1;
+                            self.multi_shop_step = "health".to_string();
+                            let pct = ((curr - 1) * 100 + 75) / total;
+                            self.sync_workspace_progress(true, pct as usize, 100, pct as u32, &format!("[Shop {}/{} - {}] Bước 3/3: Đang quét Hiệu Quả Hoạt Động...", curr, total, name), "running");
+                            self.log_ecom("INFO", "SHOPEE", &format!("[Shop {}/{}] {} - Chuyển sang Bước 3/3: Hiệu Quả Hoạt Động", curr, total, name));
+
+                            if let Some(tid) = self.multi_shop_tab_id {
+                                if let Some(t) = self.tabs.iter().find(|t| t.id == tid) {
+                                    let health_url = "https://banhang.shopee.vn/portal/accounthealth/home";
+                                    let _ = t.webview.load_url(health_url);
+                                }
+                            }
+                        }
                     }
                     "shopee_health" => {
                         self.shopee_health_json = data_json.clone();
                         self.save_export_file("shopee_health_latest.json", &data_json);
-                        self.ecom_status_text = "✅ Đã cập nhật Hiệu Quả Hoạt Động & Sao Quả Tạ Shopee (Tab ngầm).".to_string();
-                        self.push_ecom_log("Shopee Hiệu Quả Hoạt Động: đã cập nhật Sao Quả Tạ, LSR/NFR, CRR.");
+                        self.ecom_status_text = "✅ Đã cập nhật Hiệu Quả Hoạt Động Shopee.".to_string();
+
+                        let s_id = if self.multi_shop_idx < self.multi_shop_queue.len() {
+                            self.multi_shop_queue[self.multi_shop_idx].clone()
+                        } else {
+                            "sp_01".to_string()
+                        };
+                        let name = self.get_shop_display_name(&s_id);
+
+                        if let Ok(val) = parse_json(&data_json) {
+                            let points = val.get("penalty_points").and_then(JsonVal::as_u64).unwrap_or(0);
+                            let note = val.get("penalty_note").and_then(JsonVal::as_str).unwrap_or("Bình thường");
+                            let on_time = val.get("on_time_ship_rate").and_then(JsonVal::as_str).unwrap_or("--");
+                            self.log_ecom("DATA", "SHOPEE", &format!(
+                                "[{}] Sức khỏe Shop: Điểm phạt: {}/12 | Giao đúng hạn: {} | Ghi chú: {}",
+                                name, points, on_time, note
+                            ));
+                        }
                         for t in &mut self.tabs {
                             if t.worker_kind.as_deref() == Some("bot") && t.url.contains("/portal/accounthealth") {
                                 t.worker_status = if data_json.contains("\"need_login\":true") {
@@ -6944,6 +10712,26 @@ impl TpBrowserApp {
                                 };
                             }
                         }
+                        if self.multi_shop_step == "health" && self.multi_shop_idx < self.multi_shop_queue.len() {
+                            let s_id = self.multi_shop_queue[self.multi_shop_idx].clone();
+                            let name = self.get_shop_display_name(&s_id);
+                            let entry = self.multi_shop_data.entry(s_id.clone()).or_insert_with(|| (String::new(), String::new(), String::new()));
+                            entry.2 = data_json.clone();
+
+                            self.multi_shop_idx += 1;
+                            let next_is_shopee = self.multi_shop_queue.get(self.multi_shop_idx)
+                                .map(|id| !id.starts_with("tt_") && id != "tiktok" && !id.starts_with("pk_") && id != "pancake")
+                                .unwrap_or(false);
+                            if next_is_shopee {
+                                self.log_ecom("SUCCESS", "SHOPEE", &format!("Hoàn tất 3 bước shop Shopee: {} -> Quay lại /portal/shop đổi sang shop tiếp theo", name));
+                            } else {
+                                self.log_ecom("SUCCESS", "SHOPEE", &format!("Hoàn tất 3 bước shop Shopee: {} -> Đóng tab giải phóng RAM", name));
+                                if let Some(tid) = self.multi_shop_tab_id.take() {
+                                    self.execute(AppCmd::CloseTabById(tid));
+                                }
+                            }
+                            self.start_next_shop_in_multi_queue();
+                        }
                     }
                     "shopee_shop_index" => {
                         self.handle_shopee_shop_index(&data_json);
@@ -6951,34 +10739,211 @@ impl TpBrowserApp {
                     "shopee_shop_opening" => {
                         self.handle_shopee_shop_opening(&data_json);
                     }
-                    "tiktok" => {
-                        self.tiktok_json = data_json.clone();
-                        self.save_export_file("tiktok_latest.json", &data_json);
-                        let (status_text, worker_status) = tiktok_status_messages(tiktok_ads_status(&data_json));
-                        self.ecom_status_text = status_text.to_string();
-                        self.push_ecom_log(&self.ecom_status_text.clone());
-                        for t in &mut self.tabs {
-                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("seller-vn.tiktok.com") {
-                                t.worker_status = worker_status.to_string();
+                    "tiktok_homepage" => {
+                        if let Ok(val) = parse_json(&data_json) {
+                            if let Some(name) = val.get("shop_name").and_then(JsonVal::as_str) {
+                                if !name.is_empty() && !name.contains("Trung tâm nhà bán hàng") && !name.contains("Seller Center") {
+                                    self.tiktok_shop_name = name.to_string();
+                                    self.save_config();
+                                    self.log_ecom("DATA", "TIKTOK", &format!("Đã nhận diện gian hàng: {}", name));
+                                }
+                            }
+                            let gmv = val.get("gmv").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                            let orders = val.get("orders").and_then(JsonVal::as_f64).unwrap_or(0.0) as u64;
+                            let to_ship = val.get("to_ship").and_then(JsonVal::as_f64).unwrap_or(0.0) as u64;
+                            if let Some(err) = val.get("error").and_then(JsonVal::as_str) {
+                                self.log_ecom("ERROR", "TIKTOK", &format!("Lỗi cào trang chủ TikTok: {}", err));
+                            } else if gmv == 0.0 && orders == 0 {
+                                self.log_ecom("WARN", "TIKTOK", "Trang chủ TikTok: Chưa tìm thấy thẻ Doanh thu/Đơn hàng (GMV: 0 ₫, 0 đơn). Cần kiểm tra xem tab có bị yêu cầu đăng nhập/Captcha không.");
+                            } else {
+                                self.log_ecom("DATA", "TIKTOK", &format!(
+                                    "Trang chủ TikTok: Doanh thu hôm nay: {} | Số đơn hôm nay: {} | Chờ vận chuyển: {}",
+                                    Self::format_vnd_amount(gmv), orders, to_ship
+                                ));
                             }
                         }
-                        if self.tiktok_scan_phase == "ads" {
+                        self.tiktok_json = data_json.clone();
+                        self.save_export_file("tiktok_homepage_latest.json", &data_json);
+
+                        if self.multi_shop_step == "tiktok_homepage" {
+                            if let Some(tid) = self.multi_shop_tab_id {
+                                self.multi_shop_step = "tiktok_ads".to_string();
+                                let total = self.multi_shop_queue.len();
+                                let curr = self.multi_shop_idx + 1;
+                                let name = if !self.tiktok_shop_name.is_empty() { self.tiktok_shop_name.clone() } else { "TikTok Shop VN".to_string() };
+                                let pct = ((curr * 100) / (total + 1)) + 5;
+                                self.sync_workspace_progress(true, pct as usize, 100, pct as u32, &format!("[Shop {}/{} - {}] Bước 2/4: Đang quét TikTok Ads & Chi phí...", curr, total, name), "running");
+                                self.log_ecom("INFO", "TIKTOK", &format!("[Shop {}/{}] {} - Chuyển sang Bước 2/4: TikTok Ads", curr, total, name));
+
+                                let ads_url = "https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&mpa=1&type=product&shop_region=VN";
+                                if let Some(tab) = self.tabs.iter().find(|t| t.id == tid) {
+                                    let _ = tab.webview.load_url(ads_url);
+                                }
+                                self.trigger_worker_scan_by_id(tid, ads_url);
+                            }
+                        }
+                    }
+                    "tiktok_ads" | "tiktok" => {
+                        self.tiktok_ads_json = data_json.clone();
+                        self.save_export_file("tiktok_ads_latest.json", &data_json);
+                        if let Ok(val) = parse_json(&data_json) {
+                            if let Some(metrics) = val.get("metrics") {
+                                // metrics.cost is a nested object {value, raw, source} — read .value
+                                let mut cost = metrics.get("cost").and_then(|m| m.get("value")).and_then(JsonVal::as_f64)
+                                    .unwrap_or_else(|| metrics.get("cost").and_then(JsonVal::as_f64).unwrap_or(0.0));
+                                let mut sales = metrics.get("sales").and_then(|m| m.get("value")).and_then(JsonVal::as_f64)
+                                    .or_else(|| metrics.get("sales").and_then(JsonVal::as_f64))
+                                    .or_else(|| metrics.get("gmv").and_then(|m| m.get("value")).and_then(JsonVal::as_f64))
+                                    .unwrap_or(0.0);
+                                let roas = metrics.get("roas").and_then(|m| m.get("value")).and_then(JsonVal::as_f64)
+                                    .or_else(|| metrics.get("roas").and_then(JsonVal::as_f64))
+                                    .or_else(|| metrics.get("roi").and_then(|m| m.get("value")).and_then(JsonVal::as_f64))
+                                    .unwrap_or(0.0);
+                                let orders = metrics.get("orders").and_then(|m| m.get("value")).and_then(JsonVal::as_u64)
+                                    .or_else(|| metrics.get("orders").and_then(JsonVal::as_u64))
+                                    .unwrap_or(0);
+                                if cost == 0.0 {
+                                    cost = val.get("cost_ads").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                                }
+                                if sales < 1000.0 {
+                                    sales = val.get("sales_ads").and_then(JsonVal::as_f64).unwrap_or(0.0);
+                                    if sales < 1000.0 {
+                                        sales = 0.0;
+                                    }
+                                }
+                                let status = val.get("status").and_then(JsonVal::as_str).unwrap_or("unknown");
+                                self.log_ecom("DATA", "TIKTOK", &format!(
+                                    "TikTok Ads: Chi phí: {} | Doanh thu Ads: {} | ROAS: {:.2}x | Đơn Ads: {} | Trạng thái: {}",
+                                    Self::format_vnd_amount(cost), Self::format_vnd_amount(sales), roas, orders, status
+                                ));
+                            } else {
+                                let (status_text, _worker_status) = tiktok_status_messages(tiktok_ads_status(&data_json));
+                                self.ecom_status_text = status_text.to_string();
+                                self.push_ecom_log(&self.ecom_status_text.clone());
+                                self.log_ecom("INFO", "TIKTOK", &format!("Dữ liệu TikTok Ads: {}", status_text));
+                            }
+                        }
+                        for t in &mut self.tabs {
+                            if t.worker_kind.as_deref() == Some("bot") && t.url.contains("seller-vn.tiktok.com") {
+                                t.worker_status = "Đã lấy xong".to_string();
+                            }
+                        }
+                        if self.multi_shop_step == "tiktok_ads" {
+                            if let Some(tid) = self.multi_shop_tab_id {
+                                self.multi_shop_step = "tiktok_products".to_string();
+                                let total = self.multi_shop_queue.len();
+                                let curr = self.multi_shop_idx + 1;
+                                let name = if !self.tiktok_shop_name.is_empty() { self.tiktok_shop_name.clone() } else { "TikTok Shop VN".to_string() };
+                                let pct = ((curr * 100) / (total + 1)) + 10;
+                                self.sync_workspace_progress(true, pct as usize, 100, pct as u32, &format!("[Shop {}/{} - {}] Bước 3/4: Đang kiểm tra Tồn kho sản phẩm...", curr, total, name), "running");
+                                self.log_ecom("INFO", "TIKTOK", &format!("[Shop {}/{}] {} - Chuyển sang Bước 3/4: Tồn kho sản phẩm", curr, total, name));
+
+                                let prod_url = "https://seller-vn.tiktok.com/product/manage";
+                                if let Some(tab) = self.tabs.iter().find(|t| t.id == tid) {
+                                    let _ = tab.webview.load_url(prod_url);
+                                }
+                                self.trigger_worker_scan_by_id(tid, prod_url);
+                            }
+                        } else if self.tiktok_scan_phase == "ads" {
+                            self.sync_workspace_progress(true, 75, 100, 75, "TikTok: Đang quét Trung tâm sức khỏe...", "running");
                             self.continue_tiktok_sequence(
                                 "https://seller-vn.tiktok.com/health-center?shop_region=VN",
                                 "health_center",
                             );
                         }
                     }
+                    "tiktok_products" => {
+                        self.tiktok_products_json = data_json.clone();
+                        self.save_export_file("tiktok_products_latest.json", &data_json);
+                        if let Ok(val) = parse_json(&data_json) {
+                            if let Some(prods) = val.get("products").and_then(JsonVal::as_arr) {
+                                let total = prods.len();
+                                let mut out_of_stock = Vec::new();
+                                let mut low_stock = Vec::new();
+                                for p in prods {
+                                    let sku = p.get("sku").and_then(JsonVal::as_str).unwrap_or("");
+                                    let stock = p.get("stock").and_then(JsonVal::as_u64).unwrap_or(0);
+                                    if stock == 0 {
+                                        if out_of_stock.len() < 5 { out_of_stock.push(sku); }
+                                    } else if stock <= 3 {
+                                        if low_stock.len() < 5 { low_stock.push(format!("{}({})", sku, stock)); }
+                                    }
+                                }
+                                let out_str = if out_of_stock.is_empty() { "Không có".to_string() } else { out_of_stock.join(", ") };
+                                let low_str = if low_stock.is_empty() { "Không có".to_string() } else { low_stock.join(", ") };
+                                self.log_ecom("DATA", "TIKTOK", &format!(
+                                    "Kho TikTok: Đã quét {} sản phẩm/SKU | Hết hàng (0 cái): {} | Sắp hết (≤3 cái): {}",
+                                    total, out_str, low_str
+                                ));
+                            } else if let Some(err) = val.get("error").and_then(JsonVal::as_str) {
+                                self.log_ecom("ERROR", "TIKTOK", &format!("Lỗi cào sản phẩm TikTok: {}", err));
+                            }
+                        }
+                        self.log_ecom("SUCCESS", "TIKTOK", "Đã quét xong thông tin sản phẩm & tồn kho TikTok Shop -> Đóng tab giải phóng RAM.");
+
+                        if self.multi_shop_step == "tiktok_products" {
+                            if let Some(tid) = self.multi_shop_tab_id {
+                                self.multi_shop_step = "tiktok_health".to_string();
+                                let total = self.multi_shop_queue.len();
+                                let curr = self.multi_shop_idx + 1;
+                                let name = if !self.tiktok_shop_name.is_empty() { self.tiktok_shop_name.clone() } else { "TikTok Shop VN".to_string() };
+                                let pct = ((curr * 100) / (total + 1)) + 15;
+                                self.sync_workspace_progress(true, pct as usize, 100, pct as u32, &format!("[Shop {}/{} - {}] Bước 4/4: Đang kiểm tra Điểm tình trạng tài khoản...", curr, total, name), "running");
+                                self.log_ecom("INFO", "TIKTOK", &format!("[Shop {}/{}] {} - Chuyển sang Bước 4/4: Trung tâm sức khỏe", curr, total, name));
+
+                                let health_url = "https://seller-vn.tiktok.com/health-center?shop_region=VN";
+                                if let Some(tab) = self.tabs.iter().find(|t| t.id == tid) {
+                                    let _ = tab.webview.load_url(health_url);
+                                }
+                                self.trigger_worker_scan_by_id(tid, health_url);
+                            }
+                        } else {
+                            if let Some(tid) = self.multi_shop_tab_id.take() {
+                                self.execute(AppCmd::CloseTabById(tid));
+                            }
+                            self.multi_shop_step = String::new();
+                            self.multi_shop_idx += 1;
+                            self.start_next_shop_in_multi_queue();
+                        }
+                    }
+                    "tiktok_identity" => {
+                        if let Ok(val) = parse_json(&data_json) {
+                            if let Some(name) = val.get("shop_name").and_then(JsonVal::as_str) {
+                                if !name.is_empty() {
+                                    self.tiktok_shop_name = name.to_string();
+                                    self.save_config();
+                                    self.log_ecom("SUCCESS", "TIKTOK", &format!("Đã nhận diện gian hàng: {}", name));
+                                }
+                            }
+                        }
+                    }
                     "tiktok_health" => {
                         self.tiktok_health_json = data_json.clone();
                         self.save_export_file("tiktok_health_latest.json", &data_json);
-                        if self.tiktok_scan_phase == "health_center" {
+                        if let Ok(val) = parse_json(&data_json) {
+                            let score = val.get("score").and_then(JsonVal::as_str).unwrap_or("Tốt");
+                            let note = val.get("status_note").and_then(JsonVal::as_str).unwrap_or("Vận hành ổn định");
+                            self.log_ecom("DATA", "TIKTOK", &format!("Sức khỏe TikTok: Điểm cửa hàng: {} | Ghi chú: {}", score, note));
+                        }
+                        if self.multi_shop_step == "tiktok_health" {
+                            self.log_ecom("SUCCESS", "TIKTOK", "Đã quét xong sức khỏe TikTok Shop -> Đóng tab giải phóng RAM.");
+                            if let Some(tid) = self.multi_shop_tab_id.take() {
+                                self.execute(AppCmd::CloseTabById(tid));
+                            }
+                            self.multi_shop_step = String::new();
+                            self.multi_shop_idx += 1;
+                            self.start_next_shop_in_multi_queue();
+                        } else if self.tiktok_scan_phase == "health_center" {
+                            self.sync_workspace_progress(true, 90, 100, 90, "TikTok: Đang quét Điểm trải nghiệm...", "running");
                             self.continue_tiktok_sequence(
                                 "https://seller-vn.tiktok.com/health-center/experience-score?shop_region=VN",
                                 "store_score",
                             );
                         } else {
                             self.tiktok_scan_phase = "done".to_string();
+                            self.log_ecom("SUCCESS", "TIKTOK", "Đã hoàn thành quét TikTok Shop (Ads & Health Center).");
+                            self.sync_workspace_progress(false, 100, 100, 100, "Đã quét xong toàn bộ gian hàng!", "done");
+                            self.save_workspace_snapshot("snap_latest");
                         }
                     }
                     _ => {}
@@ -6987,6 +10952,267 @@ impl TpBrowserApp {
             }
             AppCmd::ExportShopeeCsv => {
                 self.export_shopee_csv();
+            }
+            AppCmd::SavePancakeApi { api_key } => {
+                let trimmed = api_key.trim().to_string();
+                self.pancake_api_key = trimmed.clone();
+                if trimmed.is_empty() {
+                    self.pancake_connected = false;
+                    self.pancake_shop_id.clear();
+                    self.pancake_shop_name.clear();
+                    self.pancake_rev = 0.0;
+                    self.pancake_orders = 0;
+                    self.save_config();
+                    self.push_ecom_log("Pancake API: Đã xóa khóa API.");
+                    self.save_workspace_snapshot("snap_latest");
+                    self.sync_workspace_command_center();
+                } else {
+                    let key = trimmed.clone();
+                    let proxy = self.proxy.clone();
+                    self.push_ecom_log("Pancake API: Đang xác thực khóa API...");
+                    std::thread::spawn(move || {
+                        let mut cmd = std::process::Command::new("curl.exe");
+                        cmd.args(["-s", "--max-time", "6", &format!("https://pos.pages.fm/api/v1/shops/check?api_key={}", key)]);
+                        #[cfg(windows)]
+                        {
+                            use std::os::windows::process::CommandExt;
+                            cmd.creation_flags(0x08000000);
+                        }
+                        let mut success = false;
+                        let mut message = "Không thể kết nối Pancake API".to_string();
+                        let mut shop_id = None;
+                        let mut shop_name = None;
+                        if let Ok(output) = cmd.output() {
+                            let body = String::from_utf8_lossy(&output.stdout);
+                            if let Ok(val) = parse_json(&body) {
+                                if val.get("success").and_then(JsonVal::as_bool) == Some(true) {
+                                    success = true;
+                                    message = "Đã kết nối Pancake POS thành công".to_string();
+                                    if let Some(data) = val.get("data") {
+                                        match data {
+                                            JsonVal::Obj(_) => {
+                                                if let Some(id_val) = data.get("id") {
+                                                    let id_str = match id_val {
+                                                        JsonVal::Num(n) => n.to_string(),
+                                                        JsonVal::Str(s) => s.clone(),
+                                                        _ => String::new(),
+                                                    };
+                                                    if !id_str.is_empty() { shop_id = Some(id_str); }
+                                                }
+                                                if let Some(name) = data.get("name").and_then(JsonVal::as_str) {
+                                                    shop_name = Some(name.to_string());
+                                                }
+                                            }
+                                            JsonVal::Arr(arr) => {
+                                                if let Some(first) = arr.first() {
+                                                    if let Some(id_val) = first.get("id") {
+                                                        let id_str = match id_val {
+                                                            JsonVal::Num(n) => n.to_string(),
+                                                            JsonVal::Str(s) => s.clone(),
+                                                            _ => String::new(),
+                                                        };
+                                                        if !id_str.is_empty() { shop_id = Some(id_str); }
+                                                    }
+                                                    if let Some(name) = first.get("name").and_then(JsonVal::as_str) {
+                                                        shop_name = Some(name.to_string());
+                                                    }
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                } else if let Some(msg) = val.get("message").and_then(JsonVal::as_str) {
+                                    message = msg.to_string();
+                                }
+                            }
+                        }
+                        let _ = proxy.send_event(AppCmd::PancakeAuthResult { success, message, shop_id, shop_name });
+                    });
+                }
+            }
+            AppCmd::PancakeAuthResult { success, message, shop_id, shop_name } => {
+                self.pancake_connected = success;
+                if success {
+                    if let Some(id) = shop_id { self.pancake_shop_id = id; }
+                    if let Some(name) = shop_name { self.pancake_shop_name = name; }
+                    let disp_name = if self.pancake_shop_name.is_empty() { "1 kho" } else { &self.pancake_shop_name };
+                    self.push_ecom_log(&format!("Pancake POS: {} ({})", message, disp_name));
+
+                    // Trigger immediate scan to fetch initial orders
+                    let key = self.pancake_api_key.clone();
+                    let s_id = self.pancake_shop_id.clone();
+                    let proxy = self.proxy.clone();
+                    std::thread::spawn(move || {
+                        let url = if !s_id.is_empty() {
+                            format!("https://pos.pages.fm/api/v1/shops/{}/orders?api_key={}&limit=50", s_id, key)
+                        } else {
+                            format!("https://pos.pages.fm/api/v1/shops/me/orders?api_key={}&limit=50", key)
+                        };
+                        let mut cmd = std::process::Command::new("curl.exe");
+                        cmd.args(["-s", "--max-time", "8", &url]);
+                        #[cfg(windows)]
+                        {
+                            use std::os::windows::process::CommandExt;
+                            cmd.creation_flags(0x08000000);
+                        }
+                        let mut total_money = 0.0;
+                        let mut order_count = 0;
+                        if let Ok(output) = cmd.output() {
+                            let body = String::from_utf8_lossy(&output.stdout);
+                            if let Ok(val) = parse_json(&body) {
+                                if let Some(orders) = val.get("data").and_then(JsonVal::as_arr) {
+                                    order_count = orders.len();
+                                    for o in orders {
+                                        let money = o.get("money_to_collect")
+                                            .and_then(JsonVal::as_f64)
+                                            .or_else(|| o.get("total_price").and_then(JsonVal::as_f64))
+                                            .unwrap_or(0.0);
+                                        total_money += money;
+                                    }
+                                }
+                            }
+                        }
+                        let rev_million = (total_money / 1_000_000.0 * 10.0).round() / 10.0;
+                        let _ = proxy.send_event(AppCmd::PancakeScanResult { rev: rev_million, orders: order_count });
+                    });
+                } else {
+                    self.push_ecom_log(&format!("Pancake POS: {}", message));
+                }
+                self.save_config();
+                self.save_workspace_snapshot("snap_latest");
+                self.sync_workspace_command_center();
+            }
+            AppCmd::PancakeScanResult { rev, orders } => {
+                self.pancake_rev = rev;
+                self.pancake_orders = orders;
+                self.log_ecom("DATA", "PANCAKE", &format!("Pancake POS: Thu thập {} đơn hàng | Doanh thu thu hộ ước tính: {} tr VNĐ", orders, rev));
+                self.save_workspace_snapshot("snap_latest");
+                self.sync_workspace_command_center();
+            }
+            AppCmd::EcomLogDebug(msg) => {
+                self.log_ecom("INFO", "SHOPEE", &msg);
+                if !self.multi_shop_queue.is_empty() {
+                    let total = self.multi_shop_queue.len().max(1);
+                    let pct = ((self.multi_shop_idx * 100) / total).min(95);
+                    let shop_label = self
+                        .shopee_shop_scan_current
+                        .as_ref()
+                        .map(|(_, n)| n.clone())
+                        .unwrap_or_else(|| "Shopee".to_string());
+                    self.sync_workspace_progress(
+                        true,
+                        self.multi_shop_idx + 1,
+                        total,
+                        pct as u32,
+                        &format!("[{}] {}", shop_label, msg),
+                        "running",
+                    );
+                }
+            }
+            AppCmd::WorkspaceScan { platform, mode, shop_ids } => {
+                self.push_ecom_log(&format!("Quét Command Center: platform={}, mode={}", platform, mode));
+                if !shop_ids.is_empty() {
+                    for s_id in &shop_ids {
+                        if !self.selected_shops.iter().any(|s| s.shop_id == *s_id) {
+                            self.selected_shops.push(ShopSelection {
+                                platform: if s_id.starts_with("tt_") { "tiktok".to_string() } else if s_id.starts_with("pk_") { "pancake".to_string() } else { "shopee".to_string() },
+                                shop_id: s_id.clone(),
+                            });
+                        }
+                    }
+                }
+                self.start_multi_shop_queue(shop_ids);
+            }
+            AppCmd::ScanNeedAuth { reason, shop_id } => {
+                self.multi_shop_auth_pending = true;
+                let s_id = if !shop_id.is_empty() { shop_id } else {
+                    self.multi_shop_queue.get(self.multi_shop_idx).cloned().unwrap_or_default()
+                };
+                let name = self.get_shop_display_name(&s_id);
+                self.log_ecom("WARN", "AUTH", &format!("Shop {} ({}) yêu cầu xác thực [{}]", name, s_id, reason));
+
+                if let Some(tab_id) = self.multi_shop_tab_id {
+                    if let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id) {
+                        self.tabs[pos].worker_kind = None;
+                        self.tabs[pos].workspace_id = self.active_workspace_id.clone();
+                        let _ = self.tabs[pos].webview.set_visible(true);
+                        self.execute(AppCmd::FocusIndex(pos));
+                        let _ = self.tabs[pos].webview.focus();
+                        self.relayout();
+                        self.sync_all_ui();
+                    }
+                }
+                let msg = format!("⚠️ [{}] Cần xác thực / giải Captcha để tiếp tục...", name);
+                self.sync_workspace_progress(true, 50, 100, 50, &msg, "running");
+                let js = format!("if (window.onWorkspaceAuthRequired) {{ window.onWorkspaceAuthRequired({{ shopName: '{}', reason: '{}' }}); }}", Self::escape_json(&name), Self::escape_json(&reason));
+                for t in &self.tabs {
+                    if t.url == "tp://workspace" {
+                        let _ = t.webview.evaluate_script(&js);
+                    }
+                }
+            }
+            AppCmd::ScanAuthResolved => {
+                self.multi_shop_auth_pending = false;
+                self.log_ecom("INFO", "AUTH", "Đã xác thực xong, tiếp tục quét ngầm...");
+                if let Some(tab_id) = self.multi_shop_tab_id {
+                    if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                        t.worker_kind = Some("bot".to_string());
+                    }
+                    self.relayout();
+                }
+                let s_id = self.multi_shop_queue.get(self.multi_shop_idx).cloned().unwrap_or_default();
+                let name = self.get_shop_display_name(&s_id);
+                let js = format!("if (window.onWorkspaceAuthResolved) {{ window.onWorkspaceAuthResolved({{ shopName: '{}' }}); }}", Self::escape_json(&name));
+                for t in &self.tabs {
+                    if t.url == "tp://workspace" {
+                        let _ = t.webview.evaluate_script(&js);
+                    }
+                }
+                if self.multi_shop_step == "orders" {
+                    if let Some(tid) = self.multi_shop_tab_id {
+                        if let Some(t) = self.tabs.iter().find(|t| t.id == tid) {
+                            let _ = t.webview.evaluate_script("setTimeout(function(){ if (window.__tpRunShopeeScan) window.__tpRunShopeeScan('orders'); }, 1200);");
+                        }
+                    }
+                }
+            }
+            AppCmd::CancelWorkspaceScan => {
+                if let Some(tid) = self.multi_shop_tab_id.take() {
+                    self.execute(AppCmd::CloseTabById(tid));
+                }
+                self.multi_shop_queue.clear();
+                self.multi_shop_idx = 0;
+                self.multi_shop_auth_pending = false;
+                self.multi_shop_step = String::new();
+                self.sync_workspace_progress(false, 0, 100, 0, "Đã hủy phiên quét.", "cancelled");
+                self.log_ecom("INFO", "QUEUE", "Đã hủy phiên quét theo yêu cầu của người dùng.");
+            }
+            AppCmd::OpenLogFile => {
+                #[cfg(target_os = "windows")]
+                {
+                    let log_file = self.exe_dir.join("user_data").join("logs").join("ecom_scanner.log");
+                    let _ = std::process::Command::new("notepad.exe").arg(&log_file).spawn();
+                }
+            }
+            AppCmd::SkipCurrentShop => {
+                if let Some(s_id) = self.multi_shop_queue.get(self.multi_shop_idx).cloned() {
+                    self.log_ecom("WARN", "QUEUE", &format!("Người dùng bấm Bỏ Qua shop: {}", s_id));
+                    self.multi_shop_stale_shops.insert(s_id);
+                }
+                self.multi_shop_auth_pending = false;
+                if let Some(tab_id) = self.multi_shop_tab_id.take() {
+                    self.execute(AppCmd::CloseTabById(tab_id));
+                }
+                self.multi_shop_idx += 1;
+                self.start_next_shop_in_multi_queue();
+            }
+            AppCmd::LoadSnapshot(key) => {
+                self.sync_workspace_command_center_with_key(&key);
+            }
+            AppCmd::OpenWorkspaceTab { url, shop_id } => {
+                let container = shop_id.as_deref().map(|id| format!("shop_{}", id));
+                let isolated = container.is_some();
+                self.add_tab_internal(&url, isolated, true, None, None, false, container);
             }
             AppCmd::ReopenClosedTab => {
                 if let Some(url) = self.closed_tabs.pop() {
@@ -7067,10 +11293,14 @@ impl TpBrowserApp {
                             items.push(JsonVal::obj(vec![
                                 ("title", JsonVal::Str(target_title)),
                                 ("url", JsonVal::Str(target_url)),
+                                ("folder", JsonVal::Str(String::new())),
+                                ("tags", JsonVal::Arr(Vec::new())),
+                                ("keyword", JsonVal::Str(String::new())),
                             ]));
                             "★ Đã lưu trang vào Bookmarks"
                         };
                         self.bookmarks_json = JsonVal::Arr(items).to_json();
+                        self.bookmarks_rev = self.bookmarks_rev.wrapping_add(1);
                         let _ = tab.webview.evaluate_script(&format!(
                             "if (window.__tpShowToast) window.__tpShowToast(\"{}\");",
                             Self::escape_json(toast_msg)
@@ -7082,9 +11312,13 @@ impl TpBrowserApp {
                 }
             }
             AppCmd::SaveBookmarks(bm_json) => {
-                self.bookmarks_json = bm_json;
-                self.save_config();
-                self.sync_all_ui();
+                if let Some(norm) = Self::normalize_bookmarks_json(&bm_json) {
+                    self.bookmarks_json = norm;
+                    self.bookmarks_rev = self.bookmarks_rev.wrapping_add(1);
+                    self.save_config();
+                    self.sync_all_ui();
+                    self.broadcast_config_changed();
+                }
             }
             AppCmd::SaveAiConfig {
                 provider,
@@ -7139,11 +11373,15 @@ impl TpBrowserApp {
                 if self.ai_mode == AiDisplayMode::BubbleMinimized {
                     self.execute(AppCmd::SetAiMode(AiDisplayMode::FbPopup));
                 }
+                let payload = JsonVal::obj(vec![
+                    ("text", JsonVal::Str(text)),
+                    ("source", JsonVal::Str(source)),
+                    ("contact", JsonVal::Str(contact)),
+                ])
+                .to_json();
                 let js = format!(
-                    "if (window.__tpReceiveTaskFromSelection) window.__tpReceiveTaskFromSelection({{\\\"text\\\":\\\"{}\\\",\\\"source\\\":\\\"{}\\\",\\\"contact\\\":\\\"{}\\\"}});",
-                    Self::escape_json(&text),
-                    Self::escape_json(&source),
-                    Self::escape_json(&contact)
+                    "if (window.__tpReceiveTaskFromSelection) window.__tpReceiveTaskFromSelection({});",
+                    payload
                 );
                 let _ = self.ai_shell.evaluate_script(&js);
             }
@@ -7411,9 +11649,23 @@ impl TpBrowserApp {
                 {
                     self.shopee_discovery_tab_id = None;
                     self.start_shopee_discovery(Some(tab_id), true, None);
+                } else if self.multi_shop_auth_pending && self.multi_shop_tab_id == Some(tab_id)
+                    && url.contains("banhang.shopee.vn")
+                    && !url.contains("accounts.shopee.vn")
+                    && !url.contains("/seller/login")
+                    && !url.contains("captcha")
+                {
+                    if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                        t.worker_kind = Some("bot".to_string());
+                    }
+                    self.execute(AppCmd::ScanAuthResolved);
+                    self.trigger_worker_scan_by_id(tab_id, &url);
+                    self.sync_workspace_view();
+                    return;
                 } else if is_bot_worker {
                     self.trigger_worker_scan_by_id(tab_id, &url);
                     self.sync_workspace_view();
+                    return;
                 } else if url == "https://banhang.shopee.vn/portal/shop" {
                     if let Some(shop_id) = self.shopee_open_target_id.take() {
                         if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
@@ -7422,7 +11674,8 @@ impl TpBrowserApp {
                         }
                     }
                 }
-                if !finished_title.is_empty() {
+                let is_private = self.tabs.iter().find(|t| t.id == tab_id).is_some_and(|t| t.private);
+                if !is_private && !finished_title.is_empty() {
                     self.record_history(&finished_title, &url);
                 }
                 if url == "tp://history" {
@@ -7432,7 +11685,9 @@ impl TpBrowserApp {
                 }
                 self.sync_ai_config_to_panel(false);
                 self.sync_all_ui();
-                self.save_session();
+                if !is_private {
+                    self.save_session();
+                }
             }
             AppCmd::McpDispatch(msg) => {
                 self.handle_mcp_msg(msg);
@@ -7490,7 +11745,939 @@ impl TpBrowserApp {
                     let _ = reply.send(res);
                 }
             }
+            AppCmd::CloseCommandBar => {
+                if self.command_bar_open {
+                    self.command_bar_open = false;
+                    let _ = self.tab_shell.evaluate_script(
+                        "if (window.__tpCloseCommandBar) window.__tpCloseCommandBar(true);",
+                    );
+                    let _ = self.titlebar_shell.evaluate_script(
+                        "if (window.__tpCloseCommandBar) window.__tpCloseCommandBar(true);",
+                    );
+                    self.relayout();
+                    if let Some(t) = self.tabs.get(self.active_idx) {
+                        let _ = t.webview.focus();
+                    }
+                }
+            }
+            AppCmd::CopyActiveUrl => {
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    let clean_enabled = parse_json(&self.context_menu_prefs_json)
+                        .ok()
+                        .and_then(|v| v.get("clean_copy_link").and_then(JsonVal::as_bool))
+                        .unwrap_or(true);
+                    let url = if clean_enabled {
+                        Self::clean_tracking_url(&tab.url)
+                    } else {
+                        tab.url.clone()
+                    };
+                    Self::copy_text_to_clipboard(&url);
+                    let _ = tab.webview.evaluate_script(
+                        "if (window.__tpShowToast) window.__tpShowToast(\"🔗 Đã sao chép URL hiện tại\");",
+                    );
+                }
+            }
+            AppCmd::DuplicateTab(tab_id) => {
+                if let Some(src) = self.tabs.iter().find(|t| t.id == tab_id && t.worker_kind.is_none()) {
+                    let url = src.url.clone();
+                    let isolated = src.profile_name != "default" && !src.profile_name.starts_with("container_");
+                    let container_id = Some(src.container_id.clone());
+                    self.add_tab_internal(&url, isolated, true, None, None, false, container_id);
+                }
+            }
+            AppCmd::PinTabById(tab_id) => {
+                if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id && t.worker_kind.is_none()) {
+                    tab.pinned = !tab.pinned;
+                    if tab.pinned {
+                        tab.essential = false;
+                        tab.pinned_origin_url = Some(tab.url.clone());
+                    }
+                    self.sync_all_ui();
+                    self.save_session();
+                }
+            }
+            AppCmd::CloseOtherTabs(keep_tab_id) => {
+                let ws_id = self.active_workspace_id.clone();
+                if !self.tabs.iter().any(|t| t.id == keep_tab_id && t.workspace_id == ws_id) {
+                    return;
+                }
+                let to_close: Vec<u64> = self
+                    .tabs
+                    .iter()
+                    .filter(|t| {
+                        t.workspace_id == ws_id
+                            && t.worker_kind.is_none()
+                            && !t.pinned
+                            && t.id != keep_tab_id
+                    })
+                    .map(|t| t.id)
+                    .collect();
+                for tid in to_close {
+                    if let Some(pos) = self.tabs.iter().position(|t| t.id == tid) {
+                        self.execute(AppCmd::CloseIndex(pos));
+                    }
+                }
+                if let Some(pos) = self.tabs.iter().position(|t| t.id == keep_tab_id) {
+                    self.execute(AppCmd::FocusIndex(pos));
+                }
+            }
+            AppCmd::MoveTabToWorkspace { tab_id, workspace_id } => {
+                if !self.workspaces.iter().any(|w| w.id == workspace_id) {
+                    return;
+                }
+                let Some(pos) = self.tabs.iter().position(|t| t.id == tab_id && t.worker_kind.is_none()) else {
+                    return;
+                };
+                if self.tabs[pos].workspace_id == workspace_id {
+                    return;
+                }
+                self.tabs[pos].workspace_id = workspace_id;
+                self.tabs[pos].tab_group_id = None;
+                self.selected_tab_ids.remove(&tab_id);
+                if self.split_paired_tab_id == Some(tab_id) {
+                    self.split_paired_tab_id = None;
+                    self.view_mode = ContentViewMode::SingleTab;
+                }
+                if self.tabs.get(self.active_idx).map(|t| t.workspace_id.as_str())
+                    != Some(self.active_workspace_id.as_str())
+                {
+                    if let Some(next_idx) = self.visible_tab_indices().first().copied() {
+                        self.active_idx = next_idx;
+                    } else {
+                        self.add_tab("tp://newtab", false);
+                        return;
+                    }
+                }
+                self.relayout();
+                self.sync_all_ui();
+                self.save_session();
+            }
+            AppCmd::ReorderTab { source_id, target_id, after } => {
+                if source_id == target_id {
+                    return;
+                }
+                let ws_id = self.active_workspace_id.clone();
+                let active_id = self.tabs.get(self.active_idx).map(|t| t.id);
+                let src_pos = self.tabs.iter().position(|t| {
+                    t.id == source_id && t.workspace_id == ws_id && t.worker_kind.is_none()
+                });
+                let dst_pos = self.tabs.iter().position(|t| {
+                    t.id == target_id && t.workspace_id == ws_id && t.worker_kind.is_none()
+                });
+                let (Some(s_idx), Some(d_idx)) = (src_pos, dst_pos) else {
+                    return;
+                };
+                if self.tabs[s_idx].pinned != self.tabs[d_idx].pinned
+                    || self.tabs[s_idx].essential != self.tabs[d_idx].essential
+                {
+                    return;
+                }
+                let tab = self.tabs.remove(s_idx);
+                let mut insert_idx = if s_idx < d_idx { d_idx - 1 } else { d_idx };
+                if after {
+                    insert_idx += 1;
+                }
+                insert_idx = insert_idx.min(self.tabs.len());
+                self.tabs.insert(insert_idx, tab);
+                if let Some(aid) = active_id {
+                    if let Some(new_active) = self.tabs.iter().position(|t| t.id == aid) {
+                        self.active_idx = new_active;
+                    }
+                }
+                self.sync_all_ui();
+                self.save_session();
+            }
+            AppCmd::OpenInSplit(raw_url) => {
+                let prev_active_id = self.tabs.get(self.active_idx).map(|t| t.id);
+                let new_id = self.add_tab_internal(&raw_url, false, false, None, None, false, None);
+                if let (Some(prev_id), Some(created_id)) = (prev_active_id, new_id) {
+                    if let Some(prev_pos) = self.tabs.iter().position(|t| t.id == prev_id) {
+                        self.active_idx = prev_pos;
+                    }
+                    self.view_mode = ContentViewMode::ColumnsBsp;
+                    self.split_paired_tab_id = Some(created_id);
+                    self.relayout();
+                    self.sync_all_ui();
+                    self.save_session();
+                    self.save_config();
+                }
+            }
+            AppCmd::AdjustSplitRatio(delta) => {
+                if self.view_mode != ContentViewMode::SingleTab {
+                    self.master_ratio = (self.master_ratio + delta).clamp(0.25, 0.75);
+                    self.relayout();
+                }
+            }
+            AppCmd::ResetSplitRatio => {
+                self.master_ratio = 0.5;
+                self.relayout();
+            }
+            AppCmd::ToggleCompactMode => {
+                self.compact_mode = !self.compact_mode;
+                COMPACT_MODE_ENABLED.store(self.compact_mode, Ordering::Relaxed);
+                self.compact_sidebar_hover = false;
+                self.relayout();
+                self.sync_all_ui();
+                self.save_config();
+            }
+            AppCmd::SetCompactSidebarHover(hover) => {
+                if self.compact_mode && self.compact_sidebar_hover != hover {
+                    self.compact_sidebar_hover = hover;
+                    self.relayout();
+                }
+            }
+            AppCmd::ToggleTabEssential(tab_id) => {
+                if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id && t.worker_kind.is_none()) {
+                    tab.essential = !tab.essential;
+                    if tab.essential {
+                        tab.pinned = false;
+                        tab.pinned_origin_url = Some(tab.url.clone());
+                    }
+                    self.relayout();
+                    self.sync_all_ui();
+                    self.save_session();
+                }
+            }
+            AppCmd::ResetPinnedTab(tab_id) => {
+                if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                    if let Some(origin) = tab.pinned_origin_url.clone() {
+                        if origin != tab.url {
+                            tab.url = origin.clone();
+                            tab.title = Self::title_from_url(&origin);
+                            if origin == "tp://newtab" {
+                                let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
+                            } else if origin == "tp://history" {
+                                let _ = tab.webview.load_html(&inject_ui_html(HISTORY_HTML, &self.ui_theme));
+                            } else if origin == "tp://workspace" {
+                                let _ = tab.webview.load_html(&inject_ui_html(NEWTAB_HTML, &self.ui_theme));
+                            } else {
+                                let _ = tab.webview.load_url(&origin);
+                            }
+                        }
+                    }
+                    self.sync_all_ui();
+                    self.save_session();
+                }
+            }
+            AppCmd::ToggleTabFolderCollapsed(folder_id) => {
+                if let Some(folder) = self.tab_folders.iter_mut().find(|f| f.id == folder_id) {
+                    folder.collapsed = !folder.collapsed;
+                    self.sync_all_ui();
+                    self.save_session();
+                }
+            }
+            AppCmd::RenameTabFolder { folder_id, name } => {
+                let trimmed = name.trim();
+                if !trimmed.is_empty() && trimmed.len() <= 64 {
+                    if let Some(folder) = self.tab_folders.iter_mut().find(|f| f.id == folder_id) {
+                        folder.name = trimmed.to_string();
+                        self.sync_all_ui();
+                        self.save_session();
+                    }
+                }
+            }
+            AppCmd::AddTabToFolder { tab_id, folder_id } => {
+                let folder_ws = self.tab_folders.iter().find(|f| f.id == folder_id).map(|f| f.workspace_id.clone());
+                if let Some(ws_id) = folder_ws {
+                    if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id && t.worker_kind.is_none()) {
+                        if tab.workspace_id == ws_id {
+                            tab.tab_group_id = Some(folder_id);
+                            self.sync_all_ui();
+                            self.save_session();
+                        }
+                    }
+                }
+            }
+            AppCmd::UpdateWorkspaceStyle { id, icon, accent, container_id } => {
+                let icon = if valid_workspace_icon(&icon) { icon } else { "✦".to_string() };
+                let accent = if valid_workspace_accent(&accent) { accent } else { String::new() };
+                let container_id = Self::normalize_container_id(&container_id);
+                if let Some(ws) = self.workspaces.iter_mut().find(|w| w.id == id) {
+                    ws.icon = icon;
+                    ws.accent = accent;
+                    ws.container_id = container_id;
+                    self.sync_all_ui();
+                    self.save_config();
+                }
+            }
+            AppCmd::NextWorkspace => {
+                if let Some(pos) = self.workspaces.iter().position(|w| w.id == self.active_workspace_id) {
+                    let next = (pos + 1) % self.workspaces.len();
+                    let next_id = self.workspaces[next].id.clone();
+                    self.execute(AppCmd::SetActiveWorkspace(next_id));
+                }
+            }
+            AppCmd::PrevWorkspace => {
+                if let Some(pos) = self.workspaces.iter().position(|w| w.id == self.active_workspace_id) {
+                    let prev = (pos + self.workspaces.len() - 1) % self.workspaces.len();
+                    let prev_id = self.workspaces[prev].id.clone();
+                    self.execute(AppCmd::SetActiveWorkspace(prev_id));
+                }
+            }
+            AppCmd::UnloadTab(tab_id) => {
+                self.unload_tab_by_id(tab_id);
+                self.save_session();
+            }
+            AppCmd::GlanceOpenInSplit => {
+                if self.glance_open && !self.glance_url.is_empty() {
+                    let url = self.glance_url.clone();
+                    self.execute(AppCmd::CloseGlance);
+                    self.execute(AppCmd::OpenInSplit(url));
+                }
+            }
+            AppCmd::GlanceNavBack => {
+                if let Some(body) = &self.glance_body_shell {
+                    let _ = body.evaluate_script("window.history.back();");
+                }
+            }
+            AppCmd::GlanceNavForward => {
+                if let Some(body) = &self.glance_body_shell {
+                    let _ = body.evaluate_script("window.history.forward();");
+                }
+            }
+            AppCmd::GlanceReload => {
+                if let Some(body) = &self.glance_body_shell {
+                    let _ = body.reload();
+                }
+            }
+            AppCmd::GlanceCopyUrl => {
+                if !self.glance_url.is_empty() {
+                    Self::copy_text_to_clipboard(&self.glance_url);
+                }
+            }
+            AppCmd::UpdateTabMedia { tab_id, playing, muted, title, artist } => {
+                if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                    let changed = tab.audible != playing
+                        || tab.muted != muted
+                        || tab.media_title != title
+                        || tab.media_artist != artist;
+                    tab.audible = playing;
+                    tab.muted = muted;
+                    tab.media_title = title;
+                    tab.media_artist = artist;
+                    if changed {
+                        self.sync_all_ui();
+                    }
+                }
+            }
+            AppCmd::ToggleTabMute(tab_id) => {
+                if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                    tab.muted = !tab.muted;
+                    let mute_js = format!(
+                        "if (window.__tpSetTabMuted) window.__tpSetTabMuted({});",
+                        tab.muted
+                    );
+                    let _ = tab.webview.evaluate_script(&mute_js);
+                    self.sync_all_ui();
+                }
+            }
+            AppCmd::MediaControl { tab_id, action } => {
+                if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+                    let safe_action: String = action.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+                    let _ = tab.webview.evaluate_script(&format!(
+                        "if (window.__tpMediaControl) window.__tpMediaControl('{}');",
+                        safe_action
+                    ));
+                }
+            }
+            AppCmd::OpenTitlebarPopover => {
+                if !self.titlebar_popover_open {
+                    self.titlebar_popover_open = true;
+                    self.relayout();
+                }
+            }
+            AppCmd::CloseTitlebarPopover => {
+                if self.titlebar_popover_open {
+                    self.titlebar_popover_open = false;
+                    self.relayout();
+                }
+            }
+            AppCmd::TranslateReq { tab_id, req_id, target_lang, texts } => {
+                let payload_json = format!(
+                    "{{\"tab_id\":{},\"req_id\":{},\"target_lang\":\"{}\",\"texts\":[{}]}}",
+                    tab_id,
+                    req_id,
+                    Self::escape_json(&target_lang),
+                    texts.iter().map(|t| format!("\"{}\"", Self::escape_json(t))).collect::<Vec<_>>().join(",")
+                );
+                let _ = self.titlebar_shell.evaluate_script(&format!(
+                    "if (window.__tpExecuteTranslation) window.__tpExecuteTranslation({});",
+                    payload_json
+                ));
+            }
+            AppCmd::TranslateRes { tab_id, req_id, translations } => {
+                if let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) {
+                    let res_json = format!(
+                        "[{}]",
+                        translations.iter().map(|t| format!("\"{}\"", Self::escape_json(t))).collect::<Vec<_>>().join(",")
+                    );
+                    let _ = tab.webview.evaluate_script(&format!(
+                        "if (window.__tpOnTranslated) window.__tpOnTranslated({}, {});",
+                        req_id,
+                        res_json
+                    ));
+                }
+            }
+            AppCmd::SaveDomainBoost {
+                domain,
+                css,
+                zap_selectors,
+                enabled,
+            } => {
+                let norm_domain = Self::normalize_boost_domain(&domain);
+                if !norm_domain.is_empty() {
+                    let mut pairs = match parse_json(&self.boosts_json) {
+                        Ok(JsonVal::Obj(p)) => p,
+                        _ => Vec::new(),
+                    };
+                    pairs.retain(|(k, _)| Self::normalize_boost_domain(k) != norm_domain);
+                    pairs.push((
+                        norm_domain,
+                        JsonVal::obj(vec![
+                            ("css", JsonVal::Str(css)),
+                            (
+                                "zap_selectors",
+                                JsonVal::Arr(zap_selectors.into_iter().map(JsonVal::Str).collect()),
+                            ),
+                            ("enabled", JsonVal::Bool(enabled)),
+                        ]),
+                    ));
+                    if let Some(norm) = Self::normalize_boosts_json(&JsonVal::Obj(pairs).to_json()) {
+                        self.boosts_json = norm;
+                        self.save_config();
+                        self.sync_all_ui();
+                        self.broadcast_config_changed();
+                    }
+                }
+            }
+            AppCmd::ResetDomainBoost(domain) => {
+                let norm_domain = Self::normalize_boost_domain(&domain);
+                if !norm_domain.is_empty() {
+                    let mut pairs = match parse_json(&self.boosts_json) {
+                        Ok(JsonVal::Obj(p)) => p,
+                        _ => Vec::new(),
+                    };
+                    pairs.retain(|(k, _)| Self::normalize_boost_domain(k) != norm_domain);
+                    self.boosts_json = Self::normalize_boosts_json(&JsonVal::Obj(pairs).to_json())
+                        .unwrap_or_else(|| "{}".to_string());
+                    self.save_config();
+                    self.sync_all_ui();
+                    self.broadcast_config_changed();
+                }
+            }
+            AppCmd::OpenBoostsPanel => {
+                if self.settings_open {
+                    self.settings_open = false;
+                    self.relayout();
+                }
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    let _ = tab.webview.focus();
+                    let _ = tab.webview.evaluate_script("if (window.__tpOpenBoosts) window.__tpOpenBoosts();");
+                }
+            }
+            AppCmd::StartZapMode => {
+                if self.settings_open {
+                    self.settings_open = false;
+                    self.relayout();
+                }
+                if let Some(tab) = self.tabs.get(self.active_idx) {
+                    let _ = tab.webview.focus();
+                    let _ = tab.webview.evaluate_script("if (window.__tpStartZapMode) window.__tpStartZapMode();");
+                }
+            }
+            AppCmd::OpenDownloadedFile(path) => {
+                let downloads = Self::downloads_dir();
+                let tracked = self.downloads.iter().any(|d| d.path == path);
+                if tracked {
+                    if let Some(safe_path) = Self::is_safe_download_path(&path, &downloads) {
+                        #[cfg(target_os = "windows")]
+                        {
+                            let _ = std::process::Command::new("explorer.exe")
+                                .arg(&safe_path)
+                                .spawn();
+                        }
+                    }
+                }
+            }
+            AppCmd::OpenDownloadFolder(path) => {
+                let downloads = Self::downloads_dir();
+                let _ = fs::create_dir_all(&downloads);
+                #[cfg(target_os = "windows")]
+                {
+                    if let Some(safe_path) = Self::is_safe_download_path(&path, &downloads) {
+                        let _ = std::process::Command::new("explorer.exe")
+                            .arg(format!("/select,{}", safe_path.display()))
+                            .spawn();
+                    } else {
+                        let _ = std::process::Command::new("explorer.exe")
+                            .arg(&downloads)
+                            .spawn();
+                    }
+                }
+            }
+            AppCmd::RecoverWindows
+            | AppCmd::DismissWindowRecovery
+            | AppCmd::SyncWindowGeometry => {}
+            AppCmd::PrewarmNewTab => {
+                self.ensure_warm_newtab();
+            }
+            AppCmd::StepMruTab(delta) => {
+                if self.command_bar_open {
+                    self.command_bar_open = false;
+                    let _ = self.tab_shell.evaluate_script(
+                        "if (window.__tpCloseCommandBar) window.__tpCloseCommandBar(true);",
+                    );
+                }
+                if self.mru_cycle_ids.is_none() {
+                    let candidates = self.mru_candidate_ids();
+                    if candidates.is_empty() {
+                        return;
+                    }
+                    self.mru_cycle_ids = Some(candidates);
+                    self.mru_cycle_pos = 0;
+                }
+                let mut ids = self.mru_cycle_ids.clone().unwrap_or_default();
+                ids.retain(|id| {
+                    self.tabs.iter().any(|t| {
+                        t.id == *id
+                            && t.workspace_id == self.active_workspace_id
+                            && t.worker_kind.is_none()
+                    })
+                });
+                if ids.is_empty() {
+                    self.mru_cycle_ids = None;
+                    self.mru_hud_open = false;
+                    self.relayout();
+                    return;
+                }
+                self.mru_cycle_ids = Some(ids.clone());
+                let len = ids.len() as isize;
+                let step = if delta == 0 { 1 } else { delta as isize };
+                self.mru_cycle_pos = ((self.mru_cycle_pos as isize + step).rem_euclid(len)) as usize;
+                let active_id = self.tabs.get(self.active_idx).map(|tab| tab.id);
+                let mut items_json = String::from("[");
+                for (i, id) in ids.iter().enumerate() {
+                    if let Some(t) = self.tabs.iter().find(|t| {
+                        t.id == *id
+                            && t.workspace_id == self.active_workspace_id
+                            && t.worker_kind.is_none()
+                    }) {
+                        if i > 0 {
+                            items_json.push(',');
+                        }
+                        let domain = t
+                            .url
+                            .strip_prefix("https://")
+                            .or_else(|| t.url.strip_prefix("http://"))
+                            .unwrap_or(&t.url)
+                            .split('/')
+                            .next()
+                            .unwrap_or(&t.url);
+                        items_json.push_str(&format!(
+                            "{{\"id\":{},\"title\":\"{}\",\"url\":\"{}\",\"domain\":\"{}\",\"favicon\":\"{}\",\"pinned\":{},\"essential\":{},\"is_private\":{},\"is_active\":{}}}",
+                            t.id,
+                            Self::escape_json(&t.title),
+                            Self::escape_json(&t.url),
+                            Self::escape_json(domain),
+                            Self::escape_json(&t.favicon_url),
+                            t.pinned,
+                            t.essential,
+                            t.private,
+                            Some(t.id) == active_id,
+                        ));
+                    }
+                }
+                items_json.push(']');
+                let payload = format!(
+                    "{{\"ui_theme\":\"{}\",\"selected_idx\":{},\"tabs\":{}}}",
+                    Self::escape_json(&self.ui_theme),
+                    self.mru_cycle_pos,
+                    items_json
+                );
+                self.mru_hud_open = true;
+                self.relayout();
+                let _ = self.tab_shell.evaluate_script(&format!(
+                    "if (window.__tpOpenMruSwitcher) window.__tpOpenMruSwitcher({});",
+                    payload
+                ));
+                let _ = self.tab_shell.focus();
+            }
+            AppCmd::CommitMruTab(target_id) => {
+                let chosen_id = target_id.or_else(|| {
+                    self.mru_cycle_ids
+                        .as_ref()
+                        .and_then(|ids| ids.get(self.mru_cycle_pos).copied())
+                });
+                let was_open = self.mru_hud_open || self.mru_cycle_ids.is_some();
+                self.mru_hud_open = false;
+                self.mru_cycle_ids = None;
+                self.mru_cycle_pos = 0;
+                if was_open {
+                    let _ = self.tab_shell.evaluate_script(
+                        "if (window.__tpCloseMruSwitcher) window.__tpCloseMruSwitcher();",
+                    );
+                }
+                if let Some(id) = chosen_id {
+                    if let Some(index) = self.tabs.iter().position(|tab| {
+                        tab.id == id
+                            && tab.workspace_id == self.active_workspace_id
+                            && tab.worker_kind.is_none()
+                    }) {
+                        if index != self.active_idx {
+                            self.execute(AppCmd::FocusIndex(index));
+                            return;
+                        }
+                        self.mru_tab_ids.retain(|existing| *existing != id);
+                        self.mru_tab_ids.insert(0, id);
+                    }
+                }
+                if was_open {
+                    self.relayout();
+                    if let Some(t) = self.tabs.get(self.active_idx) {
+                        let _ = t.webview.focus();
+                    }
+                }
+            }
+            AppCmd::CancelMruTab => {
+                let was_open = self.mru_hud_open || self.mru_cycle_ids.is_some();
+                self.mru_hud_open = false;
+                self.mru_cycle_ids = None;
+                self.mru_cycle_pos = 0;
+                if was_open {
+                    let _ = self.tab_shell.evaluate_script(
+                        "if (window.__tpCloseMruSwitcher) window.__tpCloseMruSwitcher();",
+                    );
+                    self.relayout();
+                    if let Some(t) = self.tabs.get(self.active_idx) {
+                        let _ = t.webview.focus();
+                    }
+                }
+            }
+            AppCmd::BrowserExtensionsLoaded(raw_exts) => {
+                self.apply_loaded_browser_extensions(raw_exts);
+                self.sync_all_ui();
+            }
+            AppCmd::OpenExtensionPopup { id, page } => {
+                if id == "ai_cowork" {
+                    self.execute(AppCmd::ToggleChatChannel(ChatChannel::Ai));
+                } else {
+                    if self.loaded_extensions.is_empty() {
+                        self.refresh_browser_extensions();
+                    }
+                    let want_dashboard = matches!(
+                        page.as_deref(),
+                        Some("dashboard" | "options")
+                    );
+                    let target_ext = self.loaded_extensions.iter().find(|e| {
+                        !e.ext_id.is_empty()
+                            && (e.id.eq_ignore_ascii_case(&id)
+                                || e.ext_id.eq_ignore_ascii_case(&id)
+                                || (id == "ublock" && e.id == "ublock"))
+                    }).cloned();
+                    if let Some(ext) = target_ext {
+                        let rel = if want_dashboard && !ext.options_path.is_empty() {
+                            ext.options_path.as_str()
+                        } else if !ext.popup_path.is_empty() {
+                            ext.popup_path.as_str()
+                        } else {
+                            ext.options_path.as_str()
+                        };
+                        if !rel.is_empty() {
+                            let url = format!(
+                                "chrome-extension://{}/{}",
+                                ext.ext_id,
+                                rel.trim_start_matches('/')
+                            );
+                            if want_dashboard {
+                                self.add_tab(&url, false);
+                            } else {
+                                self.execute(AppCmd::OpenGlance {
+                                    url,
+                                    title: ext.name.clone(),
+                                });
+                            }
+                            return;
+                        }
+                    }
+                    self.execute(AppCmd::OpenSettingsModal("privacy".to_string()));
+                }
+            }
         }
+    }
+
+    fn scan_extension_manifests(&self) -> Vec<(String, String, String, String)> {
+        let mut out = Vec::new();
+        let ext_dir = self.exe_dir.join("extensions");
+        let Ok(entries) = fs::read_dir(&ext_dir) else {
+            return out;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+            if dir_name.starts_with('.') {
+                continue;
+            }
+            let manifest_path = path.join("manifest.json");
+            let Ok(raw) = fs::read_to_string(&manifest_path) else {
+                continue;
+            };
+            let parsed = parse_json(&raw).ok();
+            let raw_name = parsed
+                .as_ref()
+                .and_then(|v| v.get("name").and_then(JsonVal::as_str))
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let friendly_name = if raw_name.is_empty() || raw_name.starts_with("__MSG_") {
+                if dir_name.to_ascii_lowercase().contains("ubo") {
+                    "uBlock Origin Lite + ABPVN".to_string()
+                } else {
+                    dir_name.clone()
+                }
+            } else {
+                raw_name
+            };
+            let mut popup_path = parsed
+                .as_ref()
+                .and_then(|v| {
+                    v.get("action")
+                        .or_else(|| v.get("browser_action"))
+                        .and_then(|a| a.get("default_popup"))
+                        .and_then(JsonVal::as_str)
+                })
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if popup_path.is_empty() && path.join("popup.html").exists() {
+                popup_path = "popup.html".to_string();
+            }
+            let mut options_path = parsed
+                .as_ref()
+                .and_then(|v| {
+                    v.get("options_ui")
+                        .and_then(|o| o.get("page"))
+                        .or_else(|| v.get("options_page"))
+                        .and_then(JsonVal::as_str)
+                })
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if options_path.is_empty() && path.join("dashboard.html").exists() {
+                options_path = "dashboard.html".to_string();
+            }
+            out.push((dir_name, friendly_name, popup_path, options_path));
+        }
+        out
+    }
+
+    fn apply_loaded_browser_extensions(&mut self, raw_exts: Vec<(String, String, bool)>) {
+        let manifests = self.scan_extension_manifests();
+        let mut next = Vec::new();
+        for (ext_id, com_name, enabled) in raw_exts {
+            let lower = com_name.to_ascii_lowercase();
+            let matched = manifests.iter().find(|(dir_name, fname, _, _)| {
+                let dlow = dir_name.to_ascii_lowercase();
+                let flow = fname.to_ascii_lowercase();
+                lower == flow
+                    || (lower.contains("ublock") && (dlow.contains("ubo") || flow.contains("ublock")))
+                    || (!dlow.is_empty() && lower.contains(&dlow))
+            });
+            let is_builtin_wv2 = matched.is_none()
+                && (ext_id == "dgiklkfkllikcanfonkcabmbdfmgleag"
+                    || ext_id == "mhjfbmdgcfjbbpaeojofohoefgiehjai"
+                    || lower.starts_with("microsoft "));
+            if is_builtin_wv2 {
+                continue;
+            }
+            let is_ublock = lower.contains("ublock")
+                || matched
+                    .as_ref()
+                    .is_some_and(|(d, _, _, _)| d.to_ascii_lowercase().contains("ubo"));
+            let logical_id = if is_ublock {
+                "ublock".to_string()
+            } else {
+                ext_id.clone()
+            };
+            let name = if is_ublock {
+                "uBlock Origin Lite + ABPVN".to_string()
+            } else if com_name.trim().is_empty() {
+                matched.map(|(_, n, _, _)| n.clone()).unwrap_or_else(|| ext_id.clone())
+            } else {
+                com_name
+            };
+            let desc = if is_ublock {
+                "Khiên chặn quảng cáo 3 lớp".to_string()
+            } else {
+                "Tiện ích WebView2".to_string()
+            };
+            let (popup_path, options_path) = matched
+                .map(|(_, _, p, o)| (p.clone(), o.clone()))
+                .unwrap_or_else(|| {
+                    if is_ublock {
+                        ("popup.html".to_string(), "dashboard.html".to_string())
+                    } else {
+                        (String::new(), String::new())
+                    }
+                });
+            next.push(LoadedExtensionMeta {
+                id: logical_id,
+                ext_id,
+                name,
+                desc,
+                popup_path,
+                options_path,
+                enabled,
+            });
+        }
+        if !next.iter().any(|e| e.id == "ublock") {
+            if let Some((_, fname, p, o)) = manifests
+                .into_iter()
+                .find(|(d, _, _, _)| d.to_ascii_lowercase().contains("ubo"))
+            {
+                next.push(LoadedExtensionMeta {
+                    id: "ublock".to_string(),
+                    ext_id: String::new(),
+                    name: fname,
+                    desc: "Khiên chặn quảng cáo 3 lớp".to_string(),
+                    popup_path: p,
+                    options_path: o,
+                    enabled: self.adblock_enabled,
+                });
+            }
+        }
+        next.push(LoadedExtensionMeta {
+            id: "ai_cowork".to_string(),
+            ext_id: String::new(),
+            name: "TP AI Cowork".to_string(),
+            desc: "Trợ lý tự động hóa tác vụ".to_string(),
+            popup_path: String::new(),
+            options_path: String::new(),
+            enabled: true,
+        });
+        self.loaded_extensions = next;
+    }
+
+    fn extensions_state_json(&self) -> String {
+        if self.loaded_extensions.is_empty() {
+            return format!(
+                "[{{\"id\":\"ublock\",\"ext_id\":\"\",\"name\":\"uBlock Origin Lite + ABPVN\",\"desc\":\"Khiên chặn quảng cáo 3 lớp\",\"enabled\":{},\"has_popup\":false,\"has_options\":false}},{{\"id\":\"ai_cowork\",\"ext_id\":\"\",\"name\":\"TP AI Cowork\",\"desc\":\"Trợ lý tự động hóa tác vụ\",\"enabled\":true,\"has_popup\":true,\"has_options\":false}}]",
+                self.adblock_enabled
+            );
+        }
+        let items: Vec<String> = self
+            .loaded_extensions
+            .iter()
+            .map(|e| {
+                format!(
+                    "{{\"id\":\"{}\",\"ext_id\":\"{}\",\"name\":\"{}\",\"desc\":\"{}\",\"enabled\":{},\"has_popup\":{},\"has_options\":{}}}",
+                    Self::escape_json(&e.id),
+                    Self::escape_json(&e.ext_id),
+                    Self::escape_json(&e.name),
+                    Self::escape_json(&e.desc),
+                    e.enabled,
+                    !e.popup_path.is_empty() || e.id == "ai_cowork",
+                    !e.options_path.is_empty(),
+                )
+            })
+            .collect();
+        format!("[{}]", items.join(","))
+    }
+
+    fn refresh_browser_extensions(&self) {
+        #[cfg(target_os = "windows")]
+        {
+            let proxy = self.proxy.clone();
+            let core = self.tab_shell.webview();
+            let Ok(wv13) = <ICoreWebView2 as Interface>::cast::<ICoreWebView2_13>(&core) else {
+                return;
+            };
+            let Ok(profile) = (unsafe { wv13.Profile() }) else {
+                return;
+            };
+            let Ok(profile7) = <ICoreWebView2Profile as Interface>::cast::<ICoreWebView2Profile7>(&profile) else {
+                return;
+            };
+            let handler = ProfileGetBrowserExtensionsCompletedHandler::create(Box::new(move |err, list| {
+                if err.is_err() {
+                    return Ok(());
+                }
+                let mut out = Vec::new();
+                if let Some(list) = list {
+                    let mut count = 0u32;
+                    if unsafe { list.Count(&mut count) }.is_ok() {
+                        for idx in 0..count {
+                            if let Ok(ext) = unsafe { list.GetValueAtIndex(idx) } {
+                                let mut id_ptr = PWSTR::null();
+                                let mut name_ptr = PWSTR::null();
+                                let mut en = BOOL::default();
+                                let id = if unsafe { ext.Id(&mut id_ptr) }.is_ok() {
+                                    take_pwstr(id_ptr)
+                                } else {
+                                    String::new()
+                                };
+                                let name = if unsafe { ext.Name(&mut name_ptr) }.is_ok() {
+                                    take_pwstr(name_ptr)
+                                } else {
+                                    String::new()
+                                };
+                                let enabled = unsafe { ext.IsEnabled(&mut en) }.is_ok() && en.as_bool();
+                                if !id.is_empty() {
+                                    out.push((id, name, enabled));
+                                }
+                            }
+                        }
+                    }
+                }
+                let _ = proxy.send_event(AppCmd::BrowserExtensionsLoaded(out));
+                Ok(())
+            }));
+            let _ = unsafe { profile7.GetBrowserExtensions(&handler) };
+        }
+    }
+
+    fn compute_mru_candidate_ids<I>(
+        active_id: Option<u64>,
+        mru_tab_ids: &[u64],
+        workspace_tabs: I,
+    ) -> Vec<u64>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        let valid_ids: Vec<u64> = workspace_tabs.into_iter().collect();
+        let mut out: Vec<u64> = Vec::with_capacity(valid_ids.len());
+        if let Some(id) = active_id.filter(|id| valid_ids.contains(id)) {
+            out.push(id);
+        }
+        for &id in mru_tab_ids {
+            if valid_ids.contains(&id) && !out.contains(&id) {
+                out.push(id);
+            }
+        }
+        for id in valid_ids {
+            if !out.contains(&id) {
+                out.push(id);
+            }
+        }
+        out
+    }
+
+    fn mru_candidate_ids(&self) -> Vec<u64> {
+        let active_id = self
+            .tabs
+            .get(self.active_idx)
+            .filter(|t| t.workspace_id == self.active_workspace_id && t.worker_kind.is_none())
+            .map(|t| t.id);
+        Self::compute_mru_candidate_ids(
+            active_id,
+            &self.mru_tab_ids,
+            self.tabs
+                .iter()
+                .filter(|t| t.workspace_id == self.active_workspace_id && t.worker_kind.is_none())
+                .map(|t| t.id),
+        )
     }
 
     fn resolve_mcp_webview(&mut self, target: &str) -> Result<&WebView, String> {
@@ -7516,10 +12703,10 @@ impl TpBrowserApp {
             return Ok(&self.tab_shell);
         }
         if t == "settings" {
-            return Ok(&self.settings_shell);
+            return self.settings_shell.as_ref().ok_or_else(|| "Settings WebView unavailable".to_string());
         }
         if t == "ai" {
-            return Ok(&self.ai_shell);
+            return self.ai_shell.as_ref().ok_or_else(|| "AI WebView unavailable".to_string());
         }
         if t == "workspace" {
             return self
@@ -7588,9 +12775,20 @@ impl TpBrowserApp {
                 ])
             })
             .collect();
+        let rec_val = parse_json(&self.window_recovery_json).unwrap_or_else(|_| JsonVal::obj(vec![]));
+        let window_count = rec_val
+            .get("open_windows")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1)
+            .max(1);
+        let windows_val = rec_val
+            .get("windows")
+            .cloned()
+            .unwrap_or_else(|| JsonVal::Arr(vec![]));
         JsonVal::obj(vec![
             ("active_index", JsonVal::Num(self.active_idx as f64)),
             ("tab_count", JsonVal::Num(self.tabs.len() as f64)),
+            ("window_count", JsonVal::Num(window_count as f64)),
             ("view_mode", JsonVal::Str(self.view_mode.as_str().to_string())),
             ("ai_mode", JsonVal::Str(self.ai_mode.as_str().to_string())),
             (
@@ -7598,6 +12796,8 @@ impl TpBrowserApp {
                 JsonVal::Str(self.chat_channel.as_str().to_string()),
             ),
             ("tabs", JsonVal::Arr(arr)),
+            ("windows", windows_val),
+            ("recovery", rec_val),
         ])
         .to_json()
     }
@@ -7620,6 +12820,7 @@ impl TpBrowserApp {
             McpBridgeMsg::ReadResource { uri, reply } => {
                 let res = match uri.as_str() {
                     "tpbrowser://tabs" => Ok(self.mcp_tabs_snapshot()),
+                    "tpbrowser://windows" => Ok(self.window_recovery_json.clone()),
                     "tpbrowser://tasks" => Ok(self.tasks_json.clone()),
                     "tpbrowser://skills" => Ok(self.skills_json.clone()),
                     _ => Err(format!("Unknown resource URI: {}", uri)),
@@ -7633,6 +12834,21 @@ impl TpBrowserApp {
             } => {
                 let args = parse_json(&args_json).unwrap_or_else(|_| JsonVal::obj(vec![]));
                 match tool.as_str() {
+                    "tp_window_recovery_status" => {
+                        let _ = reply.send(Ok(self.window_recovery_json.clone()));
+                    }
+                    "tp_recover_windows" => {
+                        let _ = self.proxy.send_event(AppCmd::RecoverWindows);
+                        let state = parse_json(&self.window_recovery_json)
+                            .unwrap_or_else(|_| JsonVal::obj(vec![]));
+                        let out = JsonVal::obj(vec![
+                            ("ok", JsonVal::Bool(true)),
+                            ("recovery_triggered", JsonVal::Bool(true)),
+                            ("state", state),
+                        ])
+                        .to_json();
+                        let _ = reply.send(Ok(out));
+                    }
                     "tp_discover_shopee_shops" => {
                         let tab = match shopee_discovery::parse_tab_id(args.get("tab_id")) {
                             Ok(Some(id)) => self.tabs.iter().find(|t| t.id == id),
@@ -7755,6 +12971,37 @@ impl TpBrowserApp {
                             }
                         }
                         let _ = reply.send(Ok(self.mcp_tabs_snapshot()));
+                    }
+                    "tp_get_scan_state" => {
+                        let logs_arr: Vec<JsonVal> = self
+                            .ecom_logs
+                            .iter()
+                            .rev()
+                            .take(30)
+                            .rev()
+                            .map(|s| JsonVal::Str(s.clone()))
+                            .collect();
+                        let queue_arr: Vec<JsonVal> = self
+                            .multi_shop_queue
+                            .iter()
+                            .map(|s| JsonVal::Str(s.clone()))
+                            .collect();
+                        let current_shop = self
+                            .shopee_shop_scan_current
+                            .as_ref()
+                            .map(|(id, name)| format!("{} ({})", name, id))
+                            .unwrap_or_default();
+                        let res = JsonVal::obj(vec![
+                            ("multi_shop_step", JsonVal::Str(self.multi_shop_step.clone())),
+                            ("multi_shop_idx", JsonVal::Num(self.multi_shop_idx as f64)),
+                            ("multi_shop_queue", JsonVal::Arr(queue_arr)),
+                            ("multi_shop_tab_id", JsonVal::Num(self.multi_shop_tab_id.unwrap_or(0) as f64)),
+                            ("shopee_shop_scan_phase", JsonVal::Str(self.shopee_shop_scan_phase.clone())),
+                            ("shopee_shop_scan_current", JsonVal::Str(current_shop)),
+                            ("multi_shop_auth_pending", JsonVal::Bool(self.multi_shop_auth_pending)),
+                            ("logs", JsonVal::Arr(logs_arr)),
+                        ]);
+                        let _ = reply.send(Ok(res.to_json()));
                     }
                     "tp_get_page_context" => {
                         let target = args
@@ -7967,12 +13214,802 @@ impl TpBrowserApp {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WindowBounds {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    maximized: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WorkAreaRect {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RecoveryTabSnapshot {
+    url: String,
+    title: String,
+    profile: String,
+    container_id: String,
+    workspace_id: String,
+    pinned: bool,
+    essential: bool,
+    pinned_origin_url: String,
+    tab_group_id: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RecoveryWindowSnapshot {
+    role: String,
+    window_idx: usize,
+    bounds: WindowBounds,
+    active_workspace_id: String,
+    active_idx: usize,
+    view_mode: String,
+    tabs: Vec<RecoveryTabSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RecoverySnapshot {
+    version: u32,
+    clean_shutdown: bool,
+    updated_at_epoch: u64,
+    primary: RecoveryWindowSnapshot,
+    secondary: Vec<RecoveryWindowSnapshot>,
+}
+
+fn clamp_window_bounds_to_work_area(bounds: WindowBounds, work: WorkAreaRect) -> WindowBounds {
+    let work_w = (work.right - work.left).max(860) as u32;
+    let work_h = (work.bottom - work.top).max(560) as u32;
+    let width = bounds.width.clamp(860, work_w);
+    let height = bounds.height.clamp(560, work_h);
+    let max_x = (work.right - width as i32).max(work.left);
+    let max_y = (work.bottom - height as i32).max(work.top);
+    WindowBounds {
+        x: bounds.x.clamp(work.left, max_x),
+        y: bounds.y.clamp(work.top, max_y),
+        width,
+        height,
+        maximized: bounds.maximized,
+    }
+}
+
+fn is_window_offscreen(bounds: &WindowBounds, work: &WorkAreaRect) -> bool {
+    let right = bounds.x.saturating_add(bounds.width as i32);
+    let overlap_w = right.min(work.right) - bounds.x.max(work.left);
+    overlap_w < 120 || bounds.y < work.top - 16 || bounds.y > work.bottom - 48
+}
+
+#[cfg(target_os = "windows")]
+fn work_area_for_point(x: i32, y: i32) -> Option<WorkAreaRect> {
+    const MONITOR_DEFAULTTONEAREST: u32 = 2;
+    unsafe {
+        let monitor = MonitorFromPoint(WinPoint { x, y }, MONITOR_DEFAULTTONEAREST);
+        let mut info = MonitorInfo {
+            cb_size: std::mem::size_of::<MonitorInfo>() as u32,
+            monitor: WinRect { left: 0, top: 0, right: 0, bottom: 0 },
+            work: WinRect { left: 0, top: 0, right: 0, bottom: 0 },
+            flags: 0,
+        };
+        if monitor != 0 && GetMonitorInfoW(monitor, &mut info) != 0 {
+            Some(WorkAreaRect {
+                left: info.work.left,
+                top: info.work.top,
+                right: info.work.right,
+                bottom: info.work.bottom,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn work_area_for_point(_x: i32, _y: i32) -> Option<WorkAreaRect> {
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn clamp_live_window_to_monitor(window: &tao::window::Window) -> bool {
+    if window.is_maximized() {
+        return false;
+    }
+    let Ok(pos) = window.outer_position() else {
+        return false;
+    };
+    let size = window.inner_size();
+    let current = WindowBounds {
+        x: pos.x,
+        y: pos.y,
+        width: size.width.max(860),
+        height: size.height.max(560),
+        maximized: false,
+    };
+    let anchor_x = pos.x.saturating_add((size.width as i32) / 2);
+    let anchor_y = pos.y.saturating_add(24);
+    let Some(work) = work_area_for_point(anchor_x, anchor_y) else {
+        return false;
+    };
+    let work_w = (work.right - work.left).max(860) as u32;
+    let work_h = (work.bottom - work.top).max(560) as u32;
+    let needs_clamp = is_window_offscreen(&current, &work)
+        || current.width > work_w
+        || current.height > work_h;
+    if !needs_clamp {
+        return false;
+    }
+    let clamped = clamp_window_bounds_to_work_area(current, work);
+    window.set_outer_position(PhysicalPosition::new(clamped.x, clamped.y));
+    if clamped.width != size.width || clamped.height != size.height {
+        window.set_inner_size(PhysicalSize::new(clamped.width, clamped.height));
+    }
+    true
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clamp_live_window_to_monitor(_window: &tao::window::Window) -> bool {
+    false
+}
+
+fn recovery_window_to_json(win: &RecoveryWindowSnapshot) -> JsonVal {
+    let tabs_arr: Vec<JsonVal> = win
+        .tabs
+        .iter()
+        .map(|tab| {
+            JsonVal::obj(vec![
+                ("url", JsonVal::Str(tab.url.clone())),
+                ("title", JsonVal::Str(tab.title.clone())),
+                ("profile", JsonVal::Str(tab.profile.clone())),
+                ("container_id", JsonVal::Str(tab.container_id.clone())),
+                ("workspace_id", JsonVal::Str(tab.workspace_id.clone())),
+                ("pinned", JsonVal::Bool(tab.pinned)),
+                ("essential", JsonVal::Bool(tab.essential)),
+                ("pinned_origin_url", JsonVal::Str(tab.pinned_origin_url.clone())),
+                ("tab_group_id", JsonVal::Num(tab.tab_group_id as f64)),
+            ])
+        })
+        .collect();
+    JsonVal::obj(vec![
+        ("role", JsonVal::Str(win.role.clone())),
+        ("window_idx", JsonVal::Num(win.window_idx as f64)),
+        (
+            "bounds",
+            JsonVal::obj(vec![
+                ("x", JsonVal::Num(win.bounds.x as f64)),
+                ("y", JsonVal::Num(win.bounds.y as f64)),
+                ("width", JsonVal::Num(win.bounds.width as f64)),
+                ("height", JsonVal::Num(win.bounds.height as f64)),
+                ("maximized", JsonVal::Bool(win.bounds.maximized)),
+            ]),
+        ),
+        (
+            "active_workspace_id",
+            JsonVal::Str(win.active_workspace_id.clone()),
+        ),
+        ("active_idx", JsonVal::Num(win.active_idx as f64)),
+        ("view_mode", JsonVal::Str(win.view_mode.clone())),
+        ("tab_count", JsonVal::Num(win.tabs.len() as f64)),
+        ("tabs", JsonVal::Arr(tabs_arr)),
+    ])
+}
+
+fn serialize_recovery_snapshot(snapshot: &RecoverySnapshot) -> String {
+    let sec_arr: Vec<JsonVal> = snapshot.secondary.iter().map(recovery_window_to_json).collect();
+    JsonVal::obj(vec![
+        ("version", JsonVal::Num(snapshot.version as f64)),
+        ("clean_shutdown", JsonVal::Bool(snapshot.clean_shutdown)),
+        (
+            "updated_at_epoch",
+            JsonVal::Num(snapshot.updated_at_epoch as f64),
+        ),
+        ("primary", recovery_window_to_json(&snapshot.primary)),
+        ("secondary", JsonVal::Arr(sec_arr)),
+    ])
+    .to_json()
+}
+
+fn parse_recovery_window(val: &JsonVal, default_role: &str, default_idx: usize) -> Option<RecoveryWindowSnapshot> {
+    let b = val.get("bounds")?;
+    let x = b.get("x").and_then(JsonVal::as_i64).unwrap_or(80) as i32;
+    let y = b.get("y").and_then(JsonVal::as_i64).unwrap_or(50) as i32;
+    let width = b.get("width").and_then(JsonVal::as_u64).unwrap_or(1480).clamp(860, 3840) as u32;
+    let height = b.get("height").and_then(JsonVal::as_u64).unwrap_or(900).clamp(560, 2160) as u32;
+    let maximized = b.get("maximized").and_then(JsonVal::as_bool).unwrap_or(false);
+    let tabs = val
+        .get("tabs")
+        .and_then(JsonVal::as_arr)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| {
+                    let url = item.get("url").and_then(JsonVal::as_str)?.trim().to_string();
+                    if url.is_empty() {
+                        return None;
+                    }
+                    Some(RecoveryTabSnapshot {
+                        url,
+                        title: item.get("title").and_then(JsonVal::as_str).unwrap_or("").to_string(),
+                        profile: item.get("profile").and_then(JsonVal::as_str).unwrap_or("default").to_string(),
+                        container_id: item.get("container_id").and_then(JsonVal::as_str).unwrap_or("default").to_string(),
+                        workspace_id: item.get("workspace_id").and_then(JsonVal::as_str).unwrap_or(DEFAULT_WORKSPACE_ID).to_string(),
+                        pinned: item.get("pinned").and_then(JsonVal::as_bool).unwrap_or(false),
+                        essential: item.get("essential").and_then(JsonVal::as_bool).unwrap_or(false),
+                        pinned_origin_url: item.get("pinned_origin_url").and_then(JsonVal::as_str).unwrap_or("").to_string(),
+                        tab_group_id: item.get("tab_group_id").and_then(JsonVal::as_u64).unwrap_or(0),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(RecoveryWindowSnapshot {
+        role: val
+            .get("role")
+            .and_then(JsonVal::as_str)
+            .unwrap_or(default_role)
+            .to_string(),
+        window_idx: val
+            .get("window_idx")
+            .and_then(JsonVal::as_u64)
+            .map(|n| n as usize)
+            .unwrap_or(default_idx),
+        bounds: WindowBounds {
+            x,
+            y,
+            width,
+            height,
+            maximized,
+        },
+        active_workspace_id: val
+            .get("active_workspace_id")
+            .and_then(JsonVal::as_str)
+            .unwrap_or(DEFAULT_WORKSPACE_ID)
+            .to_string(),
+        active_idx: val
+            .get("active_idx")
+            .and_then(JsonVal::as_u64)
+            .map(|n| n as usize)
+            .unwrap_or(0),
+        view_mode: val
+            .get("view_mode")
+            .and_then(JsonVal::as_str)
+            .unwrap_or("single")
+            .to_string(),
+        tabs,
+    })
+}
+
+fn parse_recovery_snapshot(raw: &str) -> Option<RecoverySnapshot> {
+    let val = parse_json(raw).ok()?;
+    let primary = parse_recovery_window(val.get("primary")?, "primary", 0)?;
+    let secondary = val
+        .get("secondary")
+        .and_then(JsonVal::as_arr)
+        .map(|arr| {
+            arr.iter()
+                .enumerate()
+                .filter_map(|(idx, item)| parse_recovery_window(item, "secondary", idx + 1))
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(RecoverySnapshot {
+        version: val.get("version").and_then(JsonVal::as_u64).unwrap_or(1) as u32,
+        clean_shutdown: val.get("clean_shutdown").and_then(JsonVal::as_bool).unwrap_or(true),
+        updated_at_epoch: val.get("updated_at_epoch").and_then(JsonVal::as_u64).unwrap_or(0),
+        primary,
+        secondary,
+    })
+}
+
+fn recovery_needed(snapshot: &RecoverySnapshot) -> bool {
+    !snapshot.clean_shutdown || !snapshot.secondary.is_empty()
+}
+
+fn capture_window_snapshot(app: &TpBrowserApp, role: &str, window_idx: usize) -> RecoveryWindowSnapshot {
+    let (x, y) = app
+        .window
+        .outer_position()
+        .map(|p| (p.x, p.y))
+        .unwrap_or((80, 50));
+    let sz = app.window.inner_size();
+    let user_tabs: Vec<&BrowserTab> = app
+        .tabs
+        .iter()
+        .filter(|t| t.worker_kind.is_none())
+        .collect();
+    let active_tab_id = app.tabs.get(app.active_idx).map(|t| t.id);
+    let active_idx = active_tab_id
+        .and_then(|id| user_tabs.iter().position(|t| t.id == id))
+        .unwrap_or(0);
+    let tabs = user_tabs
+        .into_iter()
+        .map(|t| RecoveryTabSnapshot {
+            url: t.url.clone(),
+            title: t.title.clone(),
+            profile: t.profile_name.clone(),
+            container_id: t.container_id.clone(),
+            workspace_id: t.workspace_id.clone(),
+            pinned: t.pinned,
+            essential: t.essential,
+            pinned_origin_url: t.pinned_origin_url.clone().unwrap_or_default(),
+            tab_group_id: t.tab_group_id.unwrap_or(0),
+        })
+        .collect();
+    RecoveryWindowSnapshot {
+        role: role.to_string(),
+        window_idx,
+        bounds: WindowBounds {
+            x,
+            y,
+            width: sz.width.max(860),
+            height: sz.height.max(560),
+            maximized: app.window.is_maximized(),
+        },
+        active_workspace_id: app.active_workspace_id.clone(),
+        active_idx,
+        view_mode: app.view_mode.as_str().to_string(),
+        tabs,
+    }
+}
+
+fn restore_window_tabs(app: &mut TpBrowserApp, snap: &RecoveryWindowSnapshot, replace_blank_newtab: bool) {
+    if snap.tabs.is_empty() {
+        return;
+    }
+    let has_non_newtab = snap.tabs.iter().any(|t| t.url != "tp://newtab");
+    if replace_blank_newtab
+        && has_non_newtab
+        && app.tabs.len() == 1
+        && app.tabs[0].url == "tp://newtab"
+    {
+        app.tabs.clear();
+        app.active_idx = 0;
+    }
+    for (i, item) in snap.tabs.iter().enumerate() {
+        if !replace_blank_newtab
+            && (item.url == "tp://newtab" || app.tabs.iter().any(|t| t.url == item.url))
+        {
+            continue;
+        }
+        let isolated = item.profile != "default";
+        let lazy = !app.tabs.is_empty() && i != snap.active_idx;
+        let cid = Some(TpBrowserApp::normalize_container_id(&item.container_id));
+        app.add_tab_internal(&item.url, isolated, false, None, None, lazy, cid);
+        if let Some(tab) = app.tabs.last_mut() {
+            tab.workspace_id = if app.workspaces.iter().any(|w| w.id == item.workspace_id) {
+                item.workspace_id.clone()
+            } else {
+                DEFAULT_WORKSPACE_ID.to_string()
+            };
+            tab.pinned = item.pinned;
+            tab.essential = item.essential;
+            if !item.pinned_origin_url.is_empty() {
+                tab.pinned_origin_url = Some(item.pinned_origin_url.clone());
+            } else if tab.pinned || tab.essential {
+                tab.pinned_origin_url = Some(tab.url.clone());
+            }
+            if item.tab_group_id > 0 {
+                tab.tab_group_id = Some(item.tab_group_id);
+                app.next_tab_group_id = app.next_tab_group_id.max(item.tab_group_id.saturating_add(1));
+            }
+        }
+    }
+    if app.tabs.is_empty() {
+        app.add_tab("tp://newtab", false);
+    } else if snap.active_idx < app.tabs.len() {
+        app.execute(AppCmd::FocusIndex(snap.active_idx));
+    }
+    if app.workspaces.iter().any(|w| w.id == snap.active_workspace_id) {
+        app.active_workspace_id = snap.active_workspace_id.clone();
+    }
+    app.view_mode = ContentViewMode::from_str(&snap.view_mode);
+    app.relayout();
+    app.sync_all_ui();
+}
+
+struct WindowRegistry {
+    primary_window_id: WindowId,
+    secondary: HashMap<WindowId, TpBrowserApp>,
+    detach_in_flight: HashSet<(WindowId, u64)>,
+    pending_recovery: Option<RecoverySnapshot>,
+    crash_detected: bool,
+    recovery_dirty_since: Option<Instant>,
+    last_sync_epoch: u64,
+}
+
+impl WindowRegistry {
+    fn new(
+        primary_window_id: WindowId,
+        pending_recovery: Option<RecoverySnapshot>,
+        crash_detected: bool,
+    ) -> Self {
+        Self {
+            primary_window_id,
+            secondary: HashMap::new(),
+            detach_in_flight: HashSet::new(),
+            pending_recovery,
+            crash_detected,
+            recovery_dirty_since: None,
+            last_sync_epoch: 0,
+        }
+    }
+
+    fn mark_recovery_dirty(&mut self) {
+        if self.recovery_dirty_since.is_none() {
+            self.recovery_dirty_since = Some(Instant::now());
+        }
+    }
+
+    fn recovery_deadline(&self) -> Option<Instant> {
+        self.recovery_dirty_since
+            .map(|t| t + std::time::Duration::from_millis(650))
+    }
+
+    fn recovery_due(&self) -> bool {
+        self.recovery_dirty_since
+            .is_some_and(|t| t.elapsed() >= std::time::Duration::from_millis(650))
+    }
+
+    fn snapshot_live(&self, primary: &TpBrowserApp, clean_shutdown: bool, now_epoch: u64) -> RecoverySnapshot {
+        let primary_snap = capture_window_snapshot(primary, "primary", 0);
+        let mut secondary_snaps: Vec<RecoveryWindowSnapshot> = self
+            .secondary
+            .values()
+            .enumerate()
+            .map(|(i, win)| capture_window_snapshot(win, "secondary", i + 1))
+            .collect();
+        secondary_snaps.sort_by_key(|w| (w.bounds.x, w.bounds.y));
+        RecoverySnapshot {
+            version: 1,
+            clean_shutdown,
+            updated_at_epoch: now_epoch,
+            primary: primary_snap,
+            secondary: secondary_snaps,
+        }
+    }
+
+    fn sync_window_summary_into(&self, primary: &mut TpBrowserApp, snapshot: &RecoverySnapshot) {
+        let mut windows_json = Vec::with_capacity(1 + snapshot.secondary.len());
+        windows_json.push(recovery_window_to_json(&snapshot.primary));
+        for sec in &snapshot.secondary {
+            windows_json.push(recovery_window_to_json(sec));
+        }
+        let open_windows = 1 + snapshot.secondary.len();
+        let sec_tabs: usize = snapshot.secondary.iter().map(|w| w.tabs.len()).sum();
+        let total_tabs = snapshot.primary.tabs.len() + sec_tabs;
+        let pending_win = self
+            .pending_recovery
+            .as_ref()
+            .map(|p| p.secondary.len())
+            .unwrap_or(0);
+        let pending_tabs: usize = self
+            .pending_recovery
+            .as_ref()
+            .map(|p| p.secondary.iter().map(|w| w.tabs.len()).sum::<usize>() + p.primary.tabs.len())
+            .unwrap_or(0);
+        primary.window_recovery_json = JsonVal::obj(vec![
+            ("open_windows", JsonVal::Num(open_windows as f64)),
+            ("secondary_windows", JsonVal::Num(snapshot.secondary.len() as f64)),
+            ("primary_tabs", JsonVal::Num(snapshot.primary.tabs.len() as f64)),
+            ("total_tabs", JsonVal::Num(total_tabs as f64)),
+            ("clean_shutdown", JsonVal::Bool(snapshot.clean_shutdown)),
+            ("crash_detected", JsonVal::Bool(self.crash_detected)),
+            ("pending_recovery_windows", JsonVal::Num(pending_win as f64)),
+            ("pending_recovery_tabs", JsonVal::Num(pending_tabs as f64)),
+            ("updated_at_epoch", JsonVal::Num(self.last_sync_epoch as f64)),
+            ("windows", JsonVal::Arr(windows_json)),
+        ])
+        .to_json();
+    }
+
+    fn persist_recovery_snapshot(&mut self, primary: &mut TpBrowserApp, clean_shutdown: bool) {
+        self.recovery_dirty_since = None;
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.last_sync_epoch = now_epoch;
+        let live_snap = self.snapshot_live(primary, clean_shutdown, now_epoch);
+        self.sync_window_summary_into(primary, &live_snap);
+        if !primary.persist_session {
+            return;
+        }
+        let mut disk_snap = live_snap;
+        if !clean_shutdown && disk_snap.secondary.is_empty() {
+            if let Some(ref pending) = self.pending_recovery {
+                if !pending.secondary.is_empty() {
+                    disk_snap.secondary = pending.secondary.clone();
+                }
+            }
+        }
+        let body = serialize_recovery_snapshot(&disk_snap);
+        let _ = fs::write(primary.exe_dir.join("window_recovery.json"), body);
+    }
+
+    fn dismiss_recovery(&mut self, primary: &mut TpBrowserApp) {
+        self.pending_recovery = None;
+        self.crash_detected = false;
+        self.persist_recovery_snapshot(primary, false);
+        primary.sync_settings_modal(None);
+    }
+
+    fn sync_all_window_geometries(&mut self, primary: &mut TpBrowserApp) {
+        let _ = clamp_live_window_to_monitor(&primary.window);
+        primary.relayout();
+        primary.sync_all_ui();
+        for secondary in self.secondary.values_mut() {
+            let _ = clamp_live_window_to_monitor(&secondary.window);
+            secondary.relayout();
+            secondary.sync_all_ui();
+        }
+        self.persist_recovery_snapshot(primary, false);
+        primary.sync_settings_modal(None);
+    }
+
+    fn recover_windows(
+        &mut self,
+        target: &EventLoopWindowTarget<AppEvent>,
+        event_loop: &EventLoopProxy<AppEvent>,
+        exe_dir: &PathBuf,
+        primary: &mut TpBrowserApp,
+    ) -> usize {
+        let mut restored_count = 0usize;
+        if let Some(snapshot) = self.pending_recovery.take() {
+            let replace_blank = primary.tabs.len() == 1 && primary.tabs[0].url == "tp://newtab";
+            restore_window_tabs(primary, &snapshot.primary, replace_blank);
+            if snapshot.primary.bounds.maximized && !primary.window.is_maximized() {
+                primary.window.set_maximized(true);
+            }
+            for sec_snap in snapshot.secondary {
+                let fallback_work = work_area_for_point(sec_snap.bounds.x, sec_snap.bounds.y)
+                    .unwrap_or(WorkAreaRect { left: 0, top: 0, right: 1920, bottom: 1080 });
+                let clamped = clamp_window_bounds_to_work_area(sec_snap.bounds.clone(), fallback_work);
+                if let Ok(sec_id) = self.create_secondary(
+                    target,
+                    event_loop.clone(),
+                    exe_dir.clone(),
+                    (clamped.width, clamped.height),
+                    false,
+                    Some(WinPoint { x: clamped.x, y: clamped.y }),
+                ) {
+                    if let Some(sec_app) = self.secondary.get_mut(&sec_id) {
+                        restore_window_tabs(sec_app, &sec_snap, true);
+                        if clamped.maximized {
+                            sec_app.window.set_maximized(true);
+                        }
+                        let _ = clamp_live_window_to_monitor(&sec_app.window);
+                    }
+                    restored_count += 1;
+                }
+            }
+        }
+        self.crash_detected = false;
+        self.sync_all_window_geometries(primary);
+        primary.save_session();
+        restored_count
+    }
+
+    fn create_secondary(
+        &mut self,
+        target: &EventLoopWindowTarget<AppEvent>,
+        event_loop: EventLoopProxy<AppEvent>,
+        exe_dir: PathBuf,
+        size: (u32, u32),
+        staging: bool,
+        position: Option<WinPoint>,
+    ) -> wry::Result<WindowId> {
+        let started = Instant::now();
+        let mut builder = WindowBuilder::new()
+            .with_title("TPbrowser — Cửa sổ mới")
+            .with_decorations(false)
+            .with_visible(!staging)
+            .with_window_icon(TpBrowserApp::build_window_icon("ribbon", "obsidian-gold"))
+            // `size` and monitor work areas are physical pixels. Do not convert
+            // source dimensions to logical units before clamping/placement.
+            .with_inner_size(PhysicalSize::new(size.0.max(860), size.1.max(560)))
+            .with_min_inner_size(PhysicalSize::new(860, 560));
+        if let Some(position) = position.map(|point| Self::clamp_secondary_position(point, size)) {
+            builder = builder.with_position(PhysicalPosition::new(position.x, position.y));
+        }
+        #[cfg(target_os = "windows")]
+        { builder = builder.with_undecorated_shadow(true); }
+        let window = builder.build(target)
+            .map_err(|err| wry::Error::Io(std::io::Error::other(err.to_string())))?;
+        let window_id = window.id();
+        let proxy = WindowProxy::new(window_id, event_loop);
+        let mut app = TpBrowserApp::new(window, proxy, exe_dir, false, true)?;
+        if !staging {
+            app.add_tab("tp://newtab", false);
+        }
+        self.secondary.insert(window_id, app);
+        TpBrowserApp::log_perf(
+            if staging { "secondary staging" } else { "secondary ready" },
+            started.elapsed().as_secs_f64() * 1000.0,
+        );
+        Ok(window_id)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn clamp_secondary_position(cursor: WinPoint, size: (u32, u32)) -> WinPoint {
+        const MONITOR_DEFAULTTONEAREST: u32 = 2;
+        unsafe {
+            let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+            let mut info = MonitorInfo {
+                cb_size: std::mem::size_of::<MonitorInfo>() as u32,
+                monitor: WinRect { left: 0, top: 0, right: 0, bottom: 0 },
+                work: WinRect { left: 0, top: 0, right: 0, bottom: 0 },
+                flags: 0,
+            };
+            if monitor != 0 && GetMonitorInfoW(monitor, &mut info) != 0 {
+                let max_x = (info.work.right - size.0 as i32).max(info.work.left);
+                let max_y = (info.work.bottom - size.1 as i32).max(info.work.top);
+                return WinPoint {
+                    x: cursor.x.clamp(info.work.left, max_x),
+                    y: cursor.y.clamp(info.work.top, max_y),
+                };
+            }
+        }
+        cursor
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn clamp_secondary_position(cursor: WinPoint, _size: (u32, u32)) -> WinPoint { cursor }
+
+    #[cfg(target_os = "windows")]
+    fn managed_window_at(&self, primary: &TpBrowserApp, cursor: WinPoint) -> Option<WindowId> {
+        unsafe {
+            let hit = WindowFromPoint(cursor);
+            let root = if hit != 0 { GetAncestor(hit, 2) } else { 0 }; // GA_ROOT
+            if root == primary.window.hwnd() {
+                return Some(self.primary_window_id);
+            }
+            self.secondary.iter().find_map(|(id, runtime)| {
+                (root == runtime.window.hwnd()).then_some(*id)
+            })
+        }
+    }
+
+    fn close_secondary(&mut self, window_id: WindowId) -> bool {
+        self.detach_in_flight.retain(|(source_id, _)| *source_id != window_id);
+        if let Some(mut app) = self.secondary.remove(&window_id) {
+            // Secondary runtimes never install the tray or compact watcher, but keep
+            // cleanup explicit so their child WebViews are dropped with their window.
+            app.remove_system_tray();
+            app.tabs.clear();
+            app.chat_header_shell = None;
+            app.ai_shell = None;
+            app.dock_resizer_shell = None;
+            app.sidebar_resizer_shell = None;
+            app.settings_shell = None;
+            app.fb_shell = None;
+            app.zalo_shell = None;
+            app.custom_popup_shell = None;
+            app.glance_backdrop_shell = None;
+            app.glance_header_shell = None;
+            app.glance_body_shell = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn begin_detach(&mut self, source_id: WindowId, tab_id: u64) -> bool {
+        self.detach_in_flight.insert((source_id, tab_id))
+    }
+
+    fn finish_detach(&mut self, source_id: WindowId, tab_id: u64) {
+        self.detach_in_flight.remove(&(source_id, tab_id));
+    }
+
+    /// Move the actual WebView2 child HWND, not a URL clone.  Do not mutate the
+    /// source collection until Wry has accepted the new parent, so an unavailable
+    /// destination leaves the source tab and its live session untouched.
+    #[cfg(target_os = "windows")]
+    fn move_live_tab(source: &mut TpBrowserApp, target: &mut TpBrowserApp, tab_id: u64, source_is_primary: bool) -> bool {
+        let Some(source_index) = source.tabs.iter().position(|tab| tab.id == tab_id && tab.worker_kind.is_none()) else {
+            return false;
+        };
+        if target.tabs.len() >= 14 || target.tabs.iter().any(|tab| tab.id == tab_id) {
+            return false;
+        }
+        if source.tabs[source_index].webview.reparent(target.window.hwnd()).is_err() {
+            return false;
+        }
+
+        let previous_active_id = source.tabs.get(source.active_idx).map(|tab| tab.id);
+        let mut tab = source.tabs.remove(source_index);
+        // Append/activate without disturbing unrelated destination tabs. The
+        // transferred BrowserTab keeps its live WebView2 history, form state,
+        // profile/container and private identity.
+        // A window may have a different active Space. Reconcile before activation:
+        // retain the matching Space when it exists, otherwise place the tab in the
+        // destination's active Space so shell filtering cannot render blank content.
+        if target.workspaces.iter().any(|space| space.id == tab.workspace_id) {
+            target.active_workspace_id = tab.workspace_id.clone();
+        } else {
+            tab.workspace_id = target.active_workspace_id.clone();
+        }
+        target.tabs.push(tab);
+        target.active_idx = target.tabs.len() - 1;
+        target.mru_tab_ids.retain(|id| *id != tab_id);
+        target.mru_tab_ids.insert(0, tab_id);
+        target.mru_cycle_ids = None;
+        // The transfer is now committed: only now may a staged secondary create
+        // its optional chat, AI, settings and resizer shells.
+        target.hydrate_secondary_shells();
+
+        source.selected_tab_ids.remove(&tab_id);
+        source.mru_tab_ids.retain(|id| *id != tab_id);
+        source.mru_cycle_ids = None;
+        if source.split_paired_tab_id == Some(tab_id) {
+            source.split_paired_tab_id = None;
+            source.view_mode = ContentViewMode::SingleTab;
+        }
+        if let Some(active_id) = previous_active_id.filter(|id| *id != tab_id) {
+            source.active_idx = source.tabs.iter().position(|tab| tab.id == active_id).unwrap_or(0);
+        } else if let Some(next_index) = source.tabs.iter().position(|tab| tab.worker_kind.is_none()) {
+            source.active_idx = next_index;
+        } else if source_is_primary {
+            // Only the primary receives a fallback tab; an empty secondary closes.
+            let _ = source.add_tab_internal("tp://newtab", false, false, None, None, false, None);
+        }
+
+        target.relayout();
+        target.sync_all_ui();
+        source.relayout();
+        source.sync_all_ui();
+        source.save_session();
+        // Secondary persistence is intentionally a no-op. Inbound secondary ->
+        // primary transfers must still commit the primary session immediately.
+        if target.persist_session {
+            target.save_session();
+        }
+        true
+    }
+
+    #[cfg(target_os = "windows")]
+    fn detach_from_primary(&mut self, primary: &mut TpBrowserApp, target_id: WindowId, tab_id: u64) -> bool {
+        self.secondary
+            .get_mut(&target_id)
+            .map(|target| Self::move_live_tab(primary, target, tab_id, true))
+            .unwrap_or(false)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn detach_from_secondary(&mut self, source_id: WindowId, target_id: WindowId, tab_id: u64) -> bool {
+        if source_id == target_id {
+            return false;
+        }
+        let Some(mut source) = self.secondary.remove(&source_id) else {
+            return false;
+        };
+        let moved = self.secondary
+            .get_mut(&target_id)
+            .map(|target| Self::move_live_tab(&mut source, target, tab_id, false))
+            .unwrap_or(false);
+        self.secondary.insert(source_id, source);
+        moved
+    }
+
+    #[cfg(target_os = "windows")]
+    fn detach_to_primary(&mut self, primary: &mut TpBrowserApp, source_id: WindowId, tab_id: u64) -> bool {
+        let Some(mut source) = self.secondary.remove(&source_id) else { return false; };
+        let moved = Self::move_live_tab(&mut source, primary, tab_id, false);
+        self.secondary.insert(source_id, source);
+        moved
+    }
+}
+
 fn main() -> wry::Result<()> {
     // Tối ưu hóa bộ nhớ và tài nguyên cho WebView2 (tiết kiệm RAM, khởi động nhanh)
     if env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_err() {
         env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--disable-features=Translate,OptimizationHints,MediaRouter --renderer-process-limit=4",
+            "--disable-features=Translate,OptimizationHints,MediaRouter --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling",
         );
     }
 
@@ -7987,7 +14024,8 @@ fn main() -> wry::Result<()> {
         unsafe {
             let handle = CreateMutexA(std::ptr::null_mut(), 0, mutex_name.as_ptr());
             if handle != 0 && GetLastError() == 183 {
-                // Instance khác đã chạy -> Gửi tín hiệu đánh thức và thoát ngay trong tích tắc (<0.02s)
+                // A mutex is authoritative: a failed /wake may mean the existing
+                // instance is still starting, but must never permit a second host.
                 if let Ok(mut stream) = std::net::TcpStream::connect("127.0.0.1:17777") {
                     let _ = stream.write_all(b"POST /wake HTTP/1.1
 \nHost: 127.0.0.1:17777
@@ -7997,15 +14035,15 @@ fn main() -> wry::Result<()> {
 \n");
                     let mut buf = [0u8; 128];
                     let _ = stream.read(&mut buf);
-                    std::process::exit(0);
                 }
+                std::process::exit(0);
             }
         }
     }
 
     let is_silent = env::args().any(|a| a == "--silent");
-    let event_loop = EventLoopBuilder::<AppCmd>::with_user_event().build();
-    let proxy = event_loop.create_proxy();
+    let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
+    let event_proxy = event_loop.create_proxy();
 
     let exe_dir = env::current_exe()
         .ok()
@@ -8014,14 +14052,33 @@ fn main() -> wry::Result<()> {
     let saved_window_size = fs::read_to_string(exe_dir.join("config.json"))
         .map(|raw| TpBrowserApp::persisted_window_size(&raw))
         .unwrap_or((1480, 900));
+    let prev_recovery = fs::read_to_string(exe_dir.join("window_recovery.json"))
+        .ok()
+        .and_then(|raw| parse_recovery_snapshot(&raw));
+    let crash_detected = prev_recovery.as_ref().is_some_and(|s| !s.clean_shutdown);
+    let has_crashed_secondary = prev_recovery
+        .as_ref()
+        .is_some_and(|s| !s.clean_shutdown && !s.secondary.is_empty());
+    let pending_recovery = prev_recovery.as_ref().filter(|s| recovery_needed(s)).cloned();
 
-    let window_builder = WindowBuilder::new()
+    let mut window_builder = WindowBuilder::new()
         .with_title("TPbrowser — Trình Duyệt Cá Nhân & AI Cowork")
         .with_decorations(false)
         .with_visible(!is_silent)
         .with_window_icon(TpBrowserApp::build_window_icon("ribbon", "obsidian-gold"))
-        .with_inner_size(LogicalSize::new(saved_window_size.0, saved_window_size.1))
         .with_min_inner_size(LogicalSize::new(860, 560));
+
+    if let Some(ref prev) = prev_recovery {
+        let mut bounds = prev.primary.bounds.clone();
+        if let Some(work) = work_area_for_point(bounds.x + (bounds.width as i32) / 2, bounds.y + 24) {
+            bounds = clamp_window_bounds_to_work_area(bounds, work);
+        }
+        window_builder = window_builder
+            .with_inner_size(PhysicalSize::new(bounds.width.max(860), bounds.height.max(560)))
+            .with_position(PhysicalPosition::new(bounds.x, bounds.y));
+    } else {
+        window_builder = window_builder.with_inner_size(LogicalSize::new(saved_window_size.0, saved_window_size.1));
+    }
 
     #[cfg(target_os = "windows")]
     let window_builder = window_builder.with_undecorated_shadow(true);
@@ -8034,7 +14091,23 @@ fn main() -> wry::Result<()> {
         let _ = window.set_skip_taskbar(true);
     }
 
-    let mut app = TpBrowserApp::new(window, proxy, exe_dir)?;
+    let primary_window_id = window.id();
+    let mut app = TpBrowserApp::new(
+        window,
+        WindowProxy::new(primary_window_id, event_proxy.clone()),
+        exe_dir.clone(),
+        true,
+        false,
+    )?;
+    if prev_recovery.as_ref().is_some_and(|p| p.primary.bounds.maximized) && !is_silent {
+        app.window.set_maximized(true);
+    }
+    let _ = clamp_live_window_to_monitor(&app.window);
+    let mut windows = WindowRegistry::new(primary_window_id, pending_recovery, crash_detected);
+    windows.persist_recovery_snapshot(&mut app, false);
+    if has_crashed_secondary && !is_silent {
+        let _ = app.proxy.send_event(AppCmd::RecoverWindows);
+    }
     let mut modifiers = ModifiersState::empty();
     let mut alt_keys = AltKeyState::default();
 
@@ -8051,7 +14124,7 @@ fn main() -> wry::Result<()> {
         }
     });
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, target, control_flow| {
         let expired_shopee = shopee_discovery::expire_pending(&mut app.shopee_pending, Instant::now());
         if expired_shopee.iter().any(|id| app.shopee_workspace_pending.remove(id)) {
             app.shopee_discovery_json = shopee_discovery::unavailable();
@@ -8060,21 +14133,77 @@ fn main() -> wry::Result<()> {
         *control_flow = shopee_wait_flow(*control_flow, shopee_discovery::nearest_deadline(&app.shopee_pending));
 
         match event {
+            Event::MainEventsCleared => {
+                if windows.recovery_due() {
+                    windows.persist_recovery_snapshot(&mut app, false);
+                }
+                if app.session_due() {
+                    app.save_session();
+                }
+            }
+            Event::WindowEvent { window_id, event, .. } if window_id != windows.primary_window_id => {
+                let mut close_secondary = false;
+                let mut moved_or_resized = false;
+                if let Some(secondary) = windows.secondary.get_mut(&window_id) {
+                    match event {
+                        WindowEvent::CloseRequested => close_secondary = true,
+                        WindowEvent::Moved(_) => moved_or_resized = true,
+                        WindowEvent::Resized(_) => {
+                            secondary.relayout();
+                            secondary.sync_all_ui();
+                            moved_or_resized = true;
+                        }
+                        WindowEvent::ScaleFactorChanged { .. } => {
+                            let _ = clamp_live_window_to_monitor(&secondary.window);
+                            secondary.relayout();
+                            secondary.sync_all_ui();
+                            moved_or_resized = true;
+                        }
+                        _ => {}
+                    }
+                }
+                if moved_or_resized {
+                    windows.mark_recovery_dirty();
+                }
+                if close_secondary {
+                    windows.close_secondary(window_id);
+                    windows.persist_recovery_snapshot(&mut app, false);
+                    app.sync_settings_modal(None);
+                }
+            }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => {
                     app.execute(AppCmd::WinClose);
                     if app.should_exit {
+                        windows.persist_recovery_snapshot(&mut app, true);
                         *control_flow = ControlFlow::Exit;
+                    } else {
+                        windows.persist_recovery_snapshot(&mut app, false);
                     }
                 }
-                WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                WindowEvent::Moved(_) => {
+                    windows.mark_recovery_dirty();
+                }
+                WindowEvent::Resized(_) => {
                     app.relayout();
                     app.sync_all_ui();
+                    windows.mark_recovery_dirty();
+                }
+                WindowEvent::ScaleFactorChanged { .. } => {
+                    let _ = clamp_live_window_to_monitor(&app.window);
+                    app.relayout();
+                    app.sync_all_ui();
+                    windows.mark_recovery_dirty();
                 }
                 WindowEvent::ModifiersChanged(new_mods) => {
                     modifiers = new_mods;
                 }
-                WindowEvent::Focused(false) => alt_keys = AltKeyState::default(),
+                WindowEvent::Focused(false) => {
+                    alt_keys = AltKeyState::default();
+                    if app.mru_hud_open {
+                        app.execute(AppCmd::CommitMruTab(None));
+                    }
+                }
                 WindowEvent::KeyboardInput { event: KeyEvent { physical_key, state, .. }, .. } => {
                     let pressed = state == ElementState::Pressed;
                     if alt_keys.should_open_command_bar(physical_key, pressed) {
@@ -8083,13 +14212,23 @@ fn main() -> wry::Result<()> {
                     alt_keys.update(physical_key, pressed);
                     if !pressed {
                         if matches!(physical_key, KeyCode::ControlLeft | KeyCode::ControlRight) {
-                            app.mru_cycle_ids = None;
-                            if let Some(id) = app.tabs.get(app.active_idx).filter(|tab| tab.worker_kind.is_none()).map(|tab| tab.id) {
-                                app.mru_tab_ids.retain(|existing| *existing != id);
-                                app.mru_tab_ids.insert(0, id);
+                            if app.mru_hud_open {
+                                app.execute(AppCmd::CommitMruTab(None));
+                            } else {
+                                app.mru_cycle_ids = None;
+                                if let Some(id) = app.tabs.get(app.active_idx).filter(|tab| tab.worker_kind.is_none()).map(|tab| tab.id) {
+                                    app.mru_tab_ids.retain(|existing| *existing != id);
+                                    app.mru_tab_ids.insert(0, id);
+                                }
                             }
                         }
                         return;
+                    }
+                    if let Some(shortcut) = TpBrowserApp::shortcut_from_key_input(physical_key, modifiers) {
+                        if let Some(command) = app.shortcut_command_for(&shortcut) {
+                            app.run_custom_shortcut(command);
+                            return;
+                        }
                     }
                     if physical_key == KeyCode::F5 && !modifiers.alt_key() && !modifiers.shift_key() {
                         if modifiers.control_key() {
@@ -8108,10 +14247,18 @@ fn main() -> wry::Result<()> {
                         && !modifiers.shift_key()
                     {
                         app.execute(AppCmd::FocusUrlBar);
+                    } else if physical_key == KeyCode::Escape && app.mru_hud_open {
+                        app.execute(AppCmd::CancelMruTab);
+                    } else if matches!(physical_key, KeyCode::Enter | KeyCode::NumpadEnter)
+                        && app.mru_hud_open
+                    {
+                        app.execute(AppCmd::CommitMruTab(None));
                     } else if physical_key == KeyCode::Escape && app.settings_open {
                         app.execute(AppCmd::CloseSettingsModal);
                     } else if physical_key == KeyCode::Escape && app.glance_open {
                         app.execute(AppCmd::CloseGlance);
+                    } else if physical_key == KeyCode::Escape && app.command_bar_open {
+                        app.execute(AppCmd::CloseCommandBar);
                     } else if modifiers.control_key() && !modifiers.alt_key() {
                         match physical_key {
                             KeyCode::KeyT if modifiers.shift_key() => {
@@ -8125,8 +14272,10 @@ fn main() -> wry::Result<()> {
                             KeyCode::KeyW | KeyCode::F4 if !modifiers.shift_key() => {
                                 app.execute(AppCmd::CloseActiveTab)
                             }
-                            KeyCode::Tab if modifiers.shift_key() => app.execute(AppCmd::PrevTab),
-                            KeyCode::Tab => app.execute(AppCmd::NextMruTab),
+                            KeyCode::Tab if modifiers.shift_key() => {
+                                app.execute(AppCmd::StepMruTab(-1))
+                            }
+                            KeyCode::Tab => app.execute(AppCmd::StepMruTab(1)),
                             KeyCode::PageDown if !modifiers.shift_key() => {
                                 app.execute(AppCmd::NextTab)
                             }
@@ -8140,6 +14289,12 @@ fn main() -> wry::Result<()> {
                             KeyCode::KeyL if !modifiers.shift_key() => {
                                 app.execute(AppCmd::FocusUrlBar)
                             }
+                            KeyCode::KeyC if modifiers.shift_key() => {
+                                app.execute(AppCmd::CopyActiveUrl)
+                            }
+                            KeyCode::KeyK if !modifiers.shift_key() => {
+                                app.execute(AppCmd::OpenCommandBar)
+                            }
                             KeyCode::KeyD if !modifiers.shift_key() => {
                                 app.execute(AppCmd::BookmarkActive)
                             }
@@ -8148,6 +14303,9 @@ fn main() -> wry::Result<()> {
                             }
                             KeyCode::KeyH if !modifiers.shift_key() => {
                                 app.execute(AppCmd::OpenHistory)
+                            }
+                            KeyCode::KeyP if !modifiers.shift_key() => {
+                                app.execute(AppCmd::PrintActive)
                             }
                             KeyCode::Equal | KeyCode::NumpadAdd => app.execute(AppCmd::ZoomStep(10)),
                             KeyCode::Minus | KeyCode::NumpadSubtract => {
@@ -8185,6 +14343,15 @@ fn main() -> wry::Result<()> {
                             }
                             _ => {}
                         }
+                    } else if physical_key == KeyCode::F12 {
+                        app.execute(AppCmd::OpenDevTools);
+                    } else if modifiers.control_key() && modifiers.alt_key() && !modifiers.shift_key() {
+                        match physical_key {
+                            KeyCode::KeyC => app.execute(AppCmd::ToggleCompactMode),
+                            KeyCode::ArrowLeft => app.execute(AppCmd::PrevWorkspace),
+                            KeyCode::ArrowRight => app.execute(AppCmd::NextWorkspace),
+                            _ => {}
+                        }
                     } else if modifiers.alt_key() && !modifiers.control_key() && !modifiers.shift_key()
                     {
                         match physical_key {
@@ -8211,30 +14378,176 @@ fn main() -> wry::Result<()> {
                                 isolated: true,
                                 container_id: None,
                             }),
-                            KeyCode::KeyW => app.execute(AppCmd::OpenWorkspace),
+                            KeyCode::KeyW => {},
                             _ => {}
                         }
                     }
                 }
                 _ => {}
             },
-            Event::UserEvent(cmd) => {
+            Event::UserEvent(AppEvent::WindowCommand { window_id, command: AppCmd::NewWindow, .. }) => {
+                let size = if window_id == windows.primary_window_id {
+                    let size = app.window.inner_size();
+                    Some((size.width, size.height))
+                } else {
+                    windows.secondary.get(&window_id).map(|secondary| {
+                        let size = secondary.window.inner_size();
+                        (size.width, size.height)
+                    })
+                };
+                if let Some(size) = size {
+                    let _ = windows.create_secondary(target, event_proxy.clone(), exe_dir.clone(), size, false, None);
+                    windows.persist_recovery_snapshot(&mut app, false);
+                    app.sync_settings_modal(None);
+                }
+            }
+            Event::UserEvent(AppEvent::WindowCommand { command: AppCmd::RecoverWindows, .. }) => {
+                let _ = windows.recover_windows(target, &event_proxy, &exe_dir, &mut app);
+            }
+            Event::UserEvent(AppEvent::WindowCommand { command: AppCmd::DismissWindowRecovery, .. }) => {
+                windows.dismiss_recovery(&mut app);
+            }
+            Event::UserEvent(AppEvent::WindowCommand { command: AppCmd::SyncWindowGeometry, .. }) => {
+                windows.sync_all_window_geometries(&mut app);
+            }
+            Event::UserEvent(AppEvent::WindowCommand { window_id, command: AppCmd::DetachTabToNewWindow { tab_id, intent, fallback_cursor }, .. }) => {
+                let eligible = if window_id == windows.primary_window_id {
+                    app.tabs.iter().any(|tab| tab.id == tab_id && tab.worker_kind.is_none())
+                } else {
+                    windows.secondary.get(&window_id).is_some_and(|source| {
+                        source.tabs.iter().any(|tab| tab.id == tab_id && tab.worker_kind.is_none())
+                    })
+                };
+                if !eligible || !windows.begin_detach(window_id, tab_id) {
+                    return;
+                }
+                let size = if window_id == windows.primary_window_id {
+                    let size = app.window.inner_size();
+                    Some((size.width, size.height))
+                } else {
+                    windows.secondary.get(&window_id).map(|source| {
+                        let size = source.window.inner_size();
+                        (size.width, size.height)
+                    })
+                };
+                let Some(size) = size else {
+                    windows.finish_detach(window_id, tab_id);
+                    return;
+                };
+                #[cfg(target_os = "windows")]
+                let hovered_managed_window = fallback_cursor
+                    .and_then(|cursor| windows.managed_window_at(&app, cursor));
+                let existing_target = hovered_managed_window
+                    .filter(|target_id| *target_id != window_id);
+                #[cfg(not(target_os = "windows"))]
+                let hovered_managed_window: Option<WindowId> = None;
+                #[cfg(not(target_os = "windows"))]
+                let existing_target: Option<WindowId> = None;
+
+                // A drag which ends over its source window is neither a transfer
+                // nor a detach. Context-menu detach intentionally has no location.
+                if intent == TabDetachIntent::DragOut && hovered_managed_window == Some(window_id) {
+                    windows.finish_detach(window_id, tab_id);
+                    return;
+                }
+
+                let target_id = if let Some(target_id) = existing_target {
+                    target_id
+                } else {
+                    let Ok(target_id) = windows.create_secondary(
+                        target, event_proxy.clone(), exe_dir.clone(), size, true, fallback_cursor,
+                    ) else {
+                        windows.finish_detach(window_id, tab_id);
+                        return;
+                    };
+                    target_id
+                };
+                #[cfg(not(target_os = "windows"))]
+                let moved = false;
+                #[cfg(target_os = "windows")]
+                let moved = if window_id == windows.primary_window_id {
+                    windows.detach_from_primary(&mut app, target_id, tab_id)
+                } else if target_id == windows.primary_window_id {
+                    windows.detach_to_primary(&mut app, window_id, tab_id)
+                } else {
+                    windows.detach_from_secondary(window_id, target_id, tab_id)
+                };
+                if !moved {
+                    // Roll back only a staging destination; an existing destination
+                    // retains its unrelated tabs when a transfer is rejected.
+                    if existing_target.is_none() {
+                        windows.close_secondary(target_id);
+                    }
+                } else {
+                    if window_id != windows.primary_window_id
+                        && windows.secondary.get(&window_id).is_some_and(|source| source.tabs.is_empty())
+                    {
+                        windows.close_secondary(window_id);
+                    }
+                    if target_id == windows.primary_window_id {
+                        app.window.set_focus();
+                    } else if let Some(target) = windows.secondary.get_mut(&target_id) {
+                        target.window.set_visible(true);
+                        target.window.set_focus();
+                    }
+                }
+                windows.finish_detach(window_id, tab_id);
+                windows.persist_recovery_snapshot(&mut app, false);
+                app.sync_settings_modal(None);
+            }
+            Event::UserEvent(AppEvent::WindowCommand { window_id, origin_tab_id, command: cmd }) => {
+                let is_quiet_bg = matches!(
+                    &cmd,
+                    AppCmd::CheckReminders
+                        | AppCmd::UiShellReady(_)
+                        | AppCmd::ShopeeNativeResult { .. }
+                        | AppCmd::FocusContentTab(_)
+                );
                 let cmd_desc = if matches!(&cmd, AppCmd::ShopeeNativeResult { .. }) {
                     "ShopeeNativeResult [redacted]".to_string()
                 } else { format!("{:?}", cmd) };
                 let t_evt = Instant::now();
-                app.execute(cmd);
+                // A reparented BrowserTab keeps Wry callbacks and IPC closures
+                // created under its former WindowId. Every such callback carries
+                // `origin_tab_id`, so route *all* of its commands by current stable
+                // ownership (not only lifecycle/meta/media variants). Window-shell
+                // commands have no origin and retain their original routing.
+                if let Some(tab_id) = origin_tab_id {
+                    if app.tabs.iter().any(|tab| tab.id == tab_id) {
+                        app.execute(cmd);
+                    } else if let Some(owner) = windows.secondary.values_mut().find(|runtime| {
+                        runtime.tabs.iter().any(|tab| tab.id == tab_id)
+                    }) {
+                        owner.execute(cmd);
+                    }
+                } else if window_id == windows.primary_window_id {
+                    app.execute(cmd);
+                } else if let Some(secondary) = windows.secondary.get_mut(&window_id) {
+                    secondary.execute(cmd);
+                }
+                if !is_quiet_bg {
+                    windows.mark_recovery_dirty();
+                }
                 let dur = t_evt.elapsed().as_secs_f64() * 1000.0;
                 if dur > 10.0 {
                     TpBrowserApp::log_perf(&format!("CMD: {}", cmd_desc), dur);
                 }
                 if app.should_exit {
+                    windows.persist_recovery_snapshot(&mut app, true);
                     *control_flow = ControlFlow::Exit;
                 }
             }
             _ => {}
         }
-        *control_flow = shopee_wait_flow(*control_flow, shopee_discovery::nearest_deadline(&app.shopee_pending));
+        let next_deadline = [
+            shopee_discovery::nearest_deadline(&app.shopee_pending),
+            windows.recovery_deadline(),
+            app.session_deadline(),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
+        *control_flow = shopee_wait_flow(*control_flow, next_deadline);
     });
 }
 
@@ -8533,7 +14846,7 @@ mod tests {
         assert!(SETTINGS_MODAL_HTML.contains("check_app_update"));
         assert!(SETTINGS_MODAL_HTML.contains("about_brand_icon"));
         assert_eq!(APP_VERSION, "0.5.6");
-        assert_eq!(APP_FULL_VERSION, "v0.5.6-workspace-landing");
+        assert_eq!(APP_FULL_VERSION, "v0.5.6-browser-only");
         assert!(injected.contains("Motion"));
     }
 
@@ -8557,6 +14870,20 @@ mod tests {
         assert!(tb.contains("Motion"));
         assert!(HISTORY_HTML.contains("/*__TP_MOTION_JS__*/"));
         assert!(NEWTAB_HTML.contains("/*__TP_MOTION_JS__*/"));
+    }
+
+    #[test]
+    fn test_custom_shortcuts_normalize_persisted_values_and_fail_closed_on_conflicts() {
+        assert_eq!(TpBrowserApp::normalize_custom_shortcut("shift + ctrl + c"), Some("Ctrl+Shift+C".to_string()));
+        assert_eq!(TpBrowserApp::normalize_custom_shortcut("C"), None);
+        assert!(TpBrowserApp::reserved_browser_shortcut("Ctrl+T"));
+        let mut shortcuts = TpBrowserApp::default_custom_shortcuts();
+        shortcuts.insert("command_bar".to_string(), "Alt+A".to_string());
+        assert_eq!(TpBrowserApp::shortcut_command_for_map(&shortcuts, "Alt+A"), None);
+        let parsed = parse_json(r#"{"custom_shortcuts":{"command_bar":"Ctrl+T","copy_url":"Shift+Ctrl+C"}}"#).unwrap();
+        let loaded = TpBrowserApp::parse_custom_shortcuts(parsed.get("custom_shortcuts").unwrap());
+        assert_eq!(loaded.get("command_bar").map(String::as_str), Some("Ctrl+K"));
+        assert_eq!(loaded.get("copy_url").map(String::as_str), Some("Ctrl+Shift+C"));
     }
 
     #[test]
@@ -8655,27 +14982,9 @@ mod tests {
     }
 
     #[test]
-    fn test_workspace_and_background_worker_tabs() {
-        assert!(WORKSPACE_HTML.contains("__tpSyncWorkspace"));
-        assert!(WORKSPACE_HTML.contains("run_ecom_scan"));
-        assert!(WORKSPACE_HTML.contains("export_shopee_csv"));
-        assert!(WORKSPACE_HTML.contains("openDirect"));
-        assert!(WORKSPACE_HTML.contains("sp_anom_tbody"));
-        assert!(WORKSPACE_HTML.contains("sp_reviews_list"));
-        assert!(WORKSPACE_HTML.contains("sp_live_tbody"));
-        assert!(WORKSPACE_HTML.contains("sp_discounts_list"));
-        assert!(WORKSPACE_HTML.contains("sp_vouchers_list"));
-        assert!(WORKSPACE_HTML.contains("sp_flashsales_list"));
-        assert!(ECOM_AGENTS_JS.contains("__tpRunShopeeScan"));
-        assert!(ECOM_AGENTS_JS.contains("search_order_list_index"));
-        assert!(ECOM_AGENTS_JS.contains("payment_info"));
-        assert!(ECOM_AGENTS_JS.contains("search_shop_rating_comments_new"));
-        assert!(ECOM_AGENTS_JS.contains("liveList/v2"));
-        assert!(ECOM_AGENTS_JS.contains("get_shop_flash_sale_list"));
-        assert!(TIKTOK_PASSIVE_SCAN_JS.contains("update_platform_data"));
-        assert!(TIKTOK_PASSIVE_SCAN_JS.contains("split(\"\\n\")"));
-        assert!(TIKTOK_PASSIVE_SCAN_JS.contains("onsite_roi2_shopping_value"));
-        assert!(TITLEBAR_HTML.contains("open_workspace"));
+    fn test_browser_shell_has_no_workspace_entrypoint() {
+        assert!(!TITLEBAR_HTML.contains("open_workspace"));
+        assert!(!NEWTAB_HTML.contains("open_workspace"));
         assert!(TITLEBAR_HTML.contains("tb-worker-badge"));
         assert!(TAB_SHELL_HTML.contains("tab-worker-badge"));
         assert!(AI_PANEL_HTML.contains("quick_worker_tab"));
@@ -8684,11 +14993,21 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_url_classifies_domains_localhost_ipv4_and_schemes() {
+        assert_eq!(TpBrowserApp::normalize_url("example.com/path"), "https://example.com/path");
+        assert_eq!(TpBrowserApp::normalize_url("localhost:3000/status"), "https://localhost:3000/status");
+        assert_eq!(TpBrowserApp::normalize_url("127.0.0.1:8080"), "https://127.0.0.1:8080");
+        assert_eq!(TpBrowserApp::normalize_url("ftp://example.com/file"), "ftp://example.com/file");
+        assert_eq!(TpBrowserApp::normalize_url("tp://history"), "tp://history");
+        assert_eq!(TpBrowserApp::normalize_url("rust browser"), "https://www.google.com/search?q=rust+browser");
+    }
+
+    #[test]
     fn test_workspace_session_roundtrip_and_legacy_default() {
         let session = format!(
             "{{\"active_workspace_id\":\"research\",\"tabs\":[{},{}]}}",
-            TpBrowserApp::serialize_session_tab("https://example.com", "default", "default", "research", false, Some(7)),
-            TpBrowserApp::serialize_session_tab("https://example.org", "default", "shopping", "personal", false, None),
+            TpBrowserApp::serialize_session_tab("https://example.com", "default", "default", "research", false, Some(7), false, None),
+            TpBrowserApp::serialize_session_tab("https://example.org", "default", "shopping", "personal", false, None, false, None),
         );
         let value = parse_json(&session).expect("workspace session should parse");
         assert_eq!(
@@ -8785,11 +15104,29 @@ mod tests {
     #[test]
     fn workspace_config_validation_fails_closed_for_malformed_state() {
         let default = Workspace::default_workspace();
-        let work = Workspace { id: "workspace-17".to_string(), name: "Research".to_string() };
+        let work = Workspace {
+            id: "workspace-17".to_string(),
+            name: "Research".to_string(),
+            icon: "✦".to_string(),
+            accent: String::new(),
+            container_id: "default".to_string(),
+        };
         assert!(valid_workspace_list(&[default.clone(), work.clone()]));
         assert!(!valid_workspace_list(&[work.clone()]));
-        assert!(!valid_workspace_list(&[default.clone(), Workspace { id: "default".to_string(), name: "Duplicate".to_string() }]));
-        assert!(!valid_workspace_list(&[default, Workspace { id: "bad/id".to_string(), name: "Invalid".to_string() }]));
+        assert!(!valid_workspace_list(&[default.clone(), Workspace {
+            id: "default".to_string(),
+            name: "Duplicate".to_string(),
+            icon: "✦".to_string(),
+            accent: String::new(),
+            container_id: "default".to_string(),
+        }]));
+        assert!(!valid_workspace_list(&[default, Workspace {
+            id: "bad/id".to_string(),
+            name: "Invalid".to_string(),
+            icon: "✦".to_string(),
+            accent: String::new(),
+            container_id: "default".to_string(),
+        }]));
         assert!(!valid_workspace_name("\n"));
     }
 
@@ -8803,9 +15140,252 @@ mod tests {
     }
 
     #[test]
-    fn workspace_contract_keeps_selection_in_memory_without_persistence() {
-        assert!(WORKSPACE_HTML.contains("selectedShopKeys"));
-        assert!(WORKSPACE_HTML.contains("set_shopee_shop_selection"));
-        assert!(WORKSPACE_HTML.contains("selected_shops"));
+    fn task_selection_json_and_mcp_auth_token_roundtrip() {
+        let payload = JsonVal::obj(vec![
+            ("text", JsonVal::Str("line1\n\"quoted\"\\path".to_string())),
+            ("source", JsonVal::Str("web".to_string())),
+            ("contact", JsonVal::Str("A & \"B\"".to_string())),
+        ])
+        .to_json();
+        let parsed = parse_json(&payload).unwrap();
+        assert_eq!(parsed.get("text").and_then(JsonVal::as_str), Some("line1\n\"quoted\"\\path"));
+        assert_eq!(parsed.get("contact").and_then(JsonVal::as_str), Some("A & \"B\""));
+
+        let tok = mcp_server::generate_auth_token();
+        assert!(tok.starts_with("tp_"));
+        assert!(tok.len() >= 35);
+        let cfg = format!("{{\"mcp_auth_token\":\"{}\"}}", tok);
+        assert_eq!(TpBrowserApp::extract_field_str(&cfg, "mcp_auth_token"), Some(tok));
     }
+
+    #[test]
+    fn normalize_bookmarks_json_preserves_legacy_and_normalizes_folders_tags_keywords() {
+        let raw = r##"[
+            {"title":"Google Sheets","url":"https://docs.google.com/spreadsheets"},
+            {"title":"YouTube","url":" https://www.youtube.com ","folder":" Giải trí ","tags":["#video","Music","video"],"keyword":" Y T "},
+            {"title":"Invalid","url":"   "}
+        ]"##;
+        let normalized = TpBrowserApp::normalize_bookmarks_json(raw).unwrap();
+        let parsed = parse_json(&normalized).unwrap();
+        let arr = parsed.as_arr().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0].get("folder").and_then(JsonVal::as_str), Some(""));
+        assert_eq!(arr[0].get("keyword").and_then(JsonVal::as_str), Some(""));
+        assert_eq!(arr[1].get("folder").and_then(JsonVal::as_str), Some("Giải trí"));
+        assert_eq!(arr[1].get("keyword").and_then(JsonVal::as_str), Some("yt"));
+        let tags: Vec<&str> = arr[1]
+            .get("tags")
+            .and_then(JsonVal::as_arr)
+            .unwrap()
+            .iter()
+            .filter_map(JsonVal::as_str)
+            .collect();
+        assert_eq!(tags, vec!["video", "Music"]);
+        assert!(TpBrowserApp::normalize_bookmarks_json("{bad").is_none());
+    }
+
+    #[test]
+    fn normalize_boosts_json_normalizes_domains_selectors_and_prunes_empty_entries() {
+        let raw = r##"{
+            "https://WWW.YouTube.com/watch?v=1": {
+                "css": " ytd-masthead { opacity: 0.9; } ",
+                "zap_selectors": [" #secondary ", "#secondary", ""],
+                "enabled": true
+            },
+            "example.com": {
+                "css": "   ",
+                "zap_selectors": []
+            }
+        }"##;
+        let norm = TpBrowserApp::normalize_boosts_json(raw).unwrap();
+        let parsed = parse_json(&norm).unwrap();
+        let yt = parsed.get("youtube.com").unwrap();
+        assert_eq!(yt.get("css").and_then(JsonVal::as_str), Some("ytd-masthead { opacity: 0.9; }"));
+        assert_eq!(yt.get("enabled").and_then(JsonVal::as_bool), Some(true));
+        let zaps: Vec<&str> = yt
+            .get("zap_selectors")
+            .and_then(JsonVal::as_arr)
+            .unwrap()
+            .iter()
+            .filter_map(JsonVal::as_str)
+            .collect();
+        assert_eq!(zaps, vec!["#secondary"]);
+        assert!(parsed.get("example.com").is_none());
+        assert!(TpBrowserApp::normalize_boosts_json("[]").is_none());
+    }
+
+    #[test]
+    fn permission_policy_maps_to_wry_response_and_safe_download_path_rejects_traversal() {
+        assert_eq!(TpBrowserApp::permission_policy_code("allow"), 1);
+        assert_eq!(TpBrowserApp::permission_policy_code("deny"), 2);
+        assert_eq!(TpBrowserApp::permission_policy_code("anything"), 0);
+        assert_eq!(
+            TpBrowserApp::permission_response_from_code(0),
+            super::PermissionResponse::Default
+        );
+        assert_eq!(
+            TpBrowserApp::permission_response_from_code(1),
+            super::PermissionResponse::Allow
+        );
+        assert_eq!(
+            TpBrowserApp::permission_response_from_code(2),
+            super::PermissionResponse::Deny
+        );
+
+        let root = std::env::temp_dir().join(format!("tpbrowser-dl-test-{}", std::process::id()));
+        let dl_dir = root.join("Downloads");
+        let outside = root.join("secret.txt");
+        let inside = dl_dir.join("report.pdf");
+        std::fs::create_dir_all(&dl_dir).unwrap();
+        std::fs::write(&outside, "nope").unwrap();
+        std::fs::write(&inside, "ok").unwrap();
+        assert!(TpBrowserApp::is_safe_download_path(&inside.to_string_lossy(), &dl_dir).is_some());
+        assert!(TpBrowserApp::is_safe_download_path(&outside.to_string_lossy(), &dl_dir).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn window_recovery_clamps_bounds_and_roundtrips_crash_state() {
+        use super::{
+            clamp_window_bounds_to_work_area, is_window_offscreen, parse_recovery_snapshot,
+            recovery_needed, serialize_recovery_snapshot, RecoverySnapshot, RecoveryTabSnapshot,
+            RecoveryWindowSnapshot, WindowBounds, WorkAreaRect,
+        };
+
+        let work = WorkAreaRect { left: 0, top: 0, right: 1920, bottom: 1040 };
+        let offscreen = WindowBounds {
+            x: 3400,
+            y: 1500,
+            width: 2400,
+            height: 1600,
+            maximized: false,
+        };
+        assert!(is_window_offscreen(&offscreen, &work));
+        let clamped = clamp_window_bounds_to_work_area(offscreen, work.clone());
+        assert_eq!(clamped.width, 1920);
+        assert_eq!(clamped.height, 1040);
+        assert_eq!(clamped.x, 0);
+        assert_eq!(clamped.y, 0);
+        assert!(!is_window_offscreen(&clamped, &work));
+
+        let shifted = clamp_window_bounds_to_work_area(
+            WindowBounds { x: -400, y: -120, width: 1100, height: 700, maximized: false },
+            WorkAreaRect { left: 1920, top: 0, right: 3840, bottom: 1080 },
+        );
+        assert_eq!(shifted.x, 1920);
+        assert_eq!(shifted.y, 0);
+
+        let snap = RecoverySnapshot {
+            version: 1,
+            clean_shutdown: false,
+            updated_at_epoch: 1_760_000_000,
+            primary: RecoveryWindowSnapshot {
+                role: "primary".to_string(),
+                window_idx: 0,
+                bounds: clamped.clone(),
+                active_workspace_id: "default".to_string(),
+                active_idx: 0,
+                view_mode: "single".to_string(),
+                tabs: vec![RecoveryTabSnapshot {
+                    url: "https://example.com".to_string(),
+                    title: "Example".to_string(),
+                    profile: "default".to_string(),
+                    container_id: "default".to_string(),
+                    workspace_id: "default".to_string(),
+                    pinned: false,
+                    essential: false,
+                    pinned_origin_url: String::new(),
+                    tab_group_id: 0,
+                }],
+            },
+            secondary: vec![RecoveryWindowSnapshot {
+                role: "secondary".to_string(),
+                window_idx: 1,
+                bounds: WindowBounds { x: 100, y: 80, width: 1000, height: 720, maximized: true },
+                active_workspace_id: "work".to_string(),
+                active_idx: 0,
+                view_mode: "columns".to_string(),
+                tabs: vec![RecoveryTabSnapshot {
+                    url: "https://banhang.shopee.vn".to_string(),
+                    title: "Shopee".to_string(),
+                    profile: "isolated-1".to_string(),
+                    container_id: "shop".to_string(),
+                    workspace_id: "work".to_string(),
+                    pinned: true,
+                    essential: false,
+                    pinned_origin_url: "https://banhang.shopee.vn".to_string(),
+                    tab_group_id: 3,
+                }],
+            }],
+        };
+        assert!(recovery_needed(&snap));
+        let json = serialize_recovery_snapshot(&snap);
+        let parsed = parse_recovery_snapshot(&json).expect("recovery json must parse");
+        assert_eq!(parsed, snap);
+
+        let mut clean = parsed.clone();
+        clean.clean_shutdown = true;
+        clean.secondary.clear();
+        assert!(!recovery_needed(&clean));
+    }
+
+    #[test]
+    fn cached_newtab_html_reuses_static_allocation_and_theme_variants() {
+        use super::{cached_history_html, cached_newtab_html};
+
+        let dark1 = cached_newtab_html("obsidian-gold");
+        let dark2 = cached_newtab_html("obsidian-gold");
+        assert!(std::ptr::eq(dark1.as_ptr(), dark2.as_ptr()));
+        assert!(dark1.contains("data-theme=\"obsidian-gold\""));
+
+        let light1 = cached_newtab_html("carrara-light");
+        let light2 = cached_newtab_html("warm-paper");
+        assert!(std::ptr::eq(light1.as_ptr(), light2.as_ptr()));
+        assert!(light1.contains("data-theme=\"carrara-light\""));
+
+        let hist1 = cached_history_html("obsidian-gold");
+        let hist2 = cached_history_html("obsidian-gold");
+        assert!(std::ptr::eq(hist1.as_ptr(), hist2.as_ptr()));
+    }
+
+    #[test]
+    fn context_menu_prefs_normalizes_and_cleans_tracking_urls() {
+        let def = TpBrowserApp::normalize_context_menu_prefs("{}");
+        let parsed = parse_json(&def).unwrap();
+        assert_eq!(parsed.get("hide_separators").and_then(JsonVal::as_bool), Some(true));
+        assert_eq!(parsed.get("clean_copy_link").and_then(JsonVal::as_bool), Some(true));
+        assert_eq!(parsed.get("web_menu_enabled").and_then(JsonVal::as_bool), Some(true));
+        assert_eq!(parsed.get("hide_mute").and_then(JsonVal::as_bool), Some(false));
+
+        let custom = TpBrowserApp::normalize_context_menu_prefs(r#"{"hide_separators":false,"hide_mute":true,"web_menu_enabled":false}"#);
+        let c_parsed = parse_json(&custom).unwrap();
+        assert_eq!(c_parsed.get("hide_separators").and_then(JsonVal::as_bool), Some(false));
+        assert_eq!(c_parsed.get("hide_mute").and_then(JsonVal::as_bool), Some(true));
+        assert_eq!(c_parsed.get("web_menu_enabled").and_then(JsonVal::as_bool), Some(false));
+
+        assert_eq!(
+            TpBrowserApp::clean_tracking_url("https://example.com/watch?v=abc&utm_source=fb&fbclid=123&si=xyz#t=10"),
+            "https://example.com/watch?v=abc#t=10"
+        );
+        assert_eq!(
+            TpBrowserApp::clean_tracking_url("https://shopee.vn/item?utm_medium=cpc"),
+            "https://shopee.vn/item"
+        );
+        assert_eq!(TpBrowserApp::clean_tracking_url("tp://newtab"), "tp://newtab");
+    }
+
+    #[test]
+    fn mru_candidate_ordering_puts_active_then_mru_then_fallback() {
+        let candidates = TpBrowserApp::compute_mru_candidate_ids(
+            Some(30),
+            &[10, 999, 20, 10],
+            vec![10, 20, 30, 40],
+        );
+        assert_eq!(candidates, vec![30, 10, 20, 40]);
+
+        // Wrapping step +1 and -1 across 4 candidates
+        assert_eq!(((0isize + 1).rem_euclid(4)) as usize, 1);
+        assert_eq!(((0isize - 1).rem_euclid(4)) as usize, 3);
+    }
+
 }

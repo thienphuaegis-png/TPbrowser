@@ -60,9 +60,16 @@ def get_codegraph_stats() -> dict:
         out = subprocess.check_output(
             [cg_cmd, "status", "."], cwd=ROOT, stderr=subprocess.STDOUT, text=True
         )
-        files = int(re.search(r"Files\s*:\s*(\d+)", out).group(1)) if re.search(r"Files\s*:\s*(\d+)", out) else 6
-        nodes = int(re.search(r"Nodes\s*:\s*(\d+)", out).group(1)) if re.search(r"Nodes\s*:\s*(\d+)", out) else 45
-        edges = int(re.search(r"Edges\s*:\s*(\d+)", out).group(1)) if re.search(r"Edges\s*:\s*(\d+)", out) else 62
+        def parse_stat(label: str, default: int) -> int:
+            m = re.search(rf"{label}\s*:\s*([\d.,]+)", out)
+            if not m:
+                return default
+            digits = re.sub(r"[^\d]", "", m.group(1))
+            return int(digits) if digits else default
+
+        files = parse_stat("Files", 6)
+        nodes = parse_stat("Nodes", 45)
+        edges = parse_stat("Edges", 62)
         return {"files": files, "nodes": nodes, "edges": edges}
     except Exception:
         return {"files": 6, "nodes": 45, "edges": 62}
@@ -89,10 +96,10 @@ def main() -> None:
             {
                 "layer": "1. Rust Native Shell, Multi-WebView Orchestrator & Universal MCP",
                 "files": ["src/main.rs", "src/layout.rs", "src/json_mini.rs", "src/mcp_server.rs"],
-                "responsibility": "Win32 borderless window management (tao), multi-WebView2 layout (tab_shell, content & background BOT/AI worker tabs, ai_shell, fb_shell, zalo_shell, titlebar_shell, sidebar_resizer_shell, dock_resizer_shell, settings_shell), Universal MCP Server (:17777/mcp + stdio), MV3 uBlock Origin Lite loader, popunder blocker, and centralized JSON IPC + tp_config_changed broadcaster.",
+                "responsibility": "Win32 borderless window management (tao), multi-WebView2 layout (tab_shell, content/private/warm-standby tabs, glance shells, ai_shell, fb_shell, zalo_shell, titlebar_shell, resizers, settings_shell), Universal MCP Server (:17777/mcp + stdio), Profile7 COM extension discovery & Glance popup launcher, multi-window recovery, and centralized JSON IPC.",
             },
             {
-                "layer": "2. AURELIA Minimalist Surfaces & Zen Settings Modal",
+                "layer": "2. AURELIA Minimalist Surfaces, Command Bar & Zen Settings",
                 "files": [
                     "src/settings_modal.html",
                     "src/newtab.html",
@@ -101,35 +108,42 @@ def main() -> None:
                     "src/ai_panel.html",
                     "src/chat_header.html",
                     "src/titlebar.html",
+                    "src/glance_header.html",
                     "src/sidebar_resizer.html",
                     "src/dock_resizer.html",
                 ],
-                "responsibility": "Classic Bronze-Gold AURELIA Dark (obsidian-gold) & Light (carrara-light) UI surfaces, 999px pill controls, 1.75px stroke SVGs, 6-tab Zen Settings Modal (Alt+,), unified icon-first 40px titlebar + horizontal tabs, real website favicons, free-resize vertical tab bar, and AI Cowork background worker mode.",
+                "responsibility": "Bronze-Gold AURELIA Dark (obsidian-gold) & Light (carrara-light) UI surfaces, transparent single-host Command Bar & Ctrl+Tab MRU Switcher HUD, synchronized Zen right-click menus, unified 40px titlebar + horizontal/vertical tabs, live extension menu, free-resize sidebar, and AI Cowork dock/bubble.",
             },
             {
-                "layer": "3. E-Commerce Landing Workspace (tp://workspace) & Background Scrapers",
-                "files": ["src/workspace.html", "src/ecom_agents.js", "src/main.rs"],
-                "responsibility": "Non-intrusive background BOT worker tabs (HWND_BOTTOM, shared cookie WebContext) for Shopee (200-order price anomaly audit, 200 1-3★ ratings + counterfeit keyword alerts, Shopee Live, Promotions, Vouchers, Flash Sale, PAS) and TikTok Seller (anonymous IIFE SecSDK-safe Shadow-DOM ks-virtual-table sweep), click-to-open-direct workflows, CSV UTF-8 BOM export, and Zalo report copy.",
-            },
-            {
-                "layer": "4. Content Agent, Skill Recorder & 3-Layer Ad Shield",
+                "layer": "3. Content Agent, Better Find Bar & 3-Layer Ad Shield",
                 "files": ["src/content_agent.js", "skills/skills.json", "extensions/uBOLite.chromium/manifest.json"],
-                "responsibility": "Trusted-Types-safe DOM context extraction, 3-tier element locator, live user interaction recorder (__tpRecordingSkill), unread badge orbs, anti-adblock 0px CSS shield, YouTube 16x auto-skipper, and TikTok auth allowlist rules in uBOLite.",
+                "responsibility": "Trusted-Types-safe DOM context extraction, theme-aware Better Find Bar with match counter & CSS Custom Highlight API, Alt+Click Glance interception, Zen web context menu with clean tracking URLs, Zen Boosts + Zap, YouTube 16x auto-skipper, and uBOLite MV3 manifest rules.",
+            },
+            {
+                "layer": "4. Contract, Integrity & Core Verification Suite",
+                "files": [
+                    "tests/test_titlebar_split_contract.py",
+                    "tests/test_browser_core_features.py",
+                    "tests/test_browser_polish_features.py",
+                    "tests/test_checkpoint_integrity.py",
+                    "tests/test_webview_ecom_scan.py",
+                ],
+                "responsibility": "Automated Rust unit suite + Python UI/architecture/security/checkpoint contract verification and headless live MCP smoke automation.",
             },
         ],
         "guided_tour": [
-            {"step": 1, "file": "src/layout.rs", "symbol": "compute_shell_layout", "note": "Computes exact rectangles for Vertical/Horizontal tabs, BSP split views, and Right AI Dock vs Popup/Bubble mode."},
-            {"step": 2, "file": "src/main.rs", "symbol": "TpBrowserApp::execute", "note": "Central command dispatcher, background BOT/AI worker tab lifecycle, config.json persistence, and tp_config_changed broadcaster."},
-            {"step": 3, "file": "src/workspace.html", "symbol": "__tpSyncWorkspace", "note": "Landing-page workspace (tp://workspace) displaying Shopee anomalies, 1-3★ counterfeit alerts, Live, Promos/Vouchers/Flash Sale, PAS, and TikTok KPIs with click-to-open navigation."},
-            {"step": 4, "file": "src/ecom_agents.js", "symbol": "__tpRunShopeeScan", "note": "Shopee Seller background agent polling order APIs (chunk=5), rating comments (1-3★), Live sessions, Discounts, Vouchers, Flash Sales, and PAS tables."},
-            {"step": 5, "file": "src/settings_modal.html", "symbol": "__tpSyncSettingsModal", "note": "6-tab Zen-style centralized Settings Modal with live AI Key testing, startup mode, logo style, and zero-reload config sync."},
-            {"step": 6, "file": "src/ai_panel.html", "symbol": "triggerCoworkTask", "note": "Executes AI Cowork tasks on isolated background AI worker tabs or active tab with domain-scoped skills."},
-            {"step": 7, "file": "src/content_agent.js", "symbol": "runActiveAdCleanerAndSkipper", "note": "3-layer ad shield for movie streaming sites and YouTube video ads (guarded off on tiktok.com)."},
+            {"step": 1, "file": "src/layout.rs", "symbol": "compute_shell_layout", "note": "Computes exact rectangles for Vertical/Horizontal tabs, Compact Mode, BSP split views, and Right AI Dock vs Bubble mode."},
+            {"step": 2, "file": "src/main.rs", "symbol": "TpBrowserApp::execute", "note": "Central command dispatcher handling MRU HUD, Command Bar overlay, Window Recovery, WarmStandbyTab, Profile7 extension popups, and config/session persistence."},
+            {"step": 3, "file": "src/tab_shell.html", "symbol": "__tpOpenMruSwitcher", "note": "Transparent host rendering the vertical sidebar, Space switcher, centered Command Bar, and Ctrl+Tab MRU Switcher HUD."},
+            {"step": 4, "file": "src/titlebar.html", "symbol": "renderExtensionMenu", "note": "Unified horizontal titlebar with smart URL suggestions, Bookmarks bar, Downloads popover, and live Extension popup/dashboard launcher."},
+            {"step": 5, "file": "src/settings_modal.html", "symbol": "__tpSyncSettingsModal", "note": "Zen-style Settings Modal with shortcuts, context menu toggles, permission policies, privacy shields, and zero-reload sync."},
+            {"step": 6, "file": "src/ai_panel.html", "symbol": "triggerCoworkTask", "note": "Executes AI Cowork tasks with domain-scoped skills and chat selection helpers."},
+            {"step": 7, "file": "src/content_agent.js", "symbol": "__tpToggleFindBar", "note": "In-page agent powering Better Find Bar (x/y, Aa, CSS.highlights), Zen web context menu, Alt+Click Glance, Boosts, and YouTube ad skipping."},
         ],
     }
 
     out_path = os.path.join(ckpt_dir, "PROJECT_STATE.json")
-    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
     print(f"[OK] Wrote {out_path} (commit={payload['git_commit']}, ast={stats})")
 

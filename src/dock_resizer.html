@@ -5,14 +5,14 @@
 <title>Dock Resizer</title>
 <style>
   :root, html[data-theme="obsidian-gold"] {
-    --bar-bg: rgba(14, 16, 20, 0.95);
-    --line-idle: rgba(212, 175, 55, 0.30);
+    --bar-bg: #111318;
+    --line-idle: rgba(212, 175, 55, 0.16);
     --line-hot: #E2BE68;
   }
   html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
-    --bar-bg: rgba(246, 242, 234, 0.96);
-    --line-idle: rgba(154, 107, 22, 0.35);
-    --line-hot: #8A5E10;
+    --bar-bg: #EFE9DC;
+    --line-idle: rgba(24, 19, 12, 0.14);
+    --line-hot: #7A510B;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
   html, body {
@@ -26,30 +26,31 @@
     justify-content: center;
   }
   .seam {
-    width: 2px;
+    width: 1px;
     height: 100%;
     background: var(--line-idle);
-    transition: background 0.14s ease, width 0.14s ease;
+    transition: background-color 0.16s ease, width 0.16s ease;
     position: relative;
   }
   body:hover .seam, body.dragging .seam {
-    width: 3px;
+    width: 2.5px;
     background: var(--line-hot);
   }
   .grip {
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
-    width: 4px;
-    height: 44px;
+    transform: translate(-50%, -50%) scaleY(0.7);
+    width: 3.5px;
+    height: 40px;
     border-radius: 999px;
     background: var(--line-hot);
-    opacity: 0.45;
-    transition: opacity 0.14s ease;
+    opacity: 0;
+    transition: opacity 0.16s ease, transform 0.16s ease;
   }
   body:hover .grip, body.dragging .grip {
-    opacity: 1;
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scaleY(1);
   }
 </style>
 </head>
@@ -80,13 +81,13 @@
 
     window.__tpSyncDockResizer = function (st) {
       if (!st) return;
-      if (st.ui_theme) {
-        document.documentElement.setAttribute("data-theme", st.ui_theme);
-      }
-      if (st.dragging === false) {
-        document.body.classList.remove("dragging");
-      }
+      if (st.ui_theme) document.documentElement.setAttribute("data-theme", st.ui_theme);
+      if (st.dragging === false) document.body.classList.remove("dragging");
     };
+
+    window.addEventListener("tp_config_changed", function (ev) {
+      if (ev && ev.detail) window.__tpSyncDockResizer(ev.detail);
+    });
     sendRust({ cmd: "ui_shell_ready", shell: "dock_resizer" });
   </script>
 </body>

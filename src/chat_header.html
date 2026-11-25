@@ -6,24 +6,28 @@
 <style>
 /*__TP_FONT_FACE__*/
   :root, html[data-theme="obsidian-gold"] {
+    color-scheme: dark;
     --ease-ui: cubic-bezier(0.22, 1, 0.36, 1);
-    --bg-bar: #111318;
-    --bg-pill: #1A1D24;
-    --bg-pill-hover: #252934;
+    --bg-bar: #12151C;
+    --bg-pill: rgba(255, 255, 255, 0.05);
+    --bg-pill-hover: rgba(226, 190, 104, 0.16);
     --gold-bright: #E2BE68;
+    --gold-soft: rgba(212, 175, 55, 0.16);
     --text-primary: #F5F2EB;
-    --text-secondary: #C8C0B0;
-    --border-col: rgba(212, 175, 55, 0.34);
+    --text-secondary: #B8AF9E;
+    --border-col: rgba(212, 175, 55, 0.28);
   }
 
   html[data-theme="carrara-light"], html[data-theme="warm-paper"], html[data-theme="light"] {
-    --bg-bar: #EFE9DC;
-    --bg-pill: #FFFFFF;
-    --bg-pill-hover: #FAF6EE;
-    --gold-bright: #18130C;
+    color-scheme: light;
+    --bg-bar: #F3EDE1;
+    --bg-pill: rgba(24, 19, 12, 0.05);
+    --bg-pill-hover: rgba(122, 81, 11, 0.12);
+    --gold-bright: #7A510B;
+    --gold-soft: rgba(122, 81, 11, 0.12);
     --text-primary: #18130C;
-    --text-secondary: #18130C;
-    --border-col: rgba(24, 19, 12, 0.22);
+    --text-secondary: #4A3E2D;
+    --border-col: rgba(24, 19, 12, 0.18);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -33,21 +37,22 @@
     overflow: hidden;
     background: var(--bg-bar);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-    border: 1px solid var(--border-col);
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+    border-top: 1px solid var(--border-col);
+    border-left: 1px solid var(--border-col);
+    border-right: 1px solid var(--border-col);
+    border-bottom: 1px solid var(--border-col);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 6px;
+    padding: 0 7px;
+    gap: 6px;
   }
 
-  .ch-mini-title {
+  .ch-left {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--gold-bright);
     min-width: 0;
   }
   .ch-dot {
@@ -58,20 +63,67 @@
     flex-shrink: 0;
   }
   .ch-lbl {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gold-bright);
+    letter-spacing: 0.2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .ch-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 2px;
+    border-radius: 999px;
+    background: var(--bg-pill);
+    border: 1px solid var(--border-col);
+    flex-shrink: 0;
+  }
+  .ch-sw-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 999px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: background-color 0.14s var(--ease-ui), color 0.14s var(--ease-ui);
+  }
+  .ch-sw-btn:hover { color: var(--text-primary); }
+  .ch-sw-btn.active {
+    background: var(--gold-soft);
+    color: var(--gold-bright);
+  }
+  .ch-badge {
+    min-width: 13px;
+    height: 13px;
+    line-height: 13px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: #EF4444;
+    color: #FFFFFF;
+    font-size: 8.5px;
+    font-weight: 800;
+    text-align: center;
+    display: none;
+  }
+  .ch-badge.show { display: inline-block; }
 
   .ch-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     flex-shrink: 0;
   }
   .ch-ico-btn {
-    width: 22px;
-    height: 22px;
+    width: 21px;
+    height: 21px;
     border: 1px solid transparent;
     background: transparent;
     color: var(--text-secondary);
@@ -87,12 +139,10 @@
     color: var(--gold-bright);
     border-color: var(--border-col);
   }
-  .ch-ico-btn:active {
-    transform: scale(0.92);
-  }
+  .ch-ico-btn:active { transform: scale(0.92); }
   .ch-ico-btn svg {
-    width: 12.5px;
-    height: 12.5px;
+    width: 12px;
+    height: 12px;
     stroke: currentColor;
     fill: none;
     stroke-width: 1.8;
@@ -102,9 +152,17 @@
 </style>
 </head>
 <body>
-  <div class="ch-mini-title">
+  <div class="ch-left">
     <span class="ch-dot"></span>
     <span class="ch-lbl" id="ch_channel_name">Messenger</span>
+    <div class="ch-switch" id="ch_quick_switch">
+      <button type="button" class="ch-sw-btn" id="sw_fb" onclick="sendRust({cmd:'open_chat_channel', channel:'fb'})" title="Chuyển sang Messenger">
+        <span>FB</span><span class="ch-badge" id="bdg_fb"></span>
+      </button>
+      <button type="button" class="ch-sw-btn" id="sw_zalo" onclick="sendRust({cmd:'open_chat_channel', channel:'zalo'})" title="Chuyển sang Zalo Web">
+        <span>Zalo</span><span class="ch-badge" id="bdg_zalo"></span>
+      </button>
+    </div>
   </div>
 
   <div class="ch-actions">
@@ -117,7 +175,7 @@
     <button type="button" class="ch-ico-btn" id="btn_open_tab" onclick="sendRust({cmd:'open_channel_in_tab'})" title="Mở ra Tab lớn" style="display:none;">
       <svg viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M13.5 2.5L7.5 8.5"/><path d="M12.5 9.5v3a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h3"/></svg>
     </button>
-    <button type="button" class="ch-ico-btn" onclick="sendRust({cmd:'set_ai_mode', mode:'bubble'})" title="Thu nhỏ về 3 nút tròn">
+    <button type="button" class="ch-ico-btn" onclick="sendRust({cmd:'set_ai_mode', mode:'bubble'})" title="Thu nhỏ về bóng tròn">
       <svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>
     </button>
   </div>
@@ -131,16 +189,41 @@
       } catch (_) {}
     }
 
+    function setBadge(id, count, show) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var n = parseInt(count || 0, 10) || 0;
+      if (show && n > 0) {
+        el.textContent = n > 99 ? "99+" : String(n);
+        el.classList.add("show");
+      } else {
+        el.textContent = "";
+        el.classList.remove("show");
+      }
+    }
+
     window.__tpSyncChatHeader = function (st) {
       if (!st) return;
       if (st.ui_theme) {
         document.documentElement.setAttribute("data-theme", st.ui_theme);
       }
-      var ch = st.channel || st.chat_channel || "ai";
+      var ch = st.channel || st.chat_channel || "fb";
+      var isCustom = ch === "custom";
       var lbl = document.getElementById("ch_channel_name");
       if (lbl) {
         lbl.textContent = ch === "fb" ? "Messenger" : (ch === "zalo" ? "Zalo" : (st.custom_title || "App"));
       }
+      var swWrap = document.getElementById("ch_quick_switch");
+      if (swWrap) swWrap.style.display = isCustom ? "none" : "inline-flex";
+      var swFb = document.getElementById("sw_fb");
+      var swZalo = document.getElementById("sw_zalo");
+      if (swFb) swFb.classList.toggle("active", ch === "fb");
+      if (swZalo) swZalo.classList.toggle("active", ch === "zalo");
+
+      var showBadges = st.show_unread_badges !== false;
+      setBadge("bdg_fb", st.unread_fb, showBadges);
+      setBadge("bdg_zalo", st.unread_zalo, showBadges);
+
       var dockBtn = document.getElementById("btn_dock_style");
       if (dockBtn) {
         dockBtn.title = st.ai_mode === "dock" ? "Thu về Cửa sổ nổi" : "Gắn Ngăn phải";
@@ -156,9 +239,7 @@
     };
 
     window.addEventListener("tp_config_changed", function (ev) {
-      if (ev && ev.detail) {
-        window.__tpSyncChatHeader(ev.detail);
-      }
+      if (ev && ev.detail) window.__tpSyncChatHeader(ev.detail);
     });
     sendRust({ cmd: "ui_shell_ready", shell: "chat_header" });
   </script>

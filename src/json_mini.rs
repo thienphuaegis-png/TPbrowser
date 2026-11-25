@@ -56,6 +56,14 @@ impl JsonVal {
         }
     }
 
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            JsonVal::Num(n) if n.is_finite() => Some(*n),
+            JsonVal::Str(s) => s.trim().parse::<f64>().ok(),
+            _ => None,
+        }
+    }
+
     pub fn as_arr(&self) -> Option<&[JsonVal]> {
         match self {
             JsonVal::Arr(a) => Some(a.as_slice()),

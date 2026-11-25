@@ -21,3 +21,8 @@ perf_latency.log
 *.perf.log
 cloudflared.exe
 scripts/*.log
+window_recovery.json
+.ai/FULL_PROJECT_EXPORT.md
+.ai/checkpoints/head_*
+.ai/checkpoints/user_workspace.html
+
